@@ -1,0 +1,18 @@
+# Build artifacts
+/bin/
+/dist/
+
+# Scan output produced by running the tool from the repo root
+/findings.json
+/report.md
+
+# Go
+*.test
+*.out
+coverage.txt
+
+# OS / editor cruft
+.DS_Store
+.idea/
+.vscode/
+*.swp

@@ -1,0 +1,177 @@
+// Package findings defines the unified finding model produced by the policy
+// engine, the RBAC analyzer and the CIS scorecard builder.
+package findings
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"sort"
+	"strings"
+)
+
+// Severity is the risk level of a Finding, ordered from least to most severe.
+type Severity string
+
+const (
+	SeverityInfo     Severity = "INFO"
+	SeverityLow      Severity = "LOW"
+	SeverityMedium   Severity = "MEDIUM"
+	SeverityHigh     Severity = "HIGH"
+	SeverityCritical Severity = "CRITICAL"
+)
+
+// severityRank gives a total order to severities so results can be sorted
+// and compared against a --fail-on threshold.
+var severityRank = map[Severity]int{
+	SeverityInfo:     0,
+	SeverityLow:      1,
+	SeverityMedium:   2,
+	SeverityHigh:     3,
+	SeverityCritical: 4,
+}
+
+// ParseSeverity normalizes free-form severity strings (case-insensitive) to a
+// known Severity, defaulting to SeverityMedium for unrecognized values.
+func ParseSeverity(s string) Severity {
+	switch normalize(s) {
+	case "info", "informational":
+		return SeverityInfo
+	case "low":
+		return SeverityLow
+	case "medium", "moderate":
+		return SeverityMedium
+	case "high":
+		return SeverityHigh
+	case "critical":
+		return SeverityCritical
+	default:
+		return SeverityMedium
+	}
+}
+
+func normalize(s string) string {
+	out := make([]byte, 0, len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		out = append(out, c)
+	}
+	return string(out)
+}
+
+// AtLeast reports whether the severity meets or exceeds the threshold.
+func (s Severity) AtLeast(threshold Severity) bool {
+	return severityRank[s] >= severityRank[threshold]
+}
+
+// Rank returns the numeric rank of the severity (higher = more severe).
+func (s Severity) Rank() int {
+	return severityRank[s]
+}
+
+// ResourceRef identifies the Kubernetes object (or subject, for RBAC
+// findings) a Finding is about.
+type ResourceRef struct {
+	APIVersion string `json:"apiVersion,omitempty"`
+	Kind       string `json:"kind"`
+	Namespace  string `json:"namespace,omitempty"`
+	Name       string `json:"name"`
+}
+
+func (r ResourceRef) String() string {
+	if r.Namespace != "" {
+		return fmt.Sprintf("%s/%s %s/%s", r.APIVersion, r.Kind, r.Namespace, r.Name)
+	}
+	return fmt.Sprintf("%s/%s %s", r.APIVersion, r.Kind, r.Name)
+}
+
+// Finding is a single audit result: a policy or analyzer flagged a resource.
+type Finding struct {
+	ID          string      `json:"id"`
+	PolicyID    string      `json:"policyId"`
+	Title       string      `json:"title"`
+	Severity    Severity    `json:"severity"`
+	Category    string      `json:"category"`
+	CIS         []string    `json:"cis,omitempty"`
+	Resource    ResourceRef `json:"resource"`
+	Message     string      `json:"message"`
+	Remediation string      `json:"remediation,omitempty"`
+	Source      string      `json:"source,omitempty"`
+}
+
+// NewID computes a stable, content-addressed finding ID from the policy,
+// resource identity, and any extra discriminators (e.g. the specific
+// validation expression or verb that triggered), so distinct violations of
+// the same policy against the same resource don't collide into one ID and
+// silently disappear during Dedupe.
+func NewID(policyID string, ref ResourceRef, extra ...string) string {
+	parts := []string{policyID, ref.APIVersion, ref.Kind, ref.Namespace, ref.Name}
+	parts = append(parts, extra...)
+	h := sha256.Sum256([]byte(strings.Join(parts, "|")))
+	return hex.EncodeToString(h[:])[:16]
+}
+
+// Dedupe removes findings with identical IDs, keeping the first occurrence.
+func Dedupe(in []Finding) []Finding {
+	seen := make(map[string]bool, len(in))
+	out := make([]Finding, 0, len(in))
+	for _, f := range in {
+		if seen[f.ID] {
+			continue
+		}
+		seen[f.ID] = true
+		out = append(out, f)
+	}
+	return out
+}
+
+// SortBySeverity orders findings most-severe first, then by resource
+// namespace/name for stable, readable output.
+func SortBySeverity(in []Finding) {
+	sort.SliceStable(in, func(i, j int) bool {
+		if in[i].Severity.Rank() != in[j].Severity.Rank() {
+			return in[i].Severity.Rank() > in[j].Severity.Rank()
+		}
+		if in[i].Resource.Namespace != in[j].Resource.Namespace {
+			return in[i].Resource.Namespace < in[j].Resource.Namespace
+		}
+		if in[i].Resource.Name != in[j].Resource.Name {
+			return in[i].Resource.Name < in[j].Resource.Name
+		}
+		return in[i].PolicyID < in[j].PolicyID
+	})
+}
+
+// Summary counts findings per severity.
+type Summary map[Severity]int
+
+// Summarize builds a Summary from a finding list.
+func Summarize(in []Finding) Summary {
+	s := Summary{
+		SeverityCritical: 0,
+		SeverityHigh:     0,
+		SeverityMedium:   0,
+		SeverityLow:      0,
+		SeverityInfo:     0,
+	}
+	for _, f := range in {
+		s[f.Severity]++
+	}
+	return s
+}
+
+// MaxSeverity returns the highest severity present, or "" if in is empty.
+func MaxSeverity(in []Finding) Severity {
+	var max Severity
+	best := -1
+	for _, f := range in {
+		if r := f.Severity.Rank(); r > best {
+			best = r
+			max = f.Severity
+		}
+	}
+	return max
+}

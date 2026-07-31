@@ -1,0 +1,43 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: workload.seccomp-profile-required
+  annotations:
+    audit.k8s-auditor.io/title: "A seccomp profile must be set"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: workload-security
+    audit.k8s-auditor.io/remediation: >-
+      Set securityContext.seccompProfile.type to RuntimeDefault (or
+      Localhost with a vetted profile) at the pod level or on every
+      container. Unconfined containers have no syscall filtering.
+    audit.k8s-auditor.io/cis: "5.2.10"
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+      - apiGroups: ["batch"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["jobs", "cronjobs"]
+  validations:
+    - expression: |-
+        (
+          (has(object.spec.securityContext) && has(object.spec.securityContext.seccompProfile) && has(object.spec.securityContext.seccompProfile.type) && object.spec.securityContext.seccompProfile.type in ["RuntimeDefault", "Localhost"]) ||
+          (has(object.spec.template) && has(object.spec.template.spec) && has(object.spec.template.spec.securityContext) && has(object.spec.template.spec.securityContext.seccompProfile) && has(object.spec.template.spec.securityContext.seccompProfile.type) && object.spec.template.spec.securityContext.seccompProfile.type in ["RuntimeDefault", "Localhost"]) ||
+          (has(object.spec.jobTemplate) && has(object.spec.jobTemplate.spec) && has(object.spec.jobTemplate.spec.template) && has(object.spec.jobTemplate.spec.template.spec) && has(object.spec.jobTemplate.spec.template.spec.securityContext) && has(object.spec.jobTemplate.spec.template.spec.securityContext.seccompProfile) && has(object.spec.jobTemplate.spec.template.spec.securityContext.seccompProfile.type) && object.spec.jobTemplate.spec.template.spec.securityContext.seccompProfile.type in ["RuntimeDefault", "Localhost"])
+        ) || (has(object.spec.containers) ? object.spec.containers
+          : (has(object.spec.template) && has(object.spec.template.spec) && has(object.spec.template.spec.containers)) ? object.spec.template.spec.containers
+          : (has(object.spec.jobTemplate) && has(object.spec.jobTemplate.spec) && has(object.spec.jobTemplate.spec.template) && has(object.spec.jobTemplate.spec.template.spec) && has(object.spec.jobTemplate.spec.template.spec.containers)) ? object.spec.jobTemplate.spec.template.spec.containers
+          : []).all(c,
+            has(c.securityContext) && has(c.securityContext.seccompProfile) && has(c.securityContext.seccompProfile.type) &&
+            c.securityContext.seccompProfile.type in ["RuntimeDefault", "Localhost"]
+          )
+      message: "No RuntimeDefault/Localhost seccomp profile is set at the pod level or on every container."

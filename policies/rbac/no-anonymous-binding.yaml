@@ -1,0 +1,27 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: rbac.no-anonymous-binding
+  annotations:
+    audit.k8s-auditor.io/title: "Role bound to an anonymous or unauthenticated subject"
+    audit.k8s-auditor.io/severity: critical
+    audit.k8s-auditor.io/category: rbac
+    audit.k8s-auditor.io/remediation: >-
+      Remove system:anonymous / system:unauthenticated from the binding's
+      subjects. Any permission granted here is usable by anyone who can
+      reach the API server without credentials.
+    audit.k8s-auditor.io/cis: "5.1.1"
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["rbac.authorization.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["rolebindings", "clusterrolebindings"]
+  validations:
+    - expression: |-
+        !has(object.subjects) || !object.subjects.exists(s,
+          has(s.name) && (s.name == "system:anonymous" || s.name == "system:unauthenticated")
+        )
+      message: "Binding grants a role to system:anonymous or the system:unauthenticated group."

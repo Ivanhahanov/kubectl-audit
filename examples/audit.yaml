@@ -1,0 +1,62 @@
+# Example audit.yaml — copy to your repo root and adjust.
+#
+# Every field has a CLI flag equivalent (see `kubectl-audit scan --help`);
+# flags override whatever is set here.
+
+target:
+  # cluster: only the live cluster via kubeconfig
+  # static:  only the paths listed below
+  # both:    static paths + the live cluster (default)
+  mode: both
+
+  # Kube context to use in cluster mode. Empty = current context.
+  context: ""
+
+  # Scan every namespace (cluster mode). Set to false and list `namespaces`
+  # to scope to specific namespaces.
+  allNamespaces: true
+  namespaces: []
+
+  # Static manifest files/directories to audit (used in "static"/"both" mode).
+  paths:
+    - ./manifests
+
+  # Namespaces to skip entirely, regardless of mode. Defaults to these
+  # platform-managed namespaces (see README: Noise reduction) since their
+  # workloads/RBAC are Kubernetes/CNI/CSI internals, not actionable
+  # findings. Ignored if `namespaces` above is a non-empty allowlist. Set
+  # to [] to audit everything, including kube-system.
+  excludeNamespaces:
+    - kube-system
+    - kube-public
+    - kube-node-lease
+
+  # Kubernetes' own built-in Role/ClusterRole/*Binding objects (name
+  # prefix "system:") are excluded from RBAC findings by default, since
+  # they're cluster-managed and can't be remediated. Set to true to
+  # include them.
+  includeSystemRBAC: false
+
+policies:
+  # Extra directories of custom ValidatingAdmissionPolicy YAML to load
+  # alongside the bundled policies.
+  dirs:
+    - ./policies-custom
+
+  # Disable specific bundled or custom policies by their metadata.name.
+  disable: []
+  #  - workload.no-latest-tag
+
+  # Set to false to run only custom policies from `dirs`.
+  builtin: true
+
+output:
+  json: findings.json
+  markdown: report.md
+  # Minimum severity that makes `scan`/`rbac analyze`/`cis report` exit 1:
+  # none|low|medium|high|critical.
+  failOn: high
+
+cis:
+  enabled: true
+  version: "1.8"

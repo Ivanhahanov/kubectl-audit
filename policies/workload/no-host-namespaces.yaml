@@ -1,0 +1,51 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: workload.no-host-namespaces
+  annotations:
+    audit.k8s-auditor.io/title: "Host network/PID/IPC namespace sharing"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: workload-security
+    audit.k8s-auditor.io/remediation: >-
+      Remove hostNetwork, hostPID and hostIPC from the pod spec (or set them
+      to false). Sharing host namespaces lets a compromised container observe
+      or interfere with host-level processes and network traffic.
+    audit.k8s-auditor.io/cis: "5.2.4"
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+      - apiGroups: ["batch"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["jobs", "cronjobs"]
+  validations:
+    - expression: |-
+        !(
+          (has(object.spec.hostNetwork) && object.spec.hostNetwork == true) ||
+          (has(object.spec.template) && has(object.spec.template.spec) && has(object.spec.template.spec.hostNetwork) && object.spec.template.spec.hostNetwork == true) ||
+          (has(object.spec.jobTemplate) && has(object.spec.jobTemplate.spec) && has(object.spec.jobTemplate.spec.template) && has(object.spec.jobTemplate.spec.template.spec) && has(object.spec.jobTemplate.spec.template.spec.hostNetwork) && object.spec.jobTemplate.spec.template.spec.hostNetwork == true)
+        )
+      message: "Pod spec sets hostNetwork: true, sharing the host's network namespace."
+    - expression: |-
+        !(
+          (has(object.spec.hostPID) && object.spec.hostPID == true) ||
+          (has(object.spec.template) && has(object.spec.template.spec) && has(object.spec.template.spec.hostPID) && object.spec.template.spec.hostPID == true) ||
+          (has(object.spec.jobTemplate) && has(object.spec.jobTemplate.spec) && has(object.spec.jobTemplate.spec.template) && has(object.spec.jobTemplate.spec.template.spec) && has(object.spec.jobTemplate.spec.template.spec.hostPID) && object.spec.jobTemplate.spec.template.spec.hostPID == true)
+        )
+      message: "Pod spec sets hostPID: true, sharing the host's process namespace."
+    - expression: |-
+        !(
+          (has(object.spec.hostIPC) && object.spec.hostIPC == true) ||
+          (has(object.spec.template) && has(object.spec.template.spec) && has(object.spec.template.spec.hostIPC) && object.spec.template.spec.hostIPC == true) ||
+          (has(object.spec.jobTemplate) && has(object.spec.jobTemplate.spec) && has(object.spec.jobTemplate.spec.template) && has(object.spec.jobTemplate.spec.template.spec) && has(object.spec.jobTemplate.spec.template.spec.hostIPC) && object.spec.jobTemplate.spec.template.spec.hostIPC == true)
+        )
+      message: "Pod spec sets hostIPC: true, sharing the host's IPC namespace."

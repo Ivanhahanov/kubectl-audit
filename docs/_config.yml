@@ -1,0 +1,15 @@
+title: kubectl-audit
+description: >-
+  Production Kubernetes security audit: VAP/CEL policy checks, RBAC
+  least-privilege analysis, NetworkPolicy coverage, and CIS Benchmark
+  compliance — for a live cluster and/or static manifests.
+baseurl: "/kubectl-audit"
+url: "https://ivanhahanov.github.io"
+repository: ivanhahanov/kubectl-audit
+markdown: kramdown
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
+plugins: []
+exclude:
+  - README.md

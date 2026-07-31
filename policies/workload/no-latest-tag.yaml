@@ -1,0 +1,41 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: workload.no-latest-tag
+  annotations:
+    audit.k8s-auditor.io/title: "Container images must be pinned to a specific tag or digest"
+    audit.k8s-auditor.io/severity: low
+    audit.k8s-auditor.io/category: supply-chain
+    audit.k8s-auditor.io/remediation: >-
+      Pin the image to an explicit version tag or, preferably, a content
+      digest (image@sha256:...) instead of ":latest" or an implicit tag, so
+      deployments are reproducible and not silently changed underneath you.
+    audit.k8s-auditor.io/cis: "5.7.2"
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+      - apiGroups: ["batch"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["jobs", "cronjobs"]
+  validations:
+    - expression: |-
+        (has(object.spec.containers) ? object.spec.containers
+          : (has(object.spec.template) && has(object.spec.template.spec) && has(object.spec.template.spec.containers)) ? object.spec.template.spec.containers
+          : (has(object.spec.jobTemplate) && has(object.spec.jobTemplate.spec) && has(object.spec.jobTemplate.spec.template) && has(object.spec.jobTemplate.spec.template.spec) && has(object.spec.jobTemplate.spec.template.spec.containers)) ? object.spec.jobTemplate.spec.template.spec.containers
+          : []).all(c,
+            has(c.image) && (
+              c.image.contains("@sha256:") ||
+              (!c.image.endsWith(":latest") && c.image.matches("^.*:[^/]+$"))
+            )
+          )
+      message: "Container image is not pinned to an explicit tag or digest (implicit or explicit \":latest\" is not reproducible)."

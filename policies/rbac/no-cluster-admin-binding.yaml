@@ -1,0 +1,25 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: rbac.no-cluster-admin-binding
+  annotations:
+    audit.k8s-auditor.io/title: "Subject bound to the cluster-admin role"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: rbac
+    audit.k8s-auditor.io/remediation: >-
+      Bind subjects to a narrower role scoped to the permissions they
+      actually need instead of cluster-admin. Reserve cluster-admin for a
+      small, audited set of human break-glass accounts.
+    audit.k8s-auditor.io/cis: "5.1.1"
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["rbac.authorization.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["rolebindings", "clusterrolebindings"]
+  validations:
+    - expression: |-
+        !(has(object.roleRef) && has(object.roleRef.name) && object.roleRef.name == "cluster-admin")
+      message: "Binding grants the cluster-admin ClusterRole to a subject."

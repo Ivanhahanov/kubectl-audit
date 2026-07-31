@@ -1,0 +1,36 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: workload.no-hostpath-volumes
+  annotations:
+    audit.k8s-auditor.io/title: "hostPath volume mounts"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: workload-security
+    audit.k8s-auditor.io/remediation: >-
+      Avoid hostPath volumes; use a PersistentVolumeClaim, ConfigMap, or
+      Secret instead. hostPath exposes the node's filesystem to the
+      container and can be used to escape to the host.
+    audit.k8s-auditor.io/cis: "5.2.6"
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+      - apiGroups: ["batch"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["jobs", "cronjobs"]
+  validations:
+    - expression: |-
+        (has(object.spec.volumes) ? object.spec.volumes
+          : (has(object.spec.template) && has(object.spec.template.spec) && has(object.spec.template.spec.volumes)) ? object.spec.template.spec.volumes
+          : (has(object.spec.jobTemplate) && has(object.spec.jobTemplate.spec) && has(object.spec.jobTemplate.spec.template) && has(object.spec.jobTemplate.spec.template.spec) && has(object.spec.jobTemplate.spec.template.spec.volumes)) ? object.spec.jobTemplate.spec.template.spec.volumes
+          : []).all(v, !has(v.hostPath))
+      message: "Pod spec mounts a hostPath volume, exposing the node's filesystem to the container."

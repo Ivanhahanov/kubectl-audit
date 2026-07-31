@@ -1,0 +1,32 @@
+# This policy only ever matches in static-manifest mode: extensions/v1beta1
+# and networking.k8s.io/v1beta1 Ingress were removed from the Kubernetes API
+# in 1.22, so a live cluster can no longer serve them and the cluster
+# loader only ever fetches networking.k8s.io/v1. Its purpose is catching
+# stale manifests in a repo/CI before someone tries to apply them.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: network.no-deprecated-ingress-api-version
+  annotations:
+    audit.k8s-auditor.io/title: "Ingress uses a removed API version"
+    audit.k8s-auditor.io/severity: low
+    audit.k8s-auditor.io/category: supply-chain
+    audit.k8s-auditor.io/remediation: >-
+      Migrate this manifest to apiVersion: networking.k8s.io/v1. The
+      extensions/v1beta1 and networking.k8s.io/v1beta1 Ingress APIs were
+      removed in Kubernetes 1.22 and will be rejected by any current cluster.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["extensions"]
+        apiVersions: ["v1beta1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["ingresses"]
+      - apiGroups: ["networking.k8s.io"]
+        apiVersions: ["v1beta1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["ingresses"]
+  validations:
+    - expression: "false"
+      message: "Ingress uses a removed apiVersion (extensions/v1beta1 or networking.k8s.io/v1beta1); migrate to networking.k8s.io/v1."

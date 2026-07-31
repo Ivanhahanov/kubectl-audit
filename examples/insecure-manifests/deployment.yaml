@@ -1,0 +1,29 @@
+# Deliberately misconfigured manifest for demoing/smoke-testing the tool:
+#   kubectl-audit scan -f examples/insecure-manifests --fail-on none
+# Every workload.* bundled policy should fire against this Deployment.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bad-app
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bad-app
+  template:
+    metadata:
+      labels:
+        app: bad-app
+    spec:
+      hostNetwork: true
+      containers:
+        - name: bad-app
+          image: nginx:latest
+          securityContext:
+            privileged: true
+            allowPrivilegeEscalation: true
+      volumes:
+        - name: hostvol
+          hostPath:
+            path: /etc

@@ -1,0 +1,39 @@
+# Example custom policy: drop this file into a --policy-dir (or
+# policies.dirs in audit.yaml) to add a new check with no code changes.
+#
+# This is a plain admissionregistration.k8s.io/v1 ValidatingAdmissionPolicy
+# object. The audit-specific metadata (severity/category/remediation/CIS
+# refs) lives entirely in metadata.annotations, so this exact file is also
+# valid to `kubectl apply -f` and enforce the same rule at admission time in
+# the cluster — write it once, use it both ways.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: org.require-owner-label
+  annotations:
+    audit.k8s-auditor.io/title: "Workloads must declare an owning team"
+    audit.k8s-auditor.io/severity: low
+    audit.k8s-auditor.io/category: org-policy
+    audit.k8s-auditor.io/remediation: >-
+      Add a "team" label identifying the owning team, e.g. team: payments.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments", "statefulsets", "daemonsets"]
+  validations:
+    - expression: |-
+        has(object.metadata.labels) && has(object.metadata.labels.team) && object.metadata.labels.team != ""
+      message: "Workload is missing a non-empty 'team' label identifying its owner."
+
+# To enable it, either:
+#   kubectl-audit scan --policy-dir ./examples
+# or add it under policies.dirs in audit.yaml.
+#
+# To apply it in-cluster as a real enforcement policy (requires a cluster
+# with the ValidatingAdmissionPolicy feature enabled and a matching
+# ValidatingAdmissionPolicyBinding):
+#   kubectl apply -f examples/custom-policy-example.yaml

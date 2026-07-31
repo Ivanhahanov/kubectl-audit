@@ -1,0 +1,23 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: network.ingress-tls-required
+  annotations:
+    audit.k8s-auditor.io/title: "Ingress does not configure TLS"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: network-security
+    audit.k8s-auditor.io/remediation: >-
+      Set spec.tls with at least one entry (hosts + secretName) so traffic
+      to this Ingress is served over HTTPS instead of plaintext HTTP.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["networking.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["ingresses"]
+  validations:
+    - expression: |-
+        has(object.spec.tls) && size(object.spec.tls) > 0
+      message: "Ingress does not set spec.tls; traffic is served over plaintext HTTP."

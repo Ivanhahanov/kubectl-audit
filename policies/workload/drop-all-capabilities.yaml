@@ -1,0 +1,38 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: workload.drop-all-capabilities
+  annotations:
+    audit.k8s-auditor.io/title: "Containers must drop all Linux capabilities"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: workload-security
+    audit.k8s-auditor.io/remediation: >-
+      Set securityContext.capabilities.drop: ["ALL"] on every container, and
+      add back only the specific capabilities the workload actually needs.
+    audit.k8s-auditor.io/cis: "5.2.9"
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+      - apiGroups: ["batch"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["jobs", "cronjobs"]
+  validations:
+    - expression: |-
+        (has(object.spec.containers) ? object.spec.containers
+          : (has(object.spec.template) && has(object.spec.template.spec) && has(object.spec.template.spec.containers)) ? object.spec.template.spec.containers
+          : (has(object.spec.jobTemplate) && has(object.spec.jobTemplate.spec) && has(object.spec.jobTemplate.spec.template) && has(object.spec.jobTemplate.spec.template.spec) && has(object.spec.jobTemplate.spec.template.spec.containers)) ? object.spec.jobTemplate.spec.template.spec.containers
+          : []).all(c,
+            has(c.securityContext) && has(c.securityContext.capabilities) && has(c.securityContext.capabilities.drop) &&
+            c.securityContext.capabilities.drop.exists(cap, cap == "ALL")
+          )
+      message: "Container does not drop all Linux capabilities (securityContext.capabilities.drop must include \"ALL\")."

@@ -1,0 +1,51 @@
+# krew plugin manifest template.
+#
+# Fill in ivanhahanov/kubectl-audit, bump `version`, and replace each sha256
+# with `sha256sum` of the corresponding release archive before submitting
+# to (or privately indexing with) krew. Build the archives with:
+#   make cross-compile
+apiVersion: krew.googlecontainertools.github.com/v1alpha2
+kind: Plugin
+metadata:
+  name: audit
+spec:
+  version: "v0.1.0"
+  homepage: https://github.com/ivanhahanov/kubectl-audit
+  shortDescription: "K8s security audit: VAP policies, RBAC least-privilege, CIS Benchmark"
+  description: |
+    kubectl-audit runs a production security audit against a live cluster
+    and/or static manifests: policy checks written as real
+    ValidatingAdmissionPolicy CEL expressions (reusable in-cluster),
+    RBAC role-model and least-privilege analysis, and CIS Kubernetes
+    Benchmark compliance scoring for the controls observable via the API.
+    Produces a findings.json and a Markdown report, with a --fail-on gate
+    for CI.
+  platforms:
+    - selector:
+        matchLabels:
+          os: linux
+          arch: amd64
+      uri: https://github.com/ivanhahanov/kubectl-audit/releases/download/v0.1.0/kubectl-audit-linux-amd64.tar.gz
+      sha256: "REPLACE_ME"
+      bin: kubectl-audit
+    - selector:
+        matchLabels:
+          os: linux
+          arch: arm64
+      uri: https://github.com/ivanhahanov/kubectl-audit/releases/download/v0.1.0/kubectl-audit-linux-arm64.tar.gz
+      sha256: "REPLACE_ME"
+      bin: kubectl-audit
+    - selector:
+        matchLabels:
+          os: darwin
+          arch: amd64
+      uri: https://github.com/ivanhahanov/kubectl-audit/releases/download/v0.1.0/kubectl-audit-darwin-amd64.tar.gz
+      sha256: "REPLACE_ME"
+      bin: kubectl-audit
+    - selector:
+        matchLabels:
+          os: darwin
+          arch: arm64
+      uri: https://github.com/ivanhahanov/kubectl-audit/releases/download/v0.1.0/kubectl-audit-darwin-arm64.tar.gz
+      sha256: "REPLACE_ME"
+      bin: kubectl-audit
