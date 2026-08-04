@@ -1,0 +1,264 @@
+# NSA/CISA "Kubernetes Hardening Guidance" v1.2 (August 2022, Cybersecurity
+# Technical Report, U/OO/168286-21 | PP-22-0324).
+#
+# Section/subsection structure below was verified against the official PDF
+# text (media.defense.gov/2022/Aug/29/2003066362/-1/-1/0/
+# CTR_KUBERNETES_HARDENING_GUIDANCE_1.2_20220829.PDF), not reconstructed from
+# memory. The guide is prose recommendations, not numbered controls, so IDs
+# here are slugs (section.subsection) rather than the document's own
+# numbering. Many subsections describe node-level hardening, external
+# tooling (SIEM, service meshes, IDS), or control-plane configuration that a
+# kubectl-based, API-only auditor structurally cannot observe — those are
+# marked applicable: false with an explanation, same honesty bar as the CIS
+# mapping's sections 1-4.
+id: nsa
+title: "NSA/CISA Kubernetes Hardening Guidance"
+version: "1.2"
+controls:
+  - id: "pod-security.non-root"
+    title: "\"Non-root\" containers and \"rootless\" container engines"
+    section: "Kubernetes Pod security"
+    applicable: true
+    policyIds: ["workload.run-as-non-root"]
+    crossRefs:
+      cis: ["5.2.7"]
+
+  - id: "pod-security.immutable-filesystem"
+    title: "Immutable container file systems"
+    section: "Kubernetes Pod security"
+    applicable: true
+    policyIds: ["workload.read-only-root-fs"]
+    crossRefs:
+      cis: ["5.6.3"]
+
+  - id: "pod-security.secure-images"
+    title: "Building secure container images"
+    section: "Kubernetes Pod security"
+    applicable: true
+    policyIds: ["workload.no-latest-tag"]
+    note: >-
+      Covers image pinning only. The guide's core recommendation for this
+      subsection — scanning images for known vulnerabilities before
+      deployment — requires an image content scanner (e.g. Trivy, Grype) and
+      is not implemented; this tool audits API objects, not image contents.
+      The CIS Kubernetes Benchmark control this used to cross-reference (old
+      5.7.2, "images pinned to an explicit tag or digest") was dropped from
+      the benchmark as of v2.0.1, so there's no current crossRefs.cis entry.
+
+  - id: "pod-security.enforcement"
+    title: "Pod security enforcement"
+    section: "Kubernetes Pod security"
+    applicable: true
+    policyIds:
+      - "workload.no-privileged-containers"
+      - "workload.no-host-namespaces"
+      - "workload.no-hostpath-volumes"
+      - "workload.no-hostports"
+      - "workload.run-as-non-root"
+      - "workload.drop-all-capabilities"
+      - "workload.read-only-root-fs"
+      - "workload.seccomp-profile-required"
+    note: >-
+      The guide recommends enforcing Pod security requirements via admission
+      control (Pod Security Admission or third-party policy engines). This
+      tool's whole bundled workload.* policy set is exactly that class of
+      check, evaluated as an audit rather than a blocking admission gate.
+
+  - id: "pod-security.service-account-tokens"
+    title: "Protecting Pod service account tokens"
+    section: "Kubernetes Pod security"
+    applicable: true
+    nativeCheckIds: ["rbac-analyzer.automount-with-sensitive-access"]
+    crossRefs:
+      cis: ["5.1.6"]
+
+  - id: "pod-security.hardening-container-environments"
+    title: "Hardening container environments"
+    section: "Kubernetes Pod security"
+    applicable: true
+    policyIds:
+      - "workload.no-privileged-containers"
+      - "workload.drop-all-capabilities"
+      - "workload.seccomp-profile-required"
+      - "workload.no-host-namespaces"
+    crossRefs:
+      cis: ["5.2.2", "5.2.3", "5.2.4", "5.2.5", "5.2.8", "5.2.9", "5.6.2"]
+
+  - id: "network.namespaces"
+    title: "Namespaces (avoid placing user Pods in kube-system/kube-public)"
+    section: "Network separation and hardening"
+    applicable: false
+    naReason: >-
+      Not a discrete check with a finding to report: this tool enforces the
+      guide's recommendation structurally instead, by excluding kube-system/
+      kube-public/kube-node-lease from cluster scans by default (see
+      Getting Started: Noise reduction), rather than flagging user workloads
+      found there after the fact.
+
+  - id: "network.network-policies"
+    title: "Network policies"
+    section: "Network separation and hardening"
+    applicable: true
+    nativeCheckIds: ["netpol-analyzer.no-network-policy-coverage"]
+    crossRefs:
+      cis: ["5.3.2"]
+
+  - id: "network.resource-policies"
+    title: "Resource policies (LimitRange, ResourceQuota, Process ID limits)"
+    section: "Network separation and hardening"
+    applicable: true
+    implemented: false
+    note: >-
+      Not implemented in this release: requires checking for the presence of
+      LimitRange/ResourceQuota objects per namespace and Process ID limit
+      configuration, distinct from the per-container resources.limits check
+      already covered by workload.resource-limits-required (no longer tied to
+      a numbered CIS Kubernetes Benchmark control as of v2.0.1 — see cis.yaml).
+
+  - id: "network.control-plane-hardening"
+    title: "Control plane hardening"
+    section: "Network separation and hardening"
+    applicable: false
+    naReason: "Control-plane port/service exposure and firewalling is node/network infrastructure configuration, not a Kubernetes API object."
+
+  - id: "network.worker-node-segmentation"
+    title: "Worker node segmentation"
+    section: "Network separation and hardening"
+    applicable: false
+    naReason: "Node network segmentation and firewall rules are infrastructure-level, outside the Kubernetes API."
+
+  - id: "network.encryption"
+    title: "Encryption (TLS bootstrapping, etcd encryption at rest)"
+    section: "Network separation and hardening"
+    applicable: false
+    naReason: "etcd encryption-at-rest configuration (EncryptionConfiguration) is a control-plane file, not an API-visible object."
+
+  - id: "network.secrets"
+    title: "Secrets (encrypting Kubernetes Secrets at rest)"
+    section: "Network separation and hardening"
+    applicable: false
+    naReason: >-
+      Whether Secrets are encrypted at rest in etcd is control-plane
+      configuration, not visible via the API. This tool also intentionally
+      never decodes Secret values (see RBAC Analysis: broad Secrets access
+      is flagged by grant breadth, not by content inspection).
+
+  - id: "network.cloud-infrastructure"
+    title: "Protecting sensitive cloud infrastructure"
+    section: "Network separation and hardening"
+    applicable: false
+    naReason: "Cloud provider IAM/network configuration is outside the Kubernetes API entirely."
+
+  - id: "auth.authentication"
+    title: "Authentication"
+    section: "Authentication and authorization"
+    applicable: false
+    naReason: >-
+      The cluster's configured authentication method(s) and whether
+      anonymous requests are disabled are kube-apiserver flags, not API
+      objects. rbac.no-anonymous-binding (see RBAC and CIS 5.1.1) is
+      complementary: it flags bindings that grant access to
+      system:anonymous/system:unauthenticated if anonymous auth happens to
+      be enabled, but doesn't check the apiserver flag itself.
+
+  - id: "auth.rbac"
+    title: "Role-based access control"
+    section: "Authentication and authorization"
+    applicable: true
+    policyIds: ["rbac.no-wildcard-rules", "rbac.no-cluster-admin-binding", "rbac.no-anonymous-binding"]
+    nativeCheckIds:
+      - "rbac-analyzer.escalation-verb"
+      - "rbac-analyzer.pod-exec-access"
+      - "rbac-analyzer.broad-secrets-access"
+      - "rbac-analyzer.rbac-self-modification"
+      - "rbac-analyzer.default-serviceaccount-bound"
+      - "rbac-analyzer.automount-with-sensitive-access"
+    crossRefs:
+      cis: ["5.1.1", "5.1.2", "5.1.3", "5.1.5", "5.1.6", "5.1.8"]
+
+  - id: "audit.logging"
+    title: "Logging (application-level event logging strategy)"
+    section: "Audit Logging and Threat Detection"
+    applicable: false
+    naReason: "A logging strategy/policy is an operational practice, not a single API-observable setting."
+
+  - id: "audit.native-audit-logging"
+    title: "Kubernetes native audit logging configuration"
+    section: "Audit Logging and Threat Detection"
+    applicable: false
+    naReason: "kube-apiserver --audit-policy-file and audit backend flags are control-plane configuration, not visible via the API."
+
+  - id: "audit.worker-node-logging"
+    title: "Worker node and container logging"
+    section: "Audit Logging and Threat Detection"
+    applicable: false
+    naReason: "kubelet/container runtime log configuration is node-level."
+
+  - id: "audit.seccomp"
+    title: "Seccomp: audit mode"
+    section: "Audit Logging and Threat Detection"
+    applicable: true
+    policyIds: ["workload.seccomp-profile-required"]
+    crossRefs:
+      cis: ["5.6.2"]
+    note: >-
+      This tool checks that a RuntimeDefault/Localhost seccompProfile is set
+      at all (a stricter bar than merely running the profile in "audit"/
+      log-only mode) — it doesn't distinguish audit mode from enforcing mode.
+
+  - id: "audit.syslog"
+    title: "Syslog"
+    section: "Audit Logging and Threat Detection"
+    applicable: false
+    naReason: "Node-level log routing configuration."
+
+  - id: "audit.siem"
+    title: "SIEM platforms"
+    section: "Audit Logging and Threat Detection"
+    applicable: false
+    naReason: "Recommends integrating a third-party SIEM; not itself a checkable cluster setting."
+
+  - id: "audit.service-meshes"
+    title: "Service meshes"
+    section: "Audit Logging and Threat Detection"
+    applicable: false
+    naReason: "An architectural option the guide discusses, not a pass/fail requirement."
+
+  - id: "audit.fault-tolerance"
+    title: "Fault tolerance"
+    section: "Audit Logging and Threat Detection"
+    applicable: true
+    implemented: false
+    note: "Not implemented in this release: would check for PodDisruptionBudget coverage of workloads, similar in spirit to the NetworkPolicy coverage check."
+
+  - id: "audit.threat-detection"
+    title: "Threat Detection"
+    section: "Audit Logging and Threat Detection"
+    applicable: false
+    naReason: "Runtime/behavioral anomaly detection (e.g. Falco-style syscall monitoring) requires a runtime security agent, not API-object inspection."
+
+  - id: "audit.alerting"
+    title: "Alerting"
+    section: "Audit Logging and Threat Detection"
+    applicable: false
+    naReason: "Depends on the logging/SIEM/threat-detection pipeline above, none of which this tool implements."
+
+  - id: "audit.tools"
+    title: "Tools"
+    section: "Audit Logging and Threat Detection"
+    applicable: false
+    naReason: "A list of recommended third-party tooling, not itself a requirement to check."
+
+  - id: "upgrading.practices"
+    title: "Upgrading and application security practices"
+    section: "Upgrading and application security practices"
+    applicable: true
+    nativeCheckIds: ["version-analyzer.cluster.outside-support-window"]
+    note: >-
+      Checks the detected cluster's Kubernetes minor version against a
+      version-distance approximation of the upstream support window (see
+      internal/k8sversion), not a live lookup of the actual EOL calendar or
+      any vendor's extended-support program — treat a PASS/FAIL here as a
+      starting point, not a definitive answer. NOT_APPLICABLE on a
+      static-manifest-only scan (no live cluster to detect a version from
+      at all).

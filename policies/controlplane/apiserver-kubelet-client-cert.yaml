@@ -1,0 +1,26 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: controlplane.apiserver.kubelet-client-cert
+  annotations:
+    audit.k8s-auditor.io/title: "kube-apiserver -> kubelet client certificate authentication not configured"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: control-plane-config
+    audit.k8s-auditor.io/remediation: >-
+      Set both --kubelet-client-certificate and --kubelet-client-key so the API server authenticates to kubelets with a client certificate.
+    audit.k8s-auditor.io/cis: "1.2.4"
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+    objectSelector:
+      matchLabels:
+        component: kube-apiserver
+  validations:
+    - expression: |-
+        object.spec.containers.exists(c, ((has(c.command) ? c.command : []) + (has(c.args) ? c.args : [])).exists(a, a.startsWith('--kubelet-client-certificate=')) && ((has(c.command) ? c.command : []) + (has(c.args) ? c.args : [])).exists(a, a.startsWith('--kubelet-client-key=')))
+      message: "[indirect signal — inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access] --kubelet-client-certificate and/or --kubelet-client-key is not set."

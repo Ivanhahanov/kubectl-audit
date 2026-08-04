@@ -55,7 +55,7 @@ subjects:
     apiGroup: rbac.authorization.k8s.io
 `)
 
-	result, err := rbac.Analyze([]loader.Resource{role, binding}, "test")
+	result, err := rbac.Analyze([]loader.Resource{role, binding}, "test", false)
 	if err != nil {
 		t.Fatalf("Analyze: %v", err)
 	}
@@ -92,7 +92,7 @@ subjects:
     apiGroup: rbac.authorization.k8s.io
 `)
 
-	result, err := rbac.Analyze([]loader.Resource{role, binding}, "test")
+	result, err := rbac.Analyze([]loader.Resource{role, binding}, "test", false)
 	if err != nil {
 		t.Fatalf("Analyze: %v", err)
 	}
@@ -127,7 +127,7 @@ metadata:
   namespace: default
 `)
 
-	result, err := rbac.Analyze([]loader.Resource{binding, sa}, "test")
+	result, err := rbac.Analyze([]loader.Resource{binding, sa}, "test", false)
 	if err != nil {
 		t.Fatalf("Analyze: %v", err)
 	}
@@ -180,7 +180,7 @@ subjects:
     apiGroup: rbac.authorization.k8s.io
 `)
 
-	result, err := rbac.Analyze([]loader.Resource{role, binding}, "test")
+	result, err := rbac.Analyze([]loader.Resource{role, binding}, "test", false)
 	if err != nil {
 		t.Fatalf("Analyze: %v", err)
 	}
@@ -234,7 +234,7 @@ subjects:
     apiGroup: rbac.authorization.k8s.io
 `)
 
-	result, err := rbac.Analyze([]loader.Resource{aggregating, contributed, binding}, "test")
+	result, err := rbac.Analyze([]loader.Resource{aggregating, contributed, binding}, "test", false)
 	if err != nil {
 		t.Fatalf("Analyze: %v", err)
 	}
@@ -287,11 +287,97 @@ subjects:
     apiGroup: rbac.authorization.k8s.io
 `)
 
-	result, err := rbac.Analyze([]loader.Resource{aggregating, contributed, binding}, "test")
+	result, err := rbac.Analyze([]loader.Resource{aggregating, contributed, binding}, "test", false)
 	if err != nil {
 		t.Fatalf("Analyze: %v", err)
 	}
 	if hasPolicy(result.Findings, "rbac-analyzer.broad-secrets-access") {
 		t.Errorf("did not expect the already-materialized role's .rules to be overwritten with the contributor's secrets rule, got %+v", result.Findings)
+	}
+}
+
+func hasSubject(model []rbac.SubjectModel, kind, name string) bool {
+	for _, m := range model {
+		if m.Subject.Kind == kind && m.Subject.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// TestBuiltinSystemSubjectsFilteredByDefault covers the kubeadm/kind
+// bootstrap case: the cluster-admin ClusterRoleBinding to the system:masters
+// group is how every self-hosted cluster satisfies "some identity must have
+// full access to bootstrap RBAC" — not a remediable misconfiguration — so it
+// (and other system:-prefixed groups/users) shouldn't generate
+// least-privilege findings or role-model rows by default. system:anonymous
+// is the deliberate exception: granting it anything is exactly what should
+// still be caught.
+func TestBuiltinSystemSubjectsFilteredByDefault(t *testing.T) {
+	role := mustResource(t, `
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cluster-admin
+rules:
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["*"]
+`)
+	mastersBinding := mustResource(t, `
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cluster-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: Group
+    name: system:masters
+    apiGroup: rbac.authorization.k8s.io
+`)
+	anonBinding := mustResource(t, `
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: anon-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: Group
+    name: system:anonymous
+    apiGroup: rbac.authorization.k8s.io
+`)
+	resources := []loader.Resource{role, mastersBinding, anonBinding}
+
+	filtered, err := rbac.Analyze(resources, "test", false)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if hasSubject(filtered.Model, "Group", "system:masters") {
+		t.Error("expected system:masters to be filtered out of the role model by default")
+	}
+	for _, f := range filtered.Findings {
+		if f.Resource.Name == "system:masters" && f.PolicyID != "rbac-analyzer.system-masters-usage" {
+			t.Errorf("expected no *generic* least-privilege findings for system:masters by default, got %+v", f)
+		}
+	}
+	if !hasPolicy(filtered.Findings, "rbac-analyzer.system-masters-usage") {
+		t.Error("expected the dedicated system-masters-usage tracking finding to still fire even by default")
+	}
+	if !hasSubject(filtered.Model, "Group", "system:anonymous") {
+		t.Error("expected system:anonymous to remain visible even by default")
+	}
+
+	full, err := rbac.Analyze(resources, "test", true)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if !hasSubject(full.Model, "Group", "system:masters") {
+		t.Error("expected system:masters to be visible with includeSystemSubjects=true")
 	}
 }

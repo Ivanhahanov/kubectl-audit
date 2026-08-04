@@ -1,0 +1,26 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: controlplane.etcd.auto-tls
+  annotations:
+    audit.k8s-auditor.io/title: "etcd is using self-generated (auto) TLS for client connections"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: control-plane-config
+    audit.k8s-auditor.io/remediation: >-
+      Remove --auto-tls=true; use certificates issued by the cluster's own CA instead of self-signed ones.
+    audit.k8s-auditor.io/cis: "2.3"
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+    objectSelector:
+      matchLabels:
+        component: etcd
+  validations:
+    - expression: |-
+        !object.spec.containers.exists(c, ((has(c.command) ? c.command : []) + (has(c.args) ? c.args : [])).exists(a, a == '--auto-tls=true'))
+      message: "[indirect signal — inferred from the etcd static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access] --auto-tls=true is set: client connections use automatically generated self-signed certificates instead of the configured CA."

@@ -1,0 +1,684 @@
+# CIS Kubernetes Benchmark control table (v2.0.1, 2026-04-29, covers
+# Kubernetes v1.34-v1.35).
+#
+# Section 5 ("Policies") was substantially restructured in v2.0.1 versus
+# older benchmark revisions: RBAC and Pod Security Standards got several new,
+# more granular controls (5.1.7-5.1.13, 5.2.8, 5.2.10, 5.2.12), two new
+# sections were added (5.4 Secrets Management, 5.5 Extensible Admission
+# Control), and the old "General Policies" image-tag-pinning and
+# resource-limits controls (formerly 5.7.2/5.7.3) were dropped from the
+# benchmark entirely — the underlying policies (workload.no-latest-tag,
+# workload.resource-limits-required) still run and still produce findings,
+# they're just no longer tied to a numbered CIS control.
+#
+# Sections 1-4 (control plane components, etcd, control-plane configuration
+# files, worker node/kubelet configuration) generally require SSH/file
+# access to node filesystems and process arguments that a kubectl plugin
+# fundamentally cannot see through the Kubernetes API — those sub-sections
+# (1.1 node config file permissions, 3.1 user auth methods, 3.2.2 audit
+# policy content, worker nodes/kubelet) still point at kube-bench.
+#
+# Sections 1.2 (API Server), 1.3 (Controller Manager), 1.4 (Scheduler), and 2
+# (etcd) are different: on a self-hosted/kubeadm-style cluster (including
+# kind), these components run as ordinary static Pods, so their
+# command-line flags ARE visible via the Kubernetes API, the same way any
+# other Pod spec is (see internal/controlplane). Every control backed by
+# this is an INDIRECT/heuristic signal, not a kube-bench-grade check — it
+# reflects what a flag is set to in the Pod spec, not confirmed via
+# node/file access — and every such control's `note` says so explicitly, and
+# every finding message it produces is prefixed "[indirect signal — ...]".
+# On a managed control plane (EKS/GKE/AKS/...) that doesn't expose these
+# Pods at all, these controls report NOT_APPLICABLE for the run instead of a
+# false PASS (see compliance.OverrideUnobserved, wired in
+# internal/cli/orchestrate.go).
+id: cis
+title: "CIS Kubernetes Benchmark"
+version: "2.0.1"
+controls:
+  - id: "1.1"
+    title: "Control Plane Node Configuration Files"
+    section: "Control Plane Components"
+    applicable: false
+    naReason: "File permission/ownership checks on the control-plane node's config files (API server/controller-manager/scheduler/etcd pod spec files, PKI directory, admin.conf, ...) require SSH/file access to the node. Run kube-bench on the control-plane nodes for this sub-section."
+
+  # 1.2 API Server — indirect: kube-apiserver static Pod command-line flags.
+
+  - id: "1.2.1"
+    title: "Ensure that the --anonymous-auth argument is set to false"
+    section: "Control Plane Components"
+    applicable: true
+    policyIds: ["controlplane.apiserver.anonymous-auth"]
+    note: "Indirect/heuristic: inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  - id: "1.2.2"
+    title: "Ensure that the --token-auth-file parameter is not set"
+    section: "Control Plane Components"
+    applicable: true
+    policyIds: ["controlplane.apiserver.token-auth-file"]
+    note: "Indirect/heuristic: inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  - id: "1.2.3"
+    title: "Ensure that the DenyServiceExternalIPs is set"
+    section: "Control Plane Components"
+    applicable: true
+    implemented: false
+    note: "Not implemented in this release: whether to enable this admission plugin is situational (it blocks a specific, narrow externalIPs abuse vector) rather than a universally-correct default, so it's left as a manual judgment call rather than an automated check."
+
+  - id: "1.2.4"
+    title: "Ensure that the --kubelet-client-certificate and --kubelet-client-key arguments are set as appropriate"
+    section: "Control Plane Components"
+    applicable: true
+    policyIds: ["controlplane.apiserver.kubelet-client-cert"]
+    note: "Indirect/heuristic: inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  - id: "1.2.5"
+    title: "Ensure that the --kubelet-certificate-authority argument is set as appropriate"
+    section: "Control Plane Components"
+    applicable: true
+    policyIds: ["controlplane.apiserver.kubelet-ca"]
+    note: "Indirect/heuristic: inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  - id: "1.2.6"
+    title: "Ensure that the --authorization-mode argument is not set to AlwaysAllow"
+    section: "Control Plane Components"
+    applicable: true
+    nativeCheckIds: ["controlplane-analyzer.apiserver.authz-always-allow"]
+    note: "Indirect/heuristic: inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  - id: "1.2.7"
+    title: "Ensure that the --authorization-mode argument includes Node"
+    section: "Control Plane Components"
+    applicable: true
+    nativeCheckIds: ["controlplane-analyzer.apiserver.authz-node"]
+    note: "Indirect/heuristic: inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  - id: "1.2.8"
+    title: "Ensure that the --authorization-mode argument includes RBAC"
+    section: "Control Plane Components"
+    applicable: true
+    nativeCheckIds: ["controlplane-analyzer.apiserver.authz-rbac"]
+    note: "Indirect/heuristic: inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  - id: "1.2.9"
+    title: "Ensure that the admission control plugin EventRateLimit is set"
+    section: "Control Plane Components"
+    applicable: true
+    implemented: false
+    note: "Not implemented in this release: CIS itself treats this as situational (it also requires a separate --admission-control-config-file with rate-limit thresholds this tool can't validate the appropriateness of), so it's left as a manual judgment call."
+
+  - id: "1.2.10"
+    title: "Ensure that the admission control plugin AlwaysAdmit is not set"
+    section: "Control Plane Components"
+    applicable: true
+    nativeCheckIds: ["controlplane-analyzer.apiserver.always-admit"]
+    note: "Indirect/heuristic: inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  - id: "1.2.11"
+    title: "Ensure that the admission control plugin AlwaysPullImages is set"
+    section: "Control Plane Components"
+    applicable: true
+    implemented: false
+    note: "Not implemented in this release: CIS itself notes this is situational (it can break legitimate cross-namespace image sharing based on local image cache) rather than a universally-correct default, so it's left as a manual judgment call."
+
+  - id: "1.2.12"
+    title: "Ensure that the admission control plugin ServiceAccount is set"
+    section: "Control Plane Components"
+    applicable: true
+    nativeCheckIds: ["controlplane-analyzer.apiserver.admission-serviceaccount"]
+    note: "Indirect/heuristic: inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  - id: "1.2.13"
+    title: "Ensure that the admission control plugin NamespaceLifecycle is set"
+    section: "Control Plane Components"
+    applicable: true
+    nativeCheckIds: ["controlplane-analyzer.apiserver.admission-namespacelifecycle"]
+    note: "Indirect/heuristic: inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  - id: "1.2.14"
+    title: "Ensure that the admission control plugin NodeRestriction is set"
+    section: "Control Plane Components"
+    applicable: true
+    nativeCheckIds: ["controlplane-analyzer.apiserver.admission-noderestriction"]
+    note: "Indirect/heuristic: inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  - id: "1.2.15"
+    title: "Ensure that the --profiling argument is set to false"
+    section: "Control Plane Components"
+    applicable: true
+    policyIds: ["controlplane.apiserver.profiling"]
+    note: "Indirect/heuristic: inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  - id: "1.2.16"
+    title: "Ensure that the --audit-log-path argument is set"
+    section: "Control Plane Components"
+    applicable: true
+    policyIds: ["controlplane.apiserver.audit-log-path"]
+    note: "Indirect/heuristic: inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  - id: "1.2.17"
+    title: "Ensure that the --audit-log-maxage argument is set to 30 or as appropriate"
+    section: "Control Plane Components"
+    applicable: true
+    nativeCheckIds: ["controlplane-analyzer.apiserver.audit-log-maxage"]
+    note: "Indirect/heuristic: inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  - id: "1.2.18"
+    title: "Ensure that the --audit-log-maxbackup argument is set to 10 or as appropriate"
+    section: "Control Plane Components"
+    applicable: true
+    nativeCheckIds: ["controlplane-analyzer.apiserver.audit-log-maxbackup"]
+    note: "Indirect/heuristic: inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  - id: "1.2.19"
+    title: "Ensure that the --audit-log-maxsize argument is set to 100 or as appropriate"
+    section: "Control Plane Components"
+    applicable: true
+    nativeCheckIds: ["controlplane-analyzer.apiserver.audit-log-maxsize"]
+    note: "Indirect/heuristic: inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  - id: "1.2.20"
+    title: "Ensure that the --request-timeout argument is set as appropriate"
+    section: "Control Plane Components"
+    applicable: true
+    implemented: false
+    note: "Not implemented in this release: CIS gives no fixed correct value for this timeout (\"as appropriate\" is workload-dependent), so there's nothing to compare the flag against beyond presence."
+
+  - id: "1.2.21"
+    title: "Ensure that the --service-account-lookup argument is set to true"
+    section: "Control Plane Components"
+    applicable: true
+    policyIds: ["controlplane.apiserver.service-account-lookup"]
+    note: "Indirect/heuristic: inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  - id: "1.2.22"
+    title: "Ensure that the --service-account-key-file argument is set as appropriate"
+    section: "Control Plane Components"
+    applicable: true
+    policyIds: ["controlplane.apiserver.service-account-key-file"]
+    note: "Indirect/heuristic: inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  - id: "1.2.23"
+    title: "Ensure that the --etcd-certfile and --etcd-keyfile arguments are set as appropriate"
+    section: "Control Plane Components"
+    applicable: true
+    policyIds: ["controlplane.apiserver.etcd-tls"]
+    note: "Indirect/heuristic: inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  - id: "1.2.24"
+    title: "Ensure that the --tls-cert-file and --tls-private-key-file arguments are set as appropriate"
+    section: "Control Plane Components"
+    applicable: true
+    policyIds: ["controlplane.apiserver.tls-serving"]
+    note: "Indirect/heuristic: inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  - id: "1.2.25"
+    title: "Ensure that the --client-ca-file argument is set as appropriate"
+    section: "Control Plane Components"
+    applicable: true
+    policyIds: ["controlplane.apiserver.client-ca-file"]
+    note: "Indirect/heuristic: inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  - id: "1.2.26"
+    title: "Ensure that the --etcd-cafile argument is set as appropriate"
+    section: "Control Plane Components"
+    applicable: true
+    policyIds: ["controlplane.apiserver.etcd-cafile"]
+    note: "Indirect/heuristic: inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  - id: "1.2.27"
+    title: "Ensure that the --encryption-provider-config argument is set as appropriate"
+    section: "Control Plane Components"
+    applicable: true
+    policyIds: ["controlplane.apiserver.encryption-provider-config"]
+    note: "Indirect/heuristic: inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  - id: "1.2.28"
+    title: "Ensure that encryption providers are appropriately configured"
+    section: "Control Plane Components"
+    applicable: false
+    naReason: "Whether the encryption providers referenced by --encryption-provider-config are appropriate (aescbc/kms first, not identity) requires reading that file's content, which lives on the control-plane node's filesystem, not the Kubernetes API. Control 1.2.27 (whether the flag is set at all) is checked; its content is not."
+
+  - id: "1.2.29"
+    title: "Ensure that the API Server only makes use of Strong Cryptographic Ciphers"
+    section: "Control Plane Components"
+    applicable: true
+    implemented: false
+    note: "Not implemented in this release: would require parsing --tls-cipher-suites against a maintained allow-list of strong cipher suite names, which this tool doesn't currently carry."
+
+  - id: "1.2.30"
+    title: "Ensure that the --service-account-extend-token-expiration parameter is set to false"
+    section: "Control Plane Components"
+    applicable: true
+    policyIds: ["controlplane.apiserver.token-extend-expiration"]
+    note: "Indirect/heuristic: inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  # 1.3 Controller Manager — indirect: kube-controller-manager static Pod flags.
+
+  - id: "1.3.1"
+    title: "Ensure that the --terminated-pod-gc-threshold argument is set as appropriate"
+    section: "Control Plane Components"
+    applicable: true
+    implemented: false
+    note: "Not implemented in this release: CIS gives no fixed correct value (\"as appropriate\" is cluster-size-dependent), so there's nothing to compare the flag against beyond presence."
+
+  - id: "1.3.2"
+    title: "Ensure that the --profiling argument is set to false"
+    section: "Control Plane Components"
+    applicable: true
+    policyIds: ["controlplane.controller-manager.profiling"]
+    note: "Indirect/heuristic: inferred from the kube-controller-manager static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  - id: "1.3.3"
+    title: "Ensure that the --use-service-account-credentials argument is set to true"
+    section: "Control Plane Components"
+    applicable: true
+    policyIds: ["controlplane.controller-manager.use-service-account-credentials"]
+    note: "Indirect/heuristic: inferred from the kube-controller-manager static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  - id: "1.3.4"
+    title: "Ensure that the --service-account-private-key-file argument is set as appropriate"
+    section: "Control Plane Components"
+    applicable: true
+    policyIds: ["controlplane.controller-manager.service-account-private-key-file"]
+    note: "Indirect/heuristic: inferred from the kube-controller-manager static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  - id: "1.3.5"
+    title: "Ensure that the --root-ca-file argument is set as appropriate"
+    section: "Control Plane Components"
+    applicable: true
+    policyIds: ["controlplane.controller-manager.root-ca-file"]
+    note: "Indirect/heuristic: inferred from the kube-controller-manager static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  - id: "1.3.6"
+    title: "Ensure that the RotateKubeletServerCertificate argument is set to true"
+    section: "Control Plane Components"
+    applicable: true
+    implemented: false
+    note: "Not implemented in this release: this is a --feature-gates entry that defaults to true in modern Kubernetes, so the flag's mere absence doesn't mean it's disabled — correctly evaluating this needs the cluster's Kubernetes version, which this check doesn't currently cross-reference."
+
+  - id: "1.3.7"
+    title: "Ensure that the --bind-address argument is set to 127.0.0.1"
+    section: "Control Plane Components"
+    applicable: true
+    policyIds: ["controlplane.controller-manager.bind-address"]
+    note: "Indirect/heuristic: inferred from the kube-controller-manager static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  # 1.4 Scheduler — indirect: kube-scheduler static Pod flags.
+
+  - id: "1.4.1"
+    title: "Ensure that the --profiling argument is set to false"
+    section: "Control Plane Components"
+    applicable: true
+    policyIds: ["controlplane.scheduler.profiling"]
+    note: "Indirect/heuristic: inferred from the kube-scheduler static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  - id: "1.4.2"
+    title: "Ensure that the --bind-address argument is set to 127.0.0.1"
+    section: "Control Plane Components"
+    applicable: true
+    policyIds: ["controlplane.scheduler.bind-address"]
+    note: "Indirect/heuristic: inferred from the kube-scheduler static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  # 2 etcd — indirect: etcd static Pod flags.
+
+  - id: "2.1"
+    title: "Ensure that the --cert-file and --key-file arguments are set as appropriate"
+    section: "etcd"
+    applicable: true
+    policyIds: ["controlplane.etcd.client-tls"]
+    note: "Indirect/heuristic: inferred from the etcd static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS, or an external/unmanaged etcd) that don't expose this Pod."
+
+  - id: "2.2"
+    title: "Ensure that the --client-cert-auth argument is set to true"
+    section: "etcd"
+    applicable: true
+    policyIds: ["controlplane.etcd.client-cert-auth"]
+    note: "Indirect/heuristic: inferred from the etcd static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS, or an external/unmanaged etcd) that don't expose this Pod."
+
+  - id: "2.3"
+    title: "Ensure that the --auto-tls argument is not set to true"
+    section: "etcd"
+    applicable: true
+    policyIds: ["controlplane.etcd.auto-tls"]
+    note: "Indirect/heuristic: inferred from the etcd static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS, or an external/unmanaged etcd) that don't expose this Pod."
+
+  - id: "2.4"
+    title: "Ensure that the --peer-cert-file and --peer-key-file arguments are set as appropriate"
+    section: "etcd"
+    applicable: true
+    policyIds: ["controlplane.etcd.peer-tls"]
+    note: "Indirect/heuristic: inferred from the etcd static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS, or an external/unmanaged etcd) that don't expose this Pod."
+
+  - id: "2.5"
+    title: "Ensure that the --peer-client-cert-auth argument is set to true"
+    section: "etcd"
+    applicable: true
+    policyIds: ["controlplane.etcd.peer-client-cert-auth"]
+    note: "Indirect/heuristic: inferred from the etcd static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS, or an external/unmanaged etcd) that don't expose this Pod."
+
+  - id: "2.6"
+    title: "Ensure that the --peer-auto-tls argument is not set to true"
+    section: "etcd"
+    applicable: true
+    policyIds: ["controlplane.etcd.peer-auto-tls"]
+    note: "Indirect/heuristic: inferred from the etcd static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS, or an external/unmanaged etcd) that don't expose this Pod."
+
+  - id: "2.7"
+    title: "Ensure that a unique Certificate Authority is used for etcd"
+    section: "etcd"
+    applicable: false
+    naReason: "Requires comparing the actual CA certificate content behind --trusted-ca-file/--peer-trusted-ca-file against the cluster's other CAs — those files live on the node's filesystem, not the Kubernetes API."
+
+  - id: "3.1.1"
+    title: "Client certificate authentication should not be used for users"
+    section: "Control Plane Configuration"
+    applicable: false
+    naReason: "Requires reviewing the authentication method configured in each human operator's kubeconfig, which isn't a Kubernetes API object."
+
+  - id: "3.1.2"
+    title: "Service account token authentication should not be used for users"
+    section: "Control Plane Configuration"
+    applicable: false
+    naReason: "Requires reviewing which credentials human operators actually use day-to-day, which isn't a Kubernetes API object."
+
+  - id: "3.1.3"
+    title: "Bootstrap token authentication should not be used for users"
+    section: "Control Plane Configuration"
+    applicable: false
+    naReason: "Requires reviewing which credentials human operators actually use day-to-day, which isn't a Kubernetes API object."
+
+  - id: "3.2.1"
+    title: "Ensure that a minimal audit policy is created"
+    section: "Control Plane Configuration"
+    applicable: true
+    policyIds: ["controlplane.apiserver.audit-policy-file"]
+    note: "Weak indirect signal: only confirms kube-apiserver's --audit-policy-file flag is set (via the Kubernetes API, not node/file access) — a necessary but not sufficient condition for \"a minimal audit policy is created\". The policy file's actual content (and whether it's merely minimal vs. covering key security concerns, control 3.2.2) isn't inspected. NOT_APPLICABLE on managed control planes (EKS/GKE/AKS) that don't expose this Pod."
+
+  - id: "3.2.2"
+    title: "Ensure that the audit policy covers key security concerns"
+    section: "Control Plane Configuration"
+    applicable: false
+    naReason: "Requires reading the actual audit policy file's rules, which lives on the control-plane node's filesystem, not the Kubernetes API."
+
+  - id: "4"
+    title: "Worker Nodes"
+    section: "Worker Nodes"
+    applicable: false
+    naReason: "Requires access to kubelet configuration files and process arguments on each node (the kubelet itself isn't exposed as a Pod, unlike the static-pod-based control-plane components). Run kube-bench on the worker nodes for this section."
+
+  # 5.1 RBAC and Service Accounts
+
+  - id: "5.1.1"
+    title: "Ensure that the cluster-admin role is only used where required"
+    section: "RBAC and Service Accounts"
+    applicable: true
+    policyIds: ["rbac.no-cluster-admin-binding", "rbac.no-anonymous-binding"]
+
+  - id: "5.1.2"
+    title: "Minimize access to secrets"
+    section: "RBAC and Service Accounts"
+    applicable: true
+    nativeCheckIds: ["rbac-analyzer.broad-secrets-access"]
+
+  - id: "5.1.3"
+    title: "Minimize wildcard use in Roles and ClusterRoles"
+    section: "RBAC and Service Accounts"
+    applicable: true
+    policyIds: ["rbac.no-wildcard-rules"]
+
+  - id: "5.1.4"
+    title: "Minimize access to create pods"
+    section: "RBAC and Service Accounts"
+    applicable: true
+    implemented: false
+    note: >-
+      Not implemented in this release: would require an RBAC analyzer check for
+      subjects with create access on the pods resource, distinct from the
+      pods/exec, pods/attach, pods/portforward check already covered by
+      rbac-analyzer.pod-exec-access.
+
+  - id: "5.1.5"
+    title: "Ensure that default service accounts are not actively used"
+    section: "RBAC and Service Accounts"
+    applicable: true
+    policyIds: ["workload.no-default-serviceaccount"]
+    nativeCheckIds: ["rbac-analyzer.default-serviceaccount-bound"]
+    note: "Two complementary angles: workload.no-default-serviceaccount checks each workload sets spec.serviceAccountName to something other than \"default\"; rbac-analyzer.default-serviceaccount-bound checks whether the \"default\" ServiceAccount itself has roles bound to it at all."
+
+  - id: "5.1.6"
+    title: "Ensure that Service Account Tokens are only mounted where necessary"
+    section: "RBAC and Service Accounts"
+    applicable: true
+    nativeCheckIds: ["rbac-analyzer.automount-with-sensitive-access"]
+
+  - id: "5.1.7"
+    title: "Avoid use of system:masters group"
+    section: "RBAC and Service Accounts"
+    applicable: true
+    nativeCheckIds: ["rbac-analyzer.system-masters-usage"]
+    note: >-
+      Flags every RoleBinding/ClusterRoleBinding of the built-in
+      system:masters group, worded as "expected at cluster bootstrap, track
+      it" (low severity) rather than "fix it" — self-hosted clusters
+      (kubeadm, kind) always have one such binding, and that alone isn't a
+      misconfiguration. Deliberately unaffected by --include-system-rbac's
+      general system:-subject filter (see internal/rbac), since seeing every
+      binding beyond the expected bootstrap one is exactly the point.
+
+  - id: "5.1.8"
+    title: "Limit use of the Bind, Impersonate and Escalate permissions in the Kubernetes cluster"
+    section: "RBAC and Service Accounts"
+    applicable: true
+    nativeCheckIds: ["rbac-analyzer.escalation-verb"]
+
+  - id: "5.1.9"
+    title: "Minimize access to create persistent volumes"
+    section: "RBAC and Service Accounts"
+    applicable: true
+    implemented: false
+    note: >-
+      Not implemented in this release: would require an RBAC analyzer check for
+      subjects with create access on the persistentvolumes resource (relevant
+      because a PersistentVolume can reference a hostPath, which is itself
+      restricted at the pod level by workload.no-hostpath-volumes).
+
+  - id: "5.1.10"
+    title: "Minimize access to the proxy sub-resource of nodes"
+    section: "RBAC and Service Accounts"
+    applicable: true
+    implemented: false
+    note: "Not implemented in this release: would require an RBAC analyzer check for subjects with get/create access on the nodes/proxy sub-resource, which grants kubelet-API-equivalent access bypassing normal admission control."
+
+  - id: "5.1.11"
+    title: "Minimize access to the approval sub-resource of certificatesigningrequests objects"
+    section: "RBAC and Service Accounts"
+    applicable: true
+    implemented: false
+    note: "Not implemented in this release: would require an RBAC analyzer check for subjects with update access on the certificatesigningrequests/approval sub-resource, which allows minting new cluster credentials."
+
+  - id: "5.1.12"
+    title: "Minimize access to webhook configuration objects"
+    section: "RBAC and Service Accounts"
+    applicable: true
+    implemented: false
+    note: "Not implemented in this release: would require an RBAC analyzer check for subjects with write access to validatingwebhookconfigurations/mutatingwebhookconfigurations, which can be used to intercept or bypass admission control."
+
+  - id: "5.1.13"
+    title: "Minimize access to the service account token creation"
+    section: "RBAC and Service Accounts"
+    applicable: true
+    implemented: false
+    note: "Not implemented in this release: would require an RBAC analyzer check for subjects with create access on the serviceaccounts/token sub-resource, which allows minting new, potentially long-lived service account credentials."
+
+  # 5.2 Pod Security Standards
+
+  - id: "5.2.1"
+    title: "Ensure that the cluster has at least one active policy control mechanism in place"
+    section: "Pod Security Standards"
+    applicable: true
+    nativeCheckIds: ["psa-analyzer.no-active-enforcement"]
+    note: >-
+      Checks whether each namespace sets the pod-security.kubernetes.io/enforce
+      label — with one cross-check: if the kube-apiserver static Pod is
+      observed and sets --admission-control-config-file (which can configure
+      cluster-wide PodSecurityConfiguration defaults, requiring no
+      per-namespace label at all), this check backs off entirely rather than
+      false-failing every namespace on a cluster actually enforcing PSA
+      cluster-wide. It still can't verify the file's actual content (not
+      visible via the API) or which enforcement level is configured, and
+      doesn't know whether a third-party admission controller (Kyverno, OPA
+      Gatekeeper, ...) is enforcing PSS-equivalent rules by some other
+      mechanism instead. This tool's own policy engine is itself a form of
+      "active policy control," just not an in-cluster admission-time one.
+
+  - id: "5.2.2"
+    title: "Minimize the admission of privileged containers"
+    section: "Pod Security Standards"
+    applicable: true
+    policyIds: ["workload.no-privileged-containers"]
+
+  - id: "5.2.3"
+    title: "Minimize the admission of containers wishing to share the host process ID namespace"
+    section: "Pod Security Standards"
+    applicable: true
+    policyIds: ["workload.no-host-namespaces"]
+    note: "workload.no-host-namespaces checks hostPID, hostIPC, and hostNetwork together as a single policy; it does not distinguish which specific host namespace was shared in the finding message."
+
+  - id: "5.2.4"
+    title: "Minimize the admission of containers wishing to share the host IPC namespace"
+    section: "Pod Security Standards"
+    applicable: true
+    policyIds: ["workload.no-host-namespaces"]
+    note: "workload.no-host-namespaces checks hostPID, hostIPC, and hostNetwork together as a single policy; it does not distinguish which specific host namespace was shared in the finding message."
+
+  - id: "5.2.5"
+    title: "Minimize the admission of containers wishing to share the host network namespace"
+    section: "Pod Security Standards"
+    applicable: true
+    policyIds: ["workload.no-host-namespaces"]
+    note: "workload.no-host-namespaces checks hostPID, hostIPC, and hostNetwork together as a single policy; it does not distinguish which specific host namespace was shared in the finding message."
+
+  - id: "5.2.6"
+    title: "Minimize the admission of containers with allowPrivilegeEscalation"
+    section: "Pod Security Standards"
+    applicable: true
+    policyIds: ["workload.no-privileged-containers"]
+
+  - id: "5.2.7"
+    title: "Minimize the admission of root containers"
+    section: "Pod Security Standards"
+    applicable: true
+    policyIds: ["workload.run-as-non-root"]
+
+  - id: "5.2.8"
+    title: "Minimize the admission of containers with the NET_RAW capability"
+    section: "Pod Security Standards"
+    applicable: true
+    policyIds: ["workload.drop-all-capabilities"]
+    note: "workload.drop-all-capabilities requires every capability to be dropped (securityContext.capabilities.drop includes ALL), which is a stricter check than NET_RAW alone — a FAIL here means NET_RAW (among other capabilities) was not confirmed dropped."
+
+  - id: "5.2.9"
+    title: "Minimize the admission of containers with capabilities assigned"
+    section: "Pod Security Standards"
+    applicable: true
+    policyIds: ["workload.drop-all-capabilities"]
+
+  - id: "5.2.10"
+    title: "Minimize the admission of Windows HostProcess Containers"
+    section: "Pod Security Standards"
+    applicable: true
+    implemented: false
+    note: "Not implemented in this release: would require checking securityContext.windowsOptions.hostProcess on pods scheduled to Windows nodes. This tool's bundled policies have so far only targeted Linux container security context fields."
+
+  - id: "5.2.11"
+    title: "Minimize the admission of HostPath volumes"
+    section: "Pod Security Standards"
+    applicable: true
+    policyIds: ["workload.no-hostpath-volumes"]
+
+  - id: "5.2.12"
+    title: "Minimize the admission of containers which use HostPorts"
+    section: "Pod Security Standards"
+    applicable: true
+    policyIds: ["workload.no-hostports"]
+
+  # 5.3 Network Policies and CNI
+
+  - id: "5.3.1"
+    title: "Ensure that the CNI in use supports Network Policies"
+    section: "Network Policies and CNI"
+    applicable: false
+    naReason: >-
+      Whether the installed CNI plugin supports NetworkPolicy enforcement is a
+      property of the CNI's implementation, not a single Kubernetes API object
+      this tool can query directly. netpol-analyzer.no-network-policy-coverage
+      (control 5.3.2) already detects Cilium/Calico CRD presence as a coverage
+      signal, which structurally covers the practical concern (does *some*
+      enforceable network policy exist) without asserting CNI capability as a
+      distinct fact.
+
+  - id: "5.3.2"
+    title: "Ensure that all Namespaces have Network Policies defined"
+    section: "Network Policies and CNI"
+    applicable: true
+    nativeCheckIds: ["netpol-analyzer.no-network-policy-coverage"]
+    note: >-
+      Checked precisely for native Kubernetes NetworkPolicy (podSelector +
+      policyTypes matched against each workload's pod-template labels).
+      Cilium (CiliumNetworkPolicy/CiliumClusterwideNetworkPolicy) and Calico
+      (crd.projectcalico.org/v1 NetworkPolicy/GlobalNetworkPolicy) are only
+      checked for presence, not simulated in detail — see internal/netpol.
+
+  # 5.4 Secrets Management
+
+  - id: "5.4.1"
+    title: "Prefer using secrets as files over secrets as environment variables"
+    section: "Secrets Management"
+    applicable: true
+    policyIds: ["secrets.no-secrets-via-env"]
+
+  - id: "5.4.2"
+    title: "Consider external secret storage"
+    section: "Secrets Management"
+    applicable: false
+    naReason: "An architectural recommendation to adopt an external secrets manager (e.g. Vault, cloud KMS-backed secret stores); not a specific Kubernetes object state to check pass/fail."
+
+  # 5.5 Extensible Admission Control
+
+  - id: "5.5.1"
+    title: "Configure Image Provenance using ImagePolicyWebhook admission controller"
+    section: "Extensible Admission Control"
+    applicable: false
+    naReason: "Whether the ImagePolicyWebhook admission plugin is enabled is a kube-apiserver startup flag, not visible via the Kubernetes API."
+
+  # 5.6 General Policies
+
+  - id: "5.6.1"
+    title: "Create administrative boundaries between resources using namespaces"
+    section: "General Policies"
+    applicable: false
+    naReason: "Whether namespaces are used as an administrative boundary at all is an organizational practice, not a single object state with a pass/fail signal applicable to arbitrary clusters."
+
+  - id: "5.6.2"
+    title: "Ensure that the seccomp profile is set to docker/default in your pod definitions"
+    section: "General Policies"
+    applicable: true
+    policyIds: ["workload.seccomp-profile-required"]
+
+  - id: "5.6.3"
+    title: "Apply Security Context to Your Pods and Containers"
+    section: "General Policies"
+    applicable: true
+    policyIds:
+      - "workload.no-privileged-containers"
+      - "workload.run-as-non-root"
+      - "workload.read-only-root-fs"
+      - "workload.drop-all-capabilities"
+    note: "Bundles the concrete securityContext-related policies this tool already checks; CIS's own audit procedure for this control is a general manual review, not a single specific setting."
+
+  - id: "5.6.4"
+    title: "The default namespace should not be used"
+    section: "General Policies"
+    applicable: true
+    policyIds: ["workload.no-default-namespace"]
+    note: "Only flags an *explicit* namespace: default — an unset/empty metadata.namespace (common in Helm/Kustomize templates that rely on -n/.Release.Namespace at apply time) is given the benefit of the doubt rather than assumed to resolve to \"default\"."

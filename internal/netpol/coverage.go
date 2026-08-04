@@ -42,6 +42,17 @@ var (
 	gvkCalicoGlobalNetPol      = schema.GroupVersionKind{Group: "crd.projectcalico.org", Version: "v1", Kind: "GlobalNetworkPolicy"}
 )
 
+// CoverageGVKs returns every NetworkPolicy-shaped GVK this analyzer looks
+// at (native + Cilium + Calico) — for callers that need to know whether
+// any were present in a scan at all, e.g. internal/cli's buildScope, to
+// decide whether "no NetworkPolicy" findings might just reflect an
+// incomplete static-manifest scan rather than a real gap.
+func CoverageGVKs() []schema.GroupVersionKind {
+	return []schema.GroupVersionKind{
+		gvkNativeNetPol, gvkCiliumNetPol, gvkCiliumClusterwideNetPol, gvkCalicoNetPol, gvkCalicoGlobalNetPol,
+	}
+}
+
 // Analyze checks every workload (Pod or a controller with a pod template)
 // against the NetworkPolicy objects in its namespace and returns a finding
 // for each one with no applicable coverage.

@@ -1,0 +1,26 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: controlplane.etcd.peer-tls
+  annotations:
+    audit.k8s-auditor.io/title: "etcd peer connections are not using TLS certificates"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: control-plane-config
+    audit.k8s-auditor.io/remediation: >-
+      Set both --peer-cert-file and --peer-key-file on etcd.
+    audit.k8s-auditor.io/cis: "2.4"
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+    objectSelector:
+      matchLabels:
+        component: etcd
+  validations:
+    - expression: |-
+        object.spec.containers.exists(c, ((has(c.command) ? c.command : []) + (has(c.args) ? c.args : [])).exists(a, a.startsWith('--peer-cert-file=')) && ((has(c.command) ? c.command : []) + (has(c.args) ? c.args : [])).exists(a, a.startsWith('--peer-key-file=')))
+      message: "[indirect signal — inferred from the etcd static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access] --peer-cert-file and/or --peer-key-file is not set."

@@ -20,7 +20,7 @@ func newRBACCmd() *cobra.Command {
 }
 
 func newRBACAnalyzeCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "analyze",
 		Short: "Build the effective RBAC role model and report least-privilege violations, without running workload policies.",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -28,14 +28,14 @@ func newRBACAnalyzeCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			cfg.CIS.Enabled = false
+			cfg.Compliance.Frameworks = nil
 
-			resources, target, err := loadResources(cmd.Context(), cfg)
+			resources, _, target, _, err := loadResources(cmd.Context(), cfg)
 			if err != nil {
 				return err
 			}
 
-			rbacResult, err := rbac.Analyze(resources, target)
+			rbacResult, err := rbac.Analyze(resources, target, cfg.Target.IncludeSystemRBAC)
 			if err != nil {
 				return err
 			}
@@ -63,4 +63,7 @@ func newRBACAnalyzeCmd() *cobra.Command {
 			return nil
 		},
 	}
+	addTargetFlags(cmd)
+	addOutputFlags(cmd)
+	return cmd
 }

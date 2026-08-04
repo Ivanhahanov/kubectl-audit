@@ -50,8 +50,9 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: good
-  namespace: default
+  namespace: good-app
 spec:
+  serviceAccountName: good-sa
   containers:
     - name: c
       image: nginx:1.25.3
@@ -75,8 +76,8 @@ func TestBuiltinPoliciesLoadAndCompile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadBuiltin: %v", err)
 	}
-	if len(policies) != 14 {
-		t.Fatalf("expected 14 built-in policies, got %d", len(policies))
+	if len(policies) != 47 {
+		t.Fatalf("expected 47 built-in policies, got %d", len(policies))
 	}
 }
 

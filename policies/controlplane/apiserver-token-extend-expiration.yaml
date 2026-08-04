@@ -1,0 +1,26 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: controlplane.apiserver.token-extend-expiration
+  annotations:
+    audit.k8s-auditor.io/title: "kube-apiserver allows extended (non-expiring) service account tokens"
+    audit.k8s-auditor.io/severity: low
+    audit.k8s-auditor.io/category: control-plane-config
+    audit.k8s-auditor.io/remediation: >-
+      Set --service-account-extend-token-expiration=false so legacy long-lived token compatibility isn't extended.
+    audit.k8s-auditor.io/cis: "1.2.30"
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+    objectSelector:
+      matchLabels:
+        component: kube-apiserver
+  validations:
+    - expression: |-
+        object.spec.containers.exists(c, ((has(c.command) ? c.command : []) + (has(c.args) ? c.args : [])).exists(a, a == '--service-account-extend-token-expiration=false'))
+      message: "[indirect signal — inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access] --service-account-extend-token-expiration is not explicitly set to false."

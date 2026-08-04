@@ -53,10 +53,17 @@ policies:
 output:
   json: findings.json
   markdown: report.md
-  # Minimum severity that makes `scan`/`rbac analyze`/`cis report` exit 1:
+  # Minimum severity that makes `scan`/`rbac analyze` exit 1:
   # none|low|medium|high|critical.
   failOn: high
+  # Custom report.md.tpl (Go text/template). Empty uses the built-in
+  # template (`kubectl-audit template dump` to get a starting point).
+  template: ""
 
-cis:
-  enabled: true
-  version: "1.8"
+compliance:
+  # Requirement framework(s) to score findings against: cis|fstec|nsa (see
+  # compliance-mappings/ in the repo for the full control tables).
+  frameworks:
+    - cis
+    # - fstec
+    # - nsa

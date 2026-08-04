@@ -28,12 +28,21 @@ type Result struct {
 // Analyze builds the RBAC graph, computes effective permissions, runs the
 // least-privilege checks, and renders the role model — the single entry
 // point used by both `rbac analyze` and `scan`.
-func Analyze(resources []loader.Resource, source string) (*Result, error) {
+//
+// includeSystemSubjects mirrors --include-system-rbac: when false (the
+// default), built-in Kubernetes identities like system:masters/system:nodes
+// are excluded from the role model and least-privilege findings (see
+// filterBuiltinSystemSubjects) since they're not remediable RBAC
+// misconfigurations, just how every cluster bootstraps.
+func Analyze(resources []loader.Resource, source string, includeSystemSubjects bool) (*Result, error) {
 	g, err := BuildGraph(resources)
 	if err != nil {
 		return nil, err
 	}
 	perms := ComputeEffectivePermissions(g)
+	if !includeSystemSubjects {
+		perms = filterBuiltinSystemSubjects(perms)
+	}
 	findingsList := AnalyzeLeastPrivilege(g, perms, source)
 
 	riskFlags := map[SubjectKey][]string{}

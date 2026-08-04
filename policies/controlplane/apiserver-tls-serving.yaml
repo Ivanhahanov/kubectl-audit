@@ -1,0 +1,26 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: controlplane.apiserver.tls-serving
+  annotations:
+    audit.k8s-auditor.io/title: "kube-apiserver has no explicit serving TLS certificate"
+    audit.k8s-auditor.io/severity: critical
+    audit.k8s-auditor.io/category: control-plane-config
+    audit.k8s-auditor.io/remediation: >-
+      Set both --tls-cert-file and --tls-private-key-file.
+    audit.k8s-auditor.io/cis: "1.2.24"
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+    objectSelector:
+      matchLabels:
+        component: kube-apiserver
+  validations:
+    - expression: |-
+        object.spec.containers.exists(c, ((has(c.command) ? c.command : []) + (has(c.args) ? c.args : [])).exists(a, a.startsWith('--tls-cert-file=')) && ((has(c.command) ? c.command : []) + (has(c.args) ? c.args : [])).exists(a, a.startsWith('--tls-private-key-file=')))
+      message: "[indirect signal — inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access] --tls-cert-file and/or --tls-private-key-file is not set."

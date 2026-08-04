@@ -1,0 +1,26 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: controlplane.apiserver.etcd-tls
+  annotations:
+    audit.k8s-auditor.io/title: "kube-apiserver -> etcd connection is not using TLS client certificates"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: control-plane-config
+    audit.k8s-auditor.io/remediation: >-
+      Set both --etcd-certfile and --etcd-keyfile so kube-apiserver authenticates to etcd with a client certificate.
+    audit.k8s-auditor.io/cis: "1.2.23"
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+    objectSelector:
+      matchLabels:
+        component: kube-apiserver
+  validations:
+    - expression: |-
+        object.spec.containers.exists(c, ((has(c.command) ? c.command : []) + (has(c.args) ? c.args : [])).exists(a, a.startsWith('--etcd-certfile=')) && ((has(c.command) ? c.command : []) + (has(c.args) ? c.args : [])).exists(a, a.startsWith('--etcd-keyfile=')))
+      message: "[indirect signal — inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access] --etcd-certfile and/or --etcd-keyfile is not set."

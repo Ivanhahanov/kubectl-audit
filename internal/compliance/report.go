@@ -1,8 +1,8 @@
-package cis
+package compliance
 
 import "github.com/ivanhahanov/kubectl-audit/internal/findings"
 
-// Status is a CIS control's compliance outcome.
+// Status is a control's compliance outcome.
 type Status string
 
 const (
@@ -21,8 +21,10 @@ type ControlResult struct {
 	Findings   []findings.Finding     `json:"-"`
 }
 
-// Scorecard is the full CIS compliance report for a scan.
+// Scorecard is one framework's full compliance report for a scan.
 type Scorecard struct {
+	ID      string          `json:"id"`
+	Title   string          `json:"title"`
 	Version string          `json:"version"`
 	Results []ControlResult `json:"results"`
 }
@@ -30,7 +32,7 @@ type Scorecard struct {
 // BuildScorecard evaluates every control in the mapping against a finding
 // set: not-applicable and not-implemented controls are reported as such,
 // and every remaining control passes unless a finding references one of
-// its policy/rbac-check IDs.
+// its policy/native-check IDs.
 func BuildScorecard(mapping *Mapping, findingsList []findings.Finding) Scorecard {
 	byPolicy := map[string][]findings.Finding{}
 	for _, f := range findingsList {
@@ -67,5 +69,40 @@ func BuildScorecard(mapping *Mapping, findingsList []findings.Finding) Scorecard
 		}
 		results = append(results, res)
 	}
-	return Scorecard{Version: mapping.Version, Results: results}
+	return Scorecard{ID: mapping.ID, Title: mapping.Title, Version: mapping.Version, Results: results}
+}
+
+// FrameworkSummary is one row of the consolidated cross-framework table.
+type FrameworkSummary struct {
+	ID             string `json:"id"`
+	Title          string `json:"title"`
+	Version        string `json:"version"`
+	Pass           int    `json:"pass"`
+	Fail           int    `json:"fail"`
+	NotApplicable  int    `json:"notApplicable"`
+	NotImplemented int    `json:"notImplemented"`
+	Total          int    `json:"total"`
+}
+
+// Summarize condenses one or more scorecards into a per-framework count
+// table, for a consolidated multi-framework overview.
+func Summarize(scorecards []Scorecard) []FrameworkSummary {
+	out := make([]FrameworkSummary, 0, len(scorecards))
+	for _, sc := range scorecards {
+		s := FrameworkSummary{ID: sc.ID, Title: sc.Title, Version: sc.Version, Total: len(sc.Results)}
+		for _, res := range sc.Results {
+			switch res.Status {
+			case StatusPass:
+				s.Pass++
+			case StatusFail:
+				s.Fail++
+			case StatusNotApplicable:
+				s.NotApplicable++
+			case StatusNotImplemented:
+				s.NotImplemented++
+			}
+		}
+		out = append(out, s)
+	}
+	return out
 }

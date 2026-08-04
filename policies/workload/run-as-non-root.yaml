@@ -10,7 +10,7 @@ metadata:
       Set securityContext.runAsNonRoot: true at the pod level, or on every
       container, so the container is refused if its image would otherwise
       run as UID 0.
-    audit.k8s-auditor.io/cis: "5.2.6"
+    audit.k8s-auditor.io/cis: "5.2.7"
 spec:
   failurePolicy: Fail
   matchConstraints:

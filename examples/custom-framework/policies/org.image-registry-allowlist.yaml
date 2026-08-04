@@ -1,0 +1,31 @@
+# Example custom policy: restrict images to an org-approved registry. There's
+# no public-standard control number for this (it's an org-specific
+# supply-chain decision, not a universal one), so it stays out of the
+# bundled policies/ and lives here instead.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: org.image-registry-allowlist
+  annotations:
+    audit.k8s-auditor.io/title: "Container image is not from an approved registry"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: supply-chain
+    audit.k8s-auditor.io/remediation: "Pull images only from registry.internal.example.com, per internal supply-chain policy."
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+  validations:
+    - expression: |-
+        (has(object.spec.containers) ? object.spec.containers
+          : (has(object.spec.template) && has(object.spec.template.spec) && has(object.spec.template.spec.containers)) ? object.spec.template.spec.containers
+          : []).all(c, has(c.image) && c.image.startsWith("registry.internal.example.com/"))
+      message: "Container image is not pulled from the approved internal registry (registry.internal.example.com)."

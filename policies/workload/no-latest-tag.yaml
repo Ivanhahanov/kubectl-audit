@@ -10,7 +10,6 @@ metadata:
       Pin the image to an explicit version tag or, preferably, a content
       digest (image@sha256:...) instead of ":latest" or an implicit tag, so
       deployments are reproducible and not silently changed underneath you.
-    audit.k8s-auditor.io/cis: "5.7.2"
 spec:
   failurePolicy: Fail
   matchConstraints:

@@ -1,0 +1,26 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: controlplane.apiserver.token-auth-file
+  annotations:
+    audit.k8s-auditor.io/title: "Static token file authentication is in use"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: control-plane-config
+    audit.k8s-auditor.io/remediation: >-
+      Remove --token-auth-file and use a more auditable authentication method (OIDC, client certificates, or a webhook).
+    audit.k8s-auditor.io/cis: "1.2.2"
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+    objectSelector:
+      matchLabels:
+        component: kube-apiserver
+  validations:
+    - expression: |-
+        !object.spec.containers.exists(c, ((has(c.command) ? c.command : []) + (has(c.args) ? c.args : [])).exists(a, a.startsWith('--token-auth-file=')))
+      message: "[indirect signal — inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access] --token-auth-file is set: static bearer tokens never expire and aren't individually auditable/revocable."

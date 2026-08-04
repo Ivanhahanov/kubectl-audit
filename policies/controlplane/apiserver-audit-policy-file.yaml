@@ -1,0 +1,26 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: controlplane.apiserver.audit-policy-file
+  annotations:
+    audit.k8s-auditor.io/title: "kube-apiserver has no --audit-policy-file configured"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: control-plane-config
+    audit.k8s-auditor.io/remediation: >-
+      Set --audit-policy-file to a policy that captures at least the security-relevant request stages (see CIS 3.2.2).
+    audit.k8s-auditor.io/cis: "3.2.1"
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+    objectSelector:
+      matchLabels:
+        component: kube-apiserver
+  validations:
+    - expression: |-
+        object.spec.containers.exists(c, ((has(c.command) ? c.command : []) + (has(c.args) ? c.args : [])).exists(a, a.startsWith('--audit-policy-file=')))
+      message: "[indirect signal — inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access] --audit-policy-file is not set, so no audit policy is in effect even if --audit-log-path is configured."

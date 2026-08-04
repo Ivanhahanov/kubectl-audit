@@ -1,0 +1,26 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: controlplane.controller-manager.profiling
+  annotations:
+    audit.k8s-auditor.io/title: "kube-controller-manager profiling is not disabled"
+    audit.k8s-auditor.io/severity: low
+    audit.k8s-auditor.io/category: control-plane-config
+    audit.k8s-auditor.io/remediation: >-
+      Set --profiling=false.
+    audit.k8s-auditor.io/cis: "1.3.2"
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+    objectSelector:
+      matchLabels:
+        component: kube-controller-manager
+  validations:
+    - expression: |-
+        object.spec.containers.exists(c, ((has(c.command) ? c.command : []) + (has(c.args) ? c.args : [])).exists(a, a == '--profiling=false'))
+      message: "[indirect signal — inferred from the kube-controller-manager static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access] --profiling is not explicitly set to false (the pprof debug endpoints are enabled by default when unset)."

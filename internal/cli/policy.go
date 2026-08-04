@@ -50,7 +50,7 @@ func newPolicyValidateCmd() *cobra.Command {
 }
 
 func newPolicyListCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List every policy that would be loaded for a scan (built-in + --policy-dir), with severity/category/CIS refs.",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -71,6 +71,8 @@ func newPolicyListCmd() *cobra.Command {
 			return w.Flush()
 		},
 	}
+	addPolicyDirFlag(cmd)
+	return cmd
 }
 
 func joinOrDash(items []string) string {

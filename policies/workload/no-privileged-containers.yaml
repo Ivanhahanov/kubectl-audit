@@ -10,7 +10,7 @@ metadata:
       Remove securityContext.privileged (or set it to false) and set
       securityContext.allowPrivilegeEscalation to false on every container.
       Privileged containers have near-unrestricted access to the host.
-    audit.k8s-auditor.io/cis: "5.2.1,5.2.5"
+    audit.k8s-auditor.io/cis: "5.2.2,5.2.6"
 spec:
   failurePolicy: Fail
   matchConstraints:

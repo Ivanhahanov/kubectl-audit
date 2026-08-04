@@ -56,7 +56,10 @@ func TestRenderJSONWithFindings(t *testing.T) {
 }
 
 func TestRenderMarkdownEmptyResult(t *testing.T) {
-	md := report.RenderMarkdown(report.Result{GeneratedAt: time.Now(), Target: "test"})
+	md, err := report.RenderMarkdown(report.Result{GeneratedAt: time.Now(), Target: "test"}, "")
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
 	if !strings.Contains(md, "No findings.") {
 		t.Errorf("expected 'No findings.' in an empty report, got:\n%s", md)
 	}
@@ -71,7 +74,10 @@ func TestRenderMarkdownWithFindings(t *testing.T) {
 				Resource: findings.ResourceRef{Kind: "Pod", Name: "p", Namespace: "default"}, Message: "bad thing happened"},
 		},
 	}
-	md := report.RenderMarkdown(r)
+	md, err := report.RenderMarkdown(r, "")
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
 	if !strings.Contains(md, "### HIGH") {
 		t.Errorf("expected a HIGH severity section, got:\n%s", md)
 	}
@@ -80,5 +86,16 @@ func TestRenderMarkdownWithFindings(t *testing.T) {
 	}
 	if !strings.Contains(md, "bad thing happened") {
 		t.Errorf("expected the finding message, got:\n%s", md)
+	}
+}
+
+func TestRenderMarkdownCustomTemplate(t *testing.T) {
+	r := report.Result{GeneratedAt: time.Now(), Target: "my-cluster"}
+	md, err := report.RenderMarkdown(r, "Custom report for {{ .Target }}\n")
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
+	if md != "Custom report for my-cluster\n" {
+		t.Errorf("expected the custom template to fully replace the default output, got:\n%s", md)
 	}
 }

@@ -10,7 +10,7 @@ metadata:
       Avoid hostPath volumes; use a PersistentVolumeClaim, ConfigMap, or
       Secret instead. hostPath exposes the node's filesystem to the
       container and can be used to escape to the host.
-    audit.k8s-auditor.io/cis: "5.2.6"
+    audit.k8s-auditor.io/cis: "5.2.11"
 spec:
   failurePolicy: Fail
   matchConstraints:

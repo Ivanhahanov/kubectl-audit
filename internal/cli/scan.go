@@ -4,12 +4,14 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+
+	"github.com/ivanhahanov/kubectl-audit/internal/compliance"
 )
 
 func newScanCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "scan",
-		Short: "Audit a live cluster and/or static manifests: run policy checks, RBAC least-privilege analysis, and (optionally) the CIS Benchmark scorecard.",
+		Short: "Audit a live cluster and/or static manifests: policy checks, RBAC least-privilege analysis, NetworkPolicy coverage, Pod Security Standards, and compliance scorecards (--frameworks cis,fstec,nsa).",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := loadEffectiveConfig(cmd)
 			if err != nil {
@@ -29,6 +31,10 @@ func newScanCmd() *cobra.Command {
 			fmt.Printf("Scanned %s — %d polic%s loaded, %d finding(s): critical=%d high=%d medium=%d low=%d info=%d\n",
 				result.Target, result.PoliciesLoaded, plural(result.PoliciesLoaded, "y", "ies"), len(result.Findings),
 				summary["CRITICAL"], summary["HIGH"], summary["MEDIUM"], summary["LOW"], summary["INFO"])
+			for _, s := range compliance.Summarize(result.Frameworks) {
+				fmt.Printf("%s (%s) v%s — pass=%d fail=%d not_applicable=%d not_implemented=%d\n",
+					s.Title, s.ID, s.Version, s.Pass, s.Fail, s.NotApplicable, s.NotImplemented)
+			}
 			if cfg.Output.JSON != "" {
 				fmt.Printf("Findings written to %s\n", cfg.Output.JSON)
 			}
@@ -40,6 +46,11 @@ func newScanCmd() *cobra.Command {
 			return nil
 		},
 	}
+	addTargetFlags(cmd)
+	addPolicyDirFlag(cmd)
+	addFrameworksFlag(cmd)
+	addCheckUpdatesFlag(cmd)
+	addOutputFlags(cmd)
 	return cmd
 }
 

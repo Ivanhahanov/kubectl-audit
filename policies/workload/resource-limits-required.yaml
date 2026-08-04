@@ -10,7 +10,6 @@ metadata:
       Set resources.limits.cpu and resources.limits.memory on every
       container to prevent a single workload from starving the node and
       affecting other tenants.
-    audit.k8s-auditor.io/cis: "5.7.3"
 spec:
   failurePolicy: Fail
   matchConstraints:

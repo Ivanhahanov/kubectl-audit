@@ -42,6 +42,14 @@ type TargetConfig struct {
 	// RBAC) in scope. They're excluded by default: they're cluster-managed
 	// and not something an operator can remediate.
 	IncludeSystemRBAC bool `json:"includeSystemRBAC,omitempty"`
+
+	// CheckUpdates, when true, makes a live HTTPS request to endoflife.date
+	// to check the detected cluster version for available patch releases
+	// and real EOL/support status — the only network call this tool ever
+	// makes beyond the target cluster itself. Off by default so the tool
+	// stays fully usable in air-gapped/restricted-network environments;
+	// see internal/k8supdates.
+	CheckUpdates bool `json:"checkUpdates,omitempty"`
 }
 
 // PoliciesConfig controls which policies are loaded.
@@ -74,20 +82,23 @@ type OutputConfig struct {
 	JSON     string `json:"json,omitempty"`
 	Markdown string `json:"markdown,omitempty"`
 	FailOn   string `json:"failOn,omitempty"`
+	// Template is a path to a custom report.md.tpl (Go text/template). Empty
+	// uses the embedded default template.
+	Template string `json:"template,omitempty"`
 }
 
-// CISConfig toggles CIS Benchmark scorecard generation.
-type CISConfig struct {
-	Enabled bool   `json:"enabled"`
-	Version string `json:"version,omitempty"`
+// ComplianceConfig selects which requirement frameworks to score against
+// (e.g. "cis", "fstec", "nsa" — see compliance-mappings/).
+type ComplianceConfig struct {
+	Frameworks []string `json:"frameworks,omitempty"`
 }
 
 // AuditConfig is the root audit.yaml schema.
 type AuditConfig struct {
-	Target   TargetConfig   `json:"target,omitempty"`
-	Policies PoliciesConfig `json:"policies,omitempty"`
-	Output   OutputConfig   `json:"output,omitempty"`
-	CIS      CISConfig      `json:"cis,omitempty"`
+	Target     TargetConfig     `json:"target,omitempty"`
+	Policies   PoliciesConfig   `json:"policies,omitempty"`
+	Output     OutputConfig     `json:"output,omitempty"`
+	Compliance ComplianceConfig `json:"compliance,omitempty"`
 }
 
 // Default returns an AuditConfig with sane production defaults.
@@ -110,9 +121,8 @@ func Default() *AuditConfig {
 			Markdown: "report.md",
 			FailOn:   "high",
 		},
-		CIS: CISConfig{
-			Enabled: true,
-			Version: "1.8",
+		Compliance: ComplianceConfig{
+			Frameworks: []string{"cis"},
 		},
 	}
 }

@@ -5,31 +5,37 @@ import (
 	"os"
 	"time"
 
-	"github.com/ivanhahanov/kubectl-audit/internal/cis"
+	"github.com/ivanhahanov/kubectl-audit/internal/compliance"
 	"github.com/ivanhahanov/kubectl-audit/internal/findings"
 	"github.com/ivanhahanov/kubectl-audit/internal/rbac"
 )
 
 type jsonOutput struct {
-	GeneratedAt    time.Time           `json:"generatedAt"`
-	Target         string              `json:"target"`
-	PoliciesLoaded int                 `json:"policiesLoaded"`
-	Summary        findings.Summary    `json:"summary"`
-	Findings       []findings.Finding  `json:"findings"`
-	RBACModel      []rbac.SubjectModel `json:"rbacModel,omitempty"`
-	CIS            *cis.Scorecard      `json:"cis,omitempty"`
+	GeneratedAt       time.Time                     `json:"generatedAt"`
+	Target            string                        `json:"target"`
+	ClusterVersion    string                        `json:"clusterVersion,omitempty"`
+	Scope             Scope                         `json:"scope"`
+	PoliciesLoaded    int                           `json:"policiesLoaded"`
+	Summary           findings.Summary              `json:"summary"`
+	Findings          []findings.Finding            `json:"findings"`
+	RBACModel         []rbac.SubjectModel           `json:"rbacModel,omitempty"`
+	Frameworks        []compliance.Scorecard        `json:"compliance,omitempty"`
+	ComplianceSummary []compliance.FrameworkSummary `json:"complianceSummary,omitempty"`
 }
 
 // RenderJSON marshals a Result to indented JSON.
 func RenderJSON(r Result) ([]byte, error) {
 	out := jsonOutput{
-		GeneratedAt:    r.GeneratedAt,
-		Target:         r.Target,
-		PoliciesLoaded: r.PoliciesLoaded,
-		Summary:        r.Summary(),
-		Findings:       nonNil(r.Findings),
-		RBACModel:      r.RBACModel,
-		CIS:            r.CIS,
+		GeneratedAt:       r.GeneratedAt,
+		Target:            r.Target,
+		ClusterVersion:    r.ClusterVersion,
+		Scope:             r.Scope,
+		PoliciesLoaded:    r.PoliciesLoaded,
+		Summary:           r.Summary(),
+		Findings:          nonNil(r.Findings),
+		RBACModel:         r.RBACModel,
+		Frameworks:        r.Frameworks,
+		ComplianceSummary: compliance.Summarize(r.Frameworks),
 	}
 	return json.MarshalIndent(out, "", "  ")
 }

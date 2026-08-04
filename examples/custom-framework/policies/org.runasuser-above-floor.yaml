@@ -1,0 +1,38 @@
+# Example custom policy for an org-specific convention that isn't backed by
+# any public standard (CIS/NIST/FSTEC don't mandate a specific UID/GID
+# floor) — exactly the kind of check that belongs in your own --policy-dir
+# rather than the bundled policies/. See ../internal-standard.yaml and
+# docs/custom-checks.md for the full walkthrough.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: org.runasuser-above-floor
+  annotations:
+    audit.k8s-auditor.io/title: "Container does not run above the organization's reserved UID/GID floor"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: workload-security
+    audit.k8s-auditor.io/remediation: >-
+      Set securityContext.runAsUser and runAsGroup above 20000 (or whatever
+      floor your organization has standardized on) to avoid collisions with
+      host-level UIDs/GIDs on shared nodes.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+  validations:
+    - expression: |-
+        (has(object.spec.containers) ? object.spec.containers
+          : (has(object.spec.template) && has(object.spec.template.spec) && has(object.spec.template.spec.containers)) ? object.spec.template.spec.containers
+          : []).all(c,
+            has(c.securityContext) && has(c.securityContext.runAsUser) && c.securityContext.runAsUser > 20000 &&
+            has(c.securityContext.runAsGroup) && c.securityContext.runAsGroup > 20000
+          )
+      message: "Container's runAsUser/runAsGroup is not set above the organization's UID/GID floor (20000)."

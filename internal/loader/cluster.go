@@ -28,6 +28,11 @@ var defaultResources = []clusterResource{
 	{schema.GroupVersionResource{Group: "", Version: "v1", Resource: "services"}, true, "services"},
 	{schema.GroupVersionResource{Group: "", Version: "v1", Resource: "namespaces"}, false, "namespaces"},
 	{schema.GroupVersionResource{Group: "", Version: "v1", Resource: "serviceaccounts"}, true, "serviceaccounts"},
+	// ConfigMaps (not Secrets — this tool never reads Secret values, see
+	// internal/rbac's broad-secrets-access check, which flags grant breadth
+	// instead) are fetched so policies/secrets/*.yaml can flag ConfigMap data
+	// that looks like it should have been a Secret.
+	{schema.GroupVersionResource{Group: "", Version: "v1", Resource: "configmaps"}, true, "configmaps"},
 	{schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"}, true, "deployments"},
 	{schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "statefulsets"}, true, "statefulsets"},
 	{schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "daemonsets"}, true, "daemonsets"},

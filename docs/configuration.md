@@ -61,13 +61,19 @@ policies:
 output:
   json: findings.json
   markdown: report.md
-  # Minimum severity that makes `scan`/`rbac analyze`/`cis report` exit 1:
+  # Minimum severity that makes `scan`/`rbac analyze` exit 1:
   # none|low|medium|high|critical.
   failOn: high
+  # Custom report.md.tpl (Go text/template). Empty uses the built-in
+  # template — see `kubectl audit template dump` and Report Templates.
+  template: ""
 
-cis:
-  enabled: true
-  version: "1.8"
+compliance:
+  # Requirement framework(s) to score against: cis|fstec|nsa (see
+  # compliance-mappings/ for the full list), or a path to a custom mapping
+  # YAML. --frameworks on the CLI (scan only) overrides this.
+  frameworks:
+    - cis
 ```
 
 ## Field reference
@@ -86,8 +92,8 @@ cis:
 | `policies.builtin` | bool | `true` | Set `false` to run only custom policies. |
 | `output.json` / `output.markdown` | string | `findings.json` / `report.md` | Output paths. |
 | `output.failOn` | severity | `high` | `none` disables the CI exit-code gate. |
-| `cis.enabled` | bool | `true` | Build the CIS scorecard. |
-| `cis.version` | string | `1.8` | Informational; see [`cis-mappings/mapping.yaml`](https://github.com/{{ site.repository }}/blob/main/cis-mappings/mapping.yaml) for the actual control table. |
+| `output.template` | string | `""` | Custom `report.md.tpl` path; empty uses the embedded default. See [Report Templates]({{ '/report-templates/' | relative_url }}). |
+| `compliance.frameworks` | []string | `[cis]` | Which framework(s) to score against; see [Compliance Frameworks]({{ '/compliance/' | relative_url }}). |
 
 See [`examples/audit.yaml`](https://github.com/{{ site.repository }}/blob/main/examples/audit.yaml)
 in the repo for this same file with inline comments.

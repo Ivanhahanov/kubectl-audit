@@ -29,15 +29,18 @@ live cluster, static manifest files, or both at once.
   NetworkPolicy is matched precisely against each workload's pod-template labels; Cilium and Calico
   policies are detected and used as a coverage signal. See
   [NetworkPolicy Coverage]({{ '/network-policy/' | relative_url }}).
-- **CIS Kubernetes Benchmark** — a compliance scorecard for every control observable through the
-  API. Node/control-plane-only sections are explicitly marked "Not Applicable" instead of silently
-  skipped. See [CIS Benchmark]({{ '/cis-benchmark/' | relative_url }}).
+- **Multi-framework compliance** — CIS Kubernetes Benchmark, FSTEC, and NSA/CISA Kubernetes
+  Hardening Guidance scorecards, scored against the same findings and checkable together
+  (`--frameworks cis,fstec,nsa`) with a consolidated summary table and cross-references between
+  frameworks. Sections outside API visibility are explicitly marked "Not Applicable" instead of
+  silently skipped. See [Compliance Frameworks]({{ '/compliance/' | relative_url }}).
 
 ## Output
 
-- `findings.json` — machine-readable findings, RBAC role model, and CIS scorecard.
-- `report.md` — a human-readable report, including which exact resources caused each CIS control
-  to fail.
+- `findings.json` — machine-readable findings, RBAC role model, and compliance scorecards.
+- `report.md` — a human-readable report, including which exact resources caused each control to
+  fail, rendered from a fully customizable Go template — see
+  [Report Templates]({{ '/report-templates/' | relative_url }}).
 - `--fail-on <severity>` — a CI gate that exits non-zero when findings at or above a severity
   threshold are present.
 

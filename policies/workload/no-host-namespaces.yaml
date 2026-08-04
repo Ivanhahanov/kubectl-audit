@@ -10,7 +10,7 @@ metadata:
       Remove hostNetwork, hostPID and hostIPC from the pod spec (or set them
       to false). Sharing host namespaces lets a compromised container observe
       or interfere with host-level processes and network traffic.
-    audit.k8s-auditor.io/cis: "5.2.4"
+    audit.k8s-auditor.io/cis: "5.2.3,5.2.4,5.2.5"
 spec:
   failurePolicy: Fail
   matchConstraints:

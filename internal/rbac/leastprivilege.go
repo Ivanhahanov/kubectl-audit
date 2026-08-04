@@ -3,9 +3,47 @@ package rbac
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/ivanhahanov/kubectl-audit/internal/findings"
 )
+
+// alwaysVisibleSystemSubjects are "system:"-prefixed identities that must
+// NOT be dropped by filterBuiltinSystemSubjects even when
+// includeSystemSubjects is false: granting them anything is itself the
+// misconfiguration this analysis (and rbac.no-anonymous-binding) exists to
+// catch.
+var alwaysVisibleSystemSubjects = map[string]bool{
+	"system:anonymous":       true,
+	"system:unauthenticated": true,
+}
+
+// filterBuiltinSystemSubjects drops Group/User subjects with the reserved
+// "system:" prefix before least-privilege analysis runs. system:masters,
+// system:nodes, system:kube-scheduler, and friends are Kubernetes' own
+// built-in bootstrap/control-plane identities, not something an operator
+// can remediate by editing RBAC — system:masters in particular bypasses
+// RBAC entirely at the authorization layer, and a ClusterRoleBinding to it
+// is how every kubeadm/kind cluster satisfies "some identity must have full
+// access to bootstrap the rest of RBAC," not a misconfiguration to fix.
+//
+// This mirrors loader.FilterSystemRBAC's treatment of system:-named
+// Role/ClusterRole/*Binding objects, extended to subjects referenced
+// *within* bindings (which aren't standalone API objects
+// FilterSystemRBAC can see, so it can't already catch this). Gated by the
+// same --include-system-rbac flag.
+func filterBuiltinSystemSubjects(perms map[SubjectKey]*SubjectPermissions) map[SubjectKey]*SubjectPermissions {
+	out := make(map[SubjectKey]*SubjectPermissions, len(perms))
+	for sk, sp := range perms {
+		if (sk.Kind == "Group" || sk.Kind == "User") &&
+			strings.HasPrefix(sk.Name, "system:") &&
+			!alwaysVisibleSystemSubjects[sk.Name] {
+			continue
+		}
+		out[sk] = sp
+	}
+	return out
+}
 
 var escalationVerbs = []string{"escalate", "bind", "impersonate"}
 var execResources = []string{"pods/exec", "pods/attach", "pods/portforward"}
@@ -29,7 +67,62 @@ func AnalyzeLeastPrivilege(g *Graph, perms map[SubjectKey]*SubjectPermissions, s
 
 	out = append(out, checkDefaultServiceAccountBindings(g, perms, source)...)
 	out = append(out, checkAutomountWithSensitiveAccess(g, perms, source)...)
+	// Runs on the Graph directly (not the possibly-filtered perms map): this
+	// is the one check that's specifically *about* system:masters usage, so
+	// it must see it regardless of includeSystemSubjects/filterBuiltinSystemSubjects.
+	out = append(out, checkSystemMastersUsage(g, source)...)
 
+	return out
+}
+
+// checkSystemMastersUsage reports every binding of the built-in
+// system:masters group, low-severity and worded as "expected at bootstrap,
+// track it" rather than "misconfiguration, fix it" — unlike the generic
+// least-privilege checks this deliberately does NOT get suppressed by
+// filterBuiltinSystemSubjects, since seeing every system:masters binding
+// (and confirming none beyond the expected bootstrap one exist) is exactly
+// the point.
+func checkSystemMastersUsage(g *Graph, source string) []findings.Finding {
+	const subjectName = "system:masters"
+	var out []findings.Finding
+	seen := map[string]bool{}
+
+	report := func(bindingKind, bindingName, namespace string) {
+		key := bindingKind + "|" + namespace + "|" + bindingName
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		ref := findings.ResourceRef{Kind: "Group", Name: subjectName}
+		scope := scopeLabel(namespace)
+		out = append(out, finding(
+			"rbac-analyzer.system-masters-usage",
+			"system:masters group is bound to a role",
+			findings.SeverityLow,
+			[]string{"5.1.7"},
+			ref,
+			fmt.Sprintf("%s %q binds the built-in system:masters group %s. system:masters bypasses RBAC entirely at the authorization layer (it's not a permission grant that can be narrowed) — one binding for cluster bootstrap is expected on self-hosted clusters, but any binding beyond that should be investigated.",
+				bindingKind, bindingName, scope),
+			"Confirm this binding is the expected cluster-bootstrap one (commonly named \"cluster-admin\") and not an additional, avoidable grant to system:masters.",
+			source,
+			key,
+		))
+	}
+
+	for _, rb := range g.RoleBindings {
+		for _, s := range rb.Subjects {
+			if s.Kind == "Group" && s.Name == subjectName {
+				report("RoleBinding", rb.Name, rb.Namespace)
+			}
+		}
+	}
+	for _, crb := range g.ClusterRoleBindings {
+		for _, s := range crb.Subjects {
+			if s.Kind == "Group" && s.Name == subjectName {
+				report("ClusterRoleBinding", crb.Name, "")
+			}
+		}
+	}
 	return out
 }
 

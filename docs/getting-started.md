@@ -45,42 +45,71 @@ kubectl audit scan -n my-namespace
 
 # Try it against a deliberately misconfigured example from the repo
 kubectl audit scan -f examples/insecure-manifests --fail-on none
+
+# Score against several compliance frameworks at once
+kubectl audit scan --frameworks cis,fstec,nsa
 ```
 
 ## Commands
 
 | Command | Description |
 |---|---|
-| `kubectl audit scan` | Full audit: policy checks + RBAC analysis + NetworkPolicy coverage + (optional) CIS scorecard. |
+| `kubectl audit scan` | Full audit: policy checks + RBAC analysis + NetworkPolicy coverage + Pod Security Standards + compliance scorecards. Prints both a severity summary and a compliance summary. |
 | `kubectl audit policy validate <dir>...` | Parse and CEL-compile every policy in the given directories; reports every error found. |
 | `kubectl audit policy list` | List every policy that would load for a scan, with severity/category/CIS refs. |
-| `kubectl audit rbac analyze` | Standalone RBAC role-model + least-privilege report (no workload policies). |
-| `kubectl audit cis report` | Full scan with the CIS scorecard forced on and summarized to stdout. |
+| `kubectl audit rbac analyze` | Standalone RBAC role-model + least-privilege report (no workload policies, no compliance scorecards). |
+| `kubectl audit template dump` | Write the built-in `report.md.tpl` to disk as a starting point for `--report-template` — see [Report Templates]({{ '/report-templates/' | relative_url }}). |
 | `kubectl audit version` | Print the build version. |
 
-Run any command with `--help` for its full flag list.
+Run any command with `--help` for its full flag list — each command only shows the flags actually
+relevant to it (e.g. `--frameworks` only appears on `scan`, not `rbac analyze` or `policy list`).
 
 ## Key flags
 
-Available on `scan`, `rbac analyze`, and `cis report`:
+Available on `scan` and `rbac analyze`:
 
-- `--config audit.yaml` — load settings from a config file (see [Configuration]({{ '/configuration/' | relative_url }})); CLI flags override it.
+- `--config audit.yaml` — load settings from a config file (see [Configuration]({{ '/configuration/' | relative_url }})); CLI flags override it. Global, works on every command.
 - `--context`, `--kubeconfig` — cluster targeting.
-- `-f/--files` (repeatable) — static manifest files or directories.
+- `-f/--filename` (repeatable) — static manifest files or directories, matching `kubectl apply`'s own `-f/--filename`.
 - `--mode cluster|static|both` — defaults to `both`, or `static` automatically if `-f` is given without an explicit `--mode`.
-- `-n/--namespace` (repeatable), `--all-namespaces` — namespace scoping in cluster mode.
+- `-n/--namespace` (repeatable), `-A/--all-namespaces` — namespace scoping in cluster mode.
 - `--exclude-namespace` (repeatable) — see [Noise reduction](#noise-reduction) below.
 - `--include-system-rbac` — see [Noise reduction](#noise-reduction) below.
-- `--policy-dir` (repeatable) — extra custom policy directories.
 - `--output-json`, `--output-md` — output paths.
+- `--report-template <file>` — custom `report.md.tpl`; see [Report Templates]({{ '/report-templates/' | relative_url }}).
 - `--fail-on none|low|medium|high|critical` — CI exit-code gate (default `high`).
-- `--cis` — force-enable the CIS scorecard.
+
+`scan`-only:
+
+- `--policy-dir` (repeatable) — extra custom policy directories (also on `policy list`).
+- `--frameworks cis,fstec,nsa` — compliance framework(s) to score against (repeatable or
+  comma-separated; default `cis`), or a path to a [custom mapping]({{ '/custom-checks/' | relative_url }});
+  see [Compliance Frameworks]({{ '/compliance/' | relative_url }}).
+- `--check-updates` — live EOL/patch-currency check against endoflife.date; see
+  [Compliance Frameworks]({{ '/compliance/' | relative_url }}).
 
 Note: `-n/--namespace` scopes *workload* resources (Pods, Deployments, ...) to the given
 namespace(s). RBAC objects (Role/ClusterRole/\*Binding/ServiceAccount) are still loaded
 cluster-wide, since a binding can reference a subject outside the scanned namespace and effective
 permissions can't be resolved correctly without the full graph. Add `--exclude-namespace` if you
 also want to exclude a namespace's RBAC objects.
+
+## Scope
+
+Every `report.md` opens with a **Scope** section stating plainly what this particular scan could
+and couldn't see — computed once from what was actually loaded, instead of leaving you to infer it
+from a dozen individually-worded `NOT_APPLICABLE` compliance rows. Two situations drive most of
+what shows up there:
+
+- **A single manifest or partial file set** (`scan -f one-deployment.yaml`): RBAC and NetworkPolicy
+  findings only reflect what's in the given file(s) — a workload flagged as "no NetworkPolicy"
+  might actually be covered by a policy that lives in a file you didn't include in this scan.
+- **A managed cluster** (EKS/GKE/AKS, ...): control-plane configuration checks (CIS Section 1/2)
+  can't run at all, since the API server/etcd/controller-manager/scheduler aren't exposed as Pods
+  there — see [Compliance Frameworks]({{ '/compliance/' | relative_url }}) for what that covers.
+
+If nothing was structurally out of reach, the section just says so ("Full scope") instead of
+listing anything.
 
 ## Noise reduction
 

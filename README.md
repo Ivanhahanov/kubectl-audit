@@ -25,13 +25,17 @@ A `kubectl` plugin (`kubectl audit ...`) for auditing Kubernetes security postur
   `NetworkPolicy`/`GlobalNetworkPolicy`) are detected via discovery when installed and used as a
   presence-based coverage signal — see [`internal/netpol`](internal/netpol/coverage.go) for why
   their selector languages aren't simulated in detail.
-- **CIS Kubernetes Benchmark** compliance scorecard for every control observable through the
-  Kubernetes API. Control-plane/node-level controls (sections 1-4) are explicitly reported as
-  "Not Applicable" rather than silently skipped — see [CIS Benchmark scope](#cis-benchmark-scope).
+- **Multi-framework compliance**: scores the same findings against one or more requirement
+  frameworks at once (`--frameworks cis,fstec,nsa`) — CIS Kubernetes Benchmark, FSTEC ("Требования
+  ... к средствам контейнеризации"), and NSA/CISA Kubernetes Hardening Guidance — with a
+  consolidated summary table and cross-references between frameworks where a control corresponds.
+  Controls outside API visibility are explicitly reported `NOT_APPLICABLE` rather than silently
+  skipped — see [Compliance framework scope](#compliance-framework-scope).
 - Audits a **live cluster** (via kubeconfig), **static manifest files/directories** (for
   pre-deploy / CI checks), or both at once.
-- Outputs a machine-readable `findings.json` and a human-readable `report.md`, with a
-  `--fail-on <severity>` gate for CI pipelines.
+- Outputs a machine-readable `findings.json` and a human-readable `report.md` rendered from a
+  fully customizable Go `text/template` (`--report-template`), with a `--fail-on <severity>` gate
+  for CI pipelines.
 
 ## Install
 
@@ -70,34 +74,46 @@ kubectl audit scan -f ./manifests --fail-on high
 
 # Try it against a deliberately misconfigured example
 kubectl audit scan -f examples/insecure-manifests --fail-on none
+
+# Score against several compliance frameworks at once
+kubectl audit scan --frameworks cis,fstec,nsa
 ```
 
 ## Commands
 
 | Command | Description |
 |---|---|
-| `kubectl audit scan` | Full audit: policy checks + RBAC analysis + (optional) CIS scorecard. |
+| `kubectl audit scan` | Full audit: policy checks + RBAC analysis + NetworkPolicy coverage + Pod Security Standards + compliance scorecards. Prints both a severity summary and a compliance summary. |
 | `kubectl audit policy validate <dir>...` | Parse and CEL-compile every policy in the given directories; reports every error found. |
 | `kubectl audit policy list` | List every policy that would load for a scan, with severity/category/CIS refs. |
-| `kubectl audit rbac analyze` | Standalone RBAC role-model + least-privilege report (no workload policies). |
-| `kubectl audit cis report` | Full scan with the CIS scorecard forced on and summarized to stdout. |
+| `kubectl audit rbac analyze` | Standalone RBAC role-model + least-privilege report (no workload policies, no compliance scorecards). |
+| `kubectl audit template dump` | Write the built-in `report.md.tpl` to disk as a starting point for `--report-template`. |
 | `kubectl audit version` | Print the build version. |
 
-Run any command with `--help` for its full flag list. Key flags (available on `scan`, `rbac
-analyze`, `cis report`):
+Run any command with `--help` for its full flag list — each command only shows the flags actually
+relevant to it. Key flags available on `scan` and `rbac analyze`:
 
-- `--config audit.yaml` — load settings from a config file (see below); CLI flags override it.
+- `--config audit.yaml` — load settings from a config file (see below); CLI flags override it. Global, works on every command.
 - `--context`, `--kubeconfig` — cluster targeting.
-- `-f/--files` (repeatable) — static manifest files or directories.
+- `-f/--filename` (repeatable) — static manifest files or directories, matching `kubectl apply`'s own `-f/--filename`.
 - `--mode cluster|static|both` — defaults to `both`, or `static` automatically if `-f` is given
   without an explicit `--mode`.
-- `-n/--namespace` (repeatable), `--all-namespaces` — namespace scoping in cluster mode.
+- `-n/--namespace` (repeatable), `-A/--all-namespaces` — namespace scoping in cluster mode.
 - `--exclude-namespace` (repeatable) — see [Noise reduction](#noise-reduction-owner-chains--platform-namespaces) below.
 - `--include-system-rbac` — see [Noise reduction](#noise-reduction-owner-chains--platform-namespaces) below.
-- `--policy-dir` (repeatable) — extra custom policy directories.
 - `--output-json`, `--output-md` — output paths.
+- `--report-template <file>` — custom `report.md.tpl` (Go `text/template`); default renders the
+  same structure as before. See [Report template customization](#report-template-customization).
 - `--fail-on none|low|medium|high|critical` — CI exit-code gate (default `high`).
-- `--cis` — force-enable the CIS scorecard.
+
+`scan`-only:
+
+- `--policy-dir` (repeatable) — extra custom policy directories (also on `policy list`).
+- `--frameworks cis,fstec,nsa` — compliance framework(s) to score against (repeatable or
+  comma-separated; default `cis`), or a path to a custom mapping. See
+  [Compliance framework scope](#compliance-framework-scope).
+- `--check-updates` — live EOL/patch-currency check against endoflife.date (the only network call
+  this tool ever makes beyond the target cluster; off by default).
 
 ## Noise reduction: owner chains & platform namespaces
 
@@ -126,8 +142,8 @@ Two things keep a cluster scan from being dominated by duplicate or non-actionab
 ## Configuration (`audit.yaml`)
 
 See [`examples/audit.yaml`](examples/audit.yaml) for a fully-commented example covering target
-mode, namespaces, policy directories/exclusions, output paths, the `--fail-on` threshold, and CIS
-settings.
+mode, namespaces, policy directories/exclusions, output paths, the `--fail-on` threshold, the
+report template path, and which compliance frameworks to score against.
 
 ## Writing custom policies
 
@@ -179,17 +195,32 @@ Deployment/StatefulSet/DaemonSet/ReplicaSet (`spec.template.spec`), or a CronJob
 - `ValidatingAdmissionPolicyBinding` objects are not consumed — every loaded policy's
   `matchConstraints` is applied directly to every resource.
 
-## CIS Benchmark scope
+## Compliance framework scope
 
-Section numbering follows the public CIS Kubernetes Benchmark structure. Sections 1-4 (control
-plane components, etcd, control-plane configuration files, worker node/kubelet configuration)
-require SSH/file access to node filesystems and process arguments that a kubectl plugin
-fundamentally cannot see through the Kubernetes API — they're reported as `NOT_APPLICABLE` with a
-pointer to run [kube-bench](https://github.com/aquasecurity/kube-bench) on the nodes instead.
-Section 5 (Policies: RBAC, Pod Security Standards, Network Policies, general policies) is
-API-observable and is what this tool implements; see [`cis-mappings/mapping.yaml`](cis-mappings/mapping.yaml)
-for the exact control-to-check mapping. Treat the mapping as a practical cross-reference, not a
-substitute for the official CIS PDF when compliance-grade attestation is required.
+`--frameworks cis,fstec,nsa` scores the same findings against any combination of the frameworks in
+[`compliance-mappings/`](compliance-mappings/): CIS Kubernetes Benchmark, FSTEC ("Требования по
+безопасности информации, предъявляемые к средствам контейнеризации" — note this certifies the
+containerization *product*, not cluster config, so most of it is `NOT_APPLICABLE`), and NSA/CISA
+Kubernetes Hardening Guidance v1.2. Every mapping is honest about what it can't check — sections
+needing node/file access, control-plane config, or external tooling (SIEM, image scanners,
+certified vulnerability databases) are `NOT_APPLICABLE` with a `naReason`; API-observable items not
+yet built are `NOT_IMPLEMENTED`. FSTEC/NSA controls with a genuine CIS equivalent are cross-linked
+via `crossRefs.cis`, rendered as the report's "Related controls" column. See
+[docs/compliance.md](docs/compliance.md) for the full writeup, and the mapping YAML files
+themselves for the exact, current control-to-check tables — treat them as a practical
+cross-reference, not a substitute for the official documents when compliance-grade attestation is
+required.
+
+## Report template customization
+
+`report.md` is rendered from a Go `text/template`
+([`internal/report/templates/default.md.tpl`](internal/report/templates/default.md.tpl)), not
+hardcoded Go string-building. Run `kubectl audit template dump --out report.md.tpl` to get the
+built-in template as a starting point, edit it, and pass it back with `--report-template
+report.md.tpl` (or `output.template` in `audit.yaml`) — a custom template fully replaces the
+default, so you can restructure, reorder, or drop sections entirely. See
+[docs/report-templates.md](docs/report-templates.md) for the data model and template functions
+available (`.Findings`, `.Frameworks`, `.RBACModel`, `escapeCell`, `crossRefs`, ...).
 
 ## Architecture
 
@@ -202,16 +233,16 @@ internal/loader              resource loading: live cluster (dynamic client) and
 internal/engine                VAP parsing, CEL compilation (cel-go), matchConstraints matching, evaluation
 internal/rbac                   RBAC graph, effective-permission computation, least-privilege checks, role model
 internal/netpol                  NetworkPolicy coverage: per-workload selector matching + Cilium/Calico presence
-internal/cis                      CIS control table + scorecard builder
+internal/compliance               framework-agnostic control table + scorecard builder (CIS/FSTEC/NSA/...)
 internal/findings                  shared Finding/Severity model
-internal/report                     findings.json and report.md renderers
+internal/report                     findings.json renderer + Go text/template-driven report.md renderer
 policies/                 bundled default VAP policies (go:embed)
-cis-mappings/               CIS control table (go:embed)
+compliance-mappings/        control tables per framework: cis.yaml, fstec.yaml, nsa.yaml (go:embed)
 examples/                    sample config, custom policy, deliberately-insecure manifests
 ```
 
 `scan` loads resources (cluster and/or static), runs every loaded policy's CEL expressions against
 them, runs the RBAC analyzer and the NetworkPolicy coverage analyzer over the same resource set,
-merges and dedupes the resulting findings, optionally builds the CIS scorecard from those findings,
-and renders both output files. `rbac analyze` and `cis report` reuse the same pipeline with a
-narrower focus.
+merges and dedupes the resulting findings, builds a scorecard per requested compliance framework
+from those findings, and renders both output files. `rbac analyze` reuses the same pipeline with a
+narrower focus (RBAC only, no workload policies or compliance scorecards).

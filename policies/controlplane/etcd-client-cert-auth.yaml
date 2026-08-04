@@ -1,0 +1,26 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: controlplane.etcd.client-cert-auth
+  annotations:
+    audit.k8s-auditor.io/title: "etcd does not require client certificate authentication"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: control-plane-config
+    audit.k8s-auditor.io/remediation: >-
+      Set --client-cert-auth=true.
+    audit.k8s-auditor.io/cis: "2.2"
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+    objectSelector:
+      matchLabels:
+        component: etcd
+  validations:
+    - expression: |-
+        object.spec.containers.exists(c, ((has(c.command) ? c.command : []) + (has(c.args) ? c.args : [])).exists(a, a == '--client-cert-auth=true'))
+      message: "[indirect signal — inferred from the etcd static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access] --client-cert-auth is not explicitly set to true (defaults to false)."

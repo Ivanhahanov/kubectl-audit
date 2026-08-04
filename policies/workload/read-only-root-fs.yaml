@@ -10,7 +10,7 @@ metadata:
       Set securityContext.readOnlyRootFilesystem: true on every container,
       and mount an emptyDir volume for any directory that genuinely needs
       to be writable at runtime.
-    audit.k8s-auditor.io/cis: "5.2.7"
+    audit.k8s-auditor.io/cis: "5.6.3"
 spec:
   failurePolicy: Fail
   matchConstraints:

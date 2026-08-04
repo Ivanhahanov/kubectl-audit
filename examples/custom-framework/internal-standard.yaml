@@ -1,0 +1,41 @@
+# Example of a private/internal compliance framework, kept OUTSIDE this
+# repo, that scores findings against your own custom policies (see
+# policies/*.yaml next to this file) instead of — or alongside — the bundled
+# cis/fstec/nsa frameworks. Same schema as compliance-mappings/*.yaml.
+#
+# Copy this whole directory out of the kubectl-audit checkout, rename/edit
+# freely (control IDs, titles, policyIds — whatever your internal registry
+# actually uses), then run:
+#
+#   kubectl-audit scan \
+#     --policy-dir /path/to/your/custom-framework/policies \
+#     --frameworks cis,/path/to/your/custom-framework/internal-standard.yaml
+#
+# LoadMapping treats any --frameworks value containing "/" or ending in
+# ".yaml"/".yml" as a file path instead of a bundled framework ID — nothing
+# about this mechanism requires editing kubectl-audit's own source or
+# committing anything here. See docs/custom-checks.md for the full
+# walkthrough, including how to catch a typo'd policyId (kubectl-audit warns
+# if a control references a policyId that isn't actually loaded).
+id: internal
+title: "Example Internal Standard"
+version: "1"
+controls:
+  - id: "ORG-01"
+    title: "Containers run above the organization's UID/GID floor"
+    section: "Workload hardening"
+    applicable: true
+    policyIds: ["org.runasuser-above-floor"]
+    crossRefs:
+      cis: ["5.2.7"]
+    note: >-
+      Internal convention, not backed by a public standard — the specific
+      UID/GID floor is an org decision. Loosely related to CIS 5.2.7 (root
+      containers) since it's a stricter constraint in the same spirit.
+
+  - id: "ORG-02"
+    title: "Images are pulled only from the approved internal registry"
+    section: "Supply chain"
+    applicable: true
+    policyIds: ["org.image-registry-allowlist"]
+    note: "No corresponding public-standard control number — registry allowlisting is an org-specific supply-chain decision."

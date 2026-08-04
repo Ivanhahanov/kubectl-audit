@@ -1,0 +1,26 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: controlplane.controller-manager.bind-address
+  annotations:
+    audit.k8s-auditor.io/title: "kube-controller-manager does not bind to localhost"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: control-plane-config
+    audit.k8s-auditor.io/remediation: >-
+      Set --bind-address=127.0.0.1 unless the metrics/healthz endpoint genuinely needs to be reachable off-node.
+    audit.k8s-auditor.io/cis: "1.3.7"
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+    objectSelector:
+      matchLabels:
+        component: kube-controller-manager
+  validations:
+    - expression: |-
+        object.spec.containers.exists(c, ((has(c.command) ? c.command : []) + (has(c.args) ? c.args : [])).exists(a, a == '--bind-address=127.0.0.1'))
+      message: "[indirect signal — inferred from the kube-controller-manager static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access] --bind-address is not explicitly set to 127.0.0.1."

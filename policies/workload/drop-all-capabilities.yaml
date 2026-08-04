@@ -9,7 +9,7 @@ metadata:
     audit.k8s-auditor.io/remediation: >-
       Set securityContext.capabilities.drop: ["ALL"] on every container, and
       add back only the specific capabilities the workload actually needs.
-    audit.k8s-auditor.io/cis: "5.2.9"
+    audit.k8s-auditor.io/cis: "5.2.8,5.2.9"
 spec:
   failurePolicy: Fail
   matchConstraints:
