@@ -33,9 +33,10 @@ A `kubectl` plugin (`kubectl audit ...`) for auditing Kubernetes security postur
   skipped — see [Compliance framework scope](#compliance-framework-scope).
 - Audits a **live cluster** (via kubeconfig), **static manifest files/directories** (for
   pre-deploy / CI checks), or both at once.
-- Outputs a machine-readable `findings.json` and a human-readable `report.md` rendered from a
-  fully customizable Go `text/template` (`--report-template`), with a `--fail-on <severity>` gate
-  for CI pipelines.
+- Outputs a machine-readable `findings.json`, a human-readable `report.md` rendered from a fully
+  customizable Go `text/template` (`--report-template`), and optionally a `findings.csv`
+  (`--output-csv`) for spreadsheet sort/filter/pivot, with a `--fail-on <severity>` gate for CI
+  pipelines.
 
 ## Install
 
@@ -101,7 +102,9 @@ relevant to it. Key flags available on `scan` and `rbac analyze`:
 - `-n/--namespace` (repeatable), `-A/--all-namespaces` — namespace scoping in cluster mode.
 - `--exclude-namespace` (repeatable) — see [Noise reduction](#noise-reduction-owner-chains--platform-namespaces) below.
 - `--include-system-rbac` — see [Noise reduction](#noise-reduction-owner-chains--platform-namespaces) below.
-- `--output-json`, `--output-md` — output paths.
+- `--output-json`, `--output-md` — output paths. Defaults differ per command so `scan` and
+  `rbac analyze` don't collide when pointed at the same directory.
+- `--output-csv` — write findings as CSV, one row per finding; not written by default.
 - `--report-template <file>` — custom `report.md.tpl` (Go `text/template`); default renders the
   same structure as before. See [Report template customization](#report-template-customization).
 - `--fail-on none|low|medium|high|critical` — CI exit-code gate (default `high`).

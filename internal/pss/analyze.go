@@ -102,10 +102,11 @@ func finding(checkID, level string, result policy.AggregateCheckResult, ref find
 	if level == "baseline" {
 		sev = findings.SeverityHigh
 	}
-	msg := fmt.Sprintf("Does not satisfy the Pod Security Standards %q profile: %s", level, result.ForbiddenReason())
-	if detail := result.ForbiddenDetail(); detail != "" {
-		msg += fmt.Sprintf(" (%s)", detail)
-	}
+	// ForbiddenDetail() already interleaves each reason with its own detail
+	// in parens (e.g. "host ports (8080, 9090), privileged containers") —
+	// concatenating it after ForbiddenReason() would repeat every reason
+	// twice.
+	msg := fmt.Sprintf("Does not satisfy the Pod Security Standards %q profile: %s", level, result.ForbiddenDetail())
 	return findings.Finding{
 		ID:       findings.NewID(checkID, ref),
 		PolicyID: checkID,

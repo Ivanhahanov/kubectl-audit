@@ -30,6 +30,20 @@ func newRBACAnalyzeCmd() *cobra.Command {
 			}
 			cfg.Compliance.Frameworks = nil
 
+			// rbac analyze writes its own report by default, distinct from
+			// scan's report.md/findings.json — otherwise running both
+			// commands against the same directory silently overwrites one
+			// report with the other. Only kicks in when the user didn't
+			// pass --output-json/--output-md or set output.json/markdown
+			// explicitly in audit.yaml to something other than scan's
+			// defaults.
+			if flagOutputJSON == "" && cfg.Output.JSON == "findings.json" {
+				cfg.Output.JSON = "rbac-findings.json"
+			}
+			if flagOutputMD == "" && cfg.Output.Markdown == "report.md" {
+				cfg.Output.Markdown = "rbac-report.md"
+			}
+
 			resources, _, target, _, err := loadResources(cmd.Context(), cfg)
 			if err != nil {
 				return err
@@ -57,6 +71,9 @@ func newRBACAnalyzeCmd() *cobra.Command {
 			}
 			if cfg.Output.Markdown != "" {
 				fmt.Printf("Report written to %s\n", cfg.Output.Markdown)
+			}
+			if cfg.Output.CSV != "" {
+				fmt.Printf("Findings written to %s (CSV)\n", cfg.Output.CSV)
 			}
 
 			applyFailOnGate(cfg, result)

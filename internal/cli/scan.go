@@ -41,6 +41,9 @@ func newScanCmd() *cobra.Command {
 			if cfg.Output.Markdown != "" {
 				fmt.Printf("Report written to %s\n", cfg.Output.Markdown)
 			}
+			if cfg.Output.CSV != "" {
+				fmt.Printf("Findings written to %s (CSV)\n", cfg.Output.CSV)
+			}
 
 			applyFailOnGate(cfg, result)
 			return nil

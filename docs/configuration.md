@@ -61,6 +61,9 @@ policies:
 output:
   json: findings.json
   markdown: report.md
+  # CSV, one row per finding — for opening in a spreadsheet. Not written
+  # unless set (no default path, unlike json/markdown above).
+  csv: ""
   # Minimum severity that makes `scan`/`rbac analyze` exit 1:
   # none|low|medium|high|critical.
   failOn: high

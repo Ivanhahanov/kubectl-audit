@@ -75,7 +75,14 @@ Available on `scan` and `rbac analyze`:
 - `-n/--namespace` (repeatable), `-A/--all-namespaces` — namespace scoping in cluster mode.
 - `--exclude-namespace` (repeatable) — see [Noise reduction](#noise-reduction) below.
 - `--include-system-rbac` — see [Noise reduction](#noise-reduction) below.
-- `--output-json`, `--output-md` — output paths.
+- `--output-json`, `--output-md` — output paths. Defaults differ per command so `scan` and
+  `rbac analyze` don't overwrite each other when run against the same directory: `scan` writes
+  `findings.json`/`report.md`, `rbac analyze` writes `rbac-findings.json`/`rbac-report.md`.
+- `--output-csv` — write findings as CSV (one row per finding: severity, policy ID, category, CIS
+  refs, resource, message, remediation, source, id), sorted most-severe first. Not written by
+  default. Meant for opening in a spreadsheet to sort/filter/pivot or hand off to someone tracking
+  remediation who doesn't want the full Markdown/JSON — JSON is the better fit for feeding another
+  tool programmatically.
 - `--report-template <file>` — custom `report.md.tpl`; see [Report Templates]({{ '/report-templates/' | relative_url }}).
 - `--fail-on none|low|medium|high|critical` — CI exit-code gate (default `high`).
 

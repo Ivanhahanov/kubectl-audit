@@ -1,6 +1,7 @@
 package report_test
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -86,6 +87,42 @@ func TestRenderMarkdownWithFindings(t *testing.T) {
 	}
 	if !strings.Contains(md, "bad thing happened") {
 		t.Errorf("expected the finding message, got:\n%s", md)
+	}
+}
+
+func TestRenderCSV(t *testing.T) {
+	r := report.Result{
+		GeneratedAt: time.Now(),
+		Target:      "test",
+		Findings: []findings.Finding{
+			{ID: "1", PolicyID: "workload.x", Title: "Bad thing", Severity: findings.SeverityLow, Category: "workload-security",
+				CIS: []string{"5.2.1", "5.2.2"}, Resource: findings.ResourceRef{Kind: "Pod", Name: "p", Namespace: "default"},
+				Message: "a, message with, commas", Remediation: "fix it"},
+			{ID: "2", PolicyID: "workload.y", Title: "Worse thing", Severity: findings.SeverityCritical, Category: "workload-security",
+				Resource: findings.ResourceRef{Kind: "Pod", Name: "q"}, Message: "urgent"},
+		},
+	}
+	data, err := report.RenderCSV(r)
+	if err != nil {
+		t.Fatalf("RenderCSV: %v", err)
+	}
+	rows, err := csv.NewReader(strings.NewReader(string(data))).ReadAll()
+	if err != nil {
+		t.Fatalf("RenderCSV produced invalid CSV: %v", err)
+	}
+	if len(rows) != 3 { // header + 2 findings
+		t.Fatalf("expected 3 rows, got %d: %v", len(rows), rows)
+	}
+	if rows[0][0] != "severity" {
+		t.Errorf("expected a header row starting with 'severity', got %v", rows[0])
+	}
+	// Sorted most-severe first: CRITICAL before LOW.
+	if rows[1][0] != "CRITICAL" || rows[2][0] != "LOW" {
+		t.Errorf("expected CRITICAL then LOW, got %q then %q", rows[1][0], rows[2][0])
+	}
+	// The comma-containing message must round-trip intact through quoting.
+	if rows[2][9] != "a, message with, commas" {
+		t.Errorf("expected the message field to round-trip through CSV quoting, got %q", rows[2][9])
 	}
 }
 

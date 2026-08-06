@@ -78,6 +78,9 @@ func loadEffectiveConfig(cmd *cobra.Command) (*config.AuditConfig, error) {
 	if flagOutputMD != "" {
 		cfg.Output.Markdown = flagOutputMD
 	}
+	if flagOutputCSV != "" {
+		cfg.Output.CSV = flagOutputCSV
+	}
 	if flagFailOn != "" {
 		cfg.Output.FailOn = flagFailOn
 	}
@@ -450,6 +453,11 @@ func writeOutputs(cfg *config.AuditConfig, result report.Result) error {
 		}
 		if err := report.WriteMarkdown(cfg.Output.Markdown, result, tplSource); err != nil {
 			return fmt.Errorf("writing %s: %w", cfg.Output.Markdown, err)
+		}
+	}
+	if cfg.Output.CSV != "" {
+		if err := report.WriteCSV(cfg.Output.CSV, result); err != nil {
+			return fmt.Errorf("writing %s: %w", cfg.Output.CSV, err)
 		}
 	}
 	return nil

@@ -475,40 +475,31 @@ controls:
     title: "Minimize access to create persistent volumes"
     section: "RBAC and Service Accounts"
     applicable: true
-    implemented: false
-    note: >-
-      Not implemented in this release: would require an RBAC analyzer check for
-      subjects with create access on the persistentvolumes resource (relevant
-      because a PersistentVolume can reference a hostPath, which is itself
-      restricted at the pod level by workload.no-hostpath-volumes).
+    policyIds: ["rbac.no-persistentvolume-create-access"]
 
   - id: "5.1.10"
     title: "Minimize access to the proxy sub-resource of nodes"
     section: "RBAC and Service Accounts"
     applicable: true
-    implemented: false
-    note: "Not implemented in this release: would require an RBAC analyzer check for subjects with get/create access on the nodes/proxy sub-resource, which grants kubelet-API-equivalent access bypassing normal admission control."
+    policyIds: ["rbac.no-node-proxy-access"]
 
   - id: "5.1.11"
     title: "Minimize access to the approval sub-resource of certificatesigningrequests objects"
     section: "RBAC and Service Accounts"
     applicable: true
-    implemented: false
-    note: "Not implemented in this release: would require an RBAC analyzer check for subjects with update access on the certificatesigningrequests/approval sub-resource, which allows minting new cluster credentials."
+    policyIds: ["rbac.no-csr-approval-access"]
 
   - id: "5.1.12"
     title: "Minimize access to webhook configuration objects"
     section: "RBAC and Service Accounts"
     applicable: true
-    implemented: false
-    note: "Not implemented in this release: would require an RBAC analyzer check for subjects with write access to validatingwebhookconfigurations/mutatingwebhookconfigurations, which can be used to intercept or bypass admission control."
+    policyIds: ["rbac.no-webhook-config-write-access"]
 
   - id: "5.1.13"
     title: "Minimize access to the service account token creation"
     section: "RBAC and Service Accounts"
     applicable: true
-    implemented: false
-    note: "Not implemented in this release: would require an RBAC analyzer check for subjects with create access on the serviceaccounts/token sub-resource, which allows minting new, potentially long-lived service account credentials."
+    policyIds: ["rbac.no-serviceaccount-token-create-access"]
 
   # 5.2 Pod Security Standards
 

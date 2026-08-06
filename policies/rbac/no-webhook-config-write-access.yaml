@@ -1,0 +1,39 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: rbac.no-webhook-config-write-access
+  annotations:
+    audit.k8s-auditor.io/title: "Role/ClusterRole grants write access to webhook configuration objects"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: rbac
+    audit.k8s-auditor.io/remediation: >-
+      Remove create/update/patch/delete access to
+      validatingwebhookconfigurations/mutatingwebhookconfigurations unless
+      the subject is a trusted, audited webhook-management controller. Write
+      access here can install a webhook that intercepts or bypasses
+      admission control cluster-wide.
+    audit.k8s-auditor.io/cis: "5.1.12"
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["rbac.authorization.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["roles", "clusterroles"]
+  validations:
+    - expression: |-
+        !has(object.rules) || object.rules.all(r,
+          !(
+            has(r.apiGroups) && (r.apiGroups.exists(g, g == "admissionregistration.k8s.io") || r.apiGroups.exists(g, g == "*")) &&
+            has(r.resources) && (
+              r.resources.exists(x, x in ["validatingwebhookconfigurations", "mutatingwebhookconfigurations"]) ||
+              r.resources.exists(x, x == "*")
+            ) &&
+            has(r.verbs) && (
+              r.verbs.exists(v, v in ["create", "update", "patch", "delete", "deletecollection"]) ||
+              r.verbs.exists(v, v == "*")
+            )
+          )
+        )
+      message: "Role/ClusterRole grants write access to validatingwebhookconfigurations/mutatingwebhookconfigurations."

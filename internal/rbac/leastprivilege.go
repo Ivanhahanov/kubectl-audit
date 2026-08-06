@@ -130,6 +130,43 @@ func subjectRef(sk SubjectKey) findings.ResourceRef {
 	return findings.ResourceRef{Kind: sk.Kind, Namespace: sk.Namespace, Name: sk.Name}
 }
 
+// subjectLabel names a subject with its namespace inline for ServiceAccounts
+// — redundant with the finding's Resource field, but resilient to how a
+// report renders that field, and much clearer when skimming a long flat
+// finding list. Group/User subjects have no namespace to state; see
+// subjectScopeNote for the clarification they need instead.
+func subjectLabel(sk SubjectKey) string {
+	if sk.Kind == "ServiceAccount" {
+		return fmt.Sprintf("ServiceAccount %q in namespace %q", sk.Name, sk.Namespace)
+	}
+	return fmt.Sprintf("%s %q", sk.Kind, sk.Name)
+}
+
+// subjectScopeNote clarifies, for Group/User subjects only, that they're not
+// tied to one namespace the way a ServiceAccount is — without this, "where
+// do I even look for this" is a real, reported source of confusion, since a
+// Group/User grant could come from a RoleBinding in any namespace or a
+// ClusterRoleBinding.
+func subjectScopeNote(sk SubjectKey) string {
+	if sk.Kind == "ServiceAccount" {
+		return ""
+	}
+	return fmt.Sprintf(" %s %q is a cluster-wide identity, not tied to one namespace — check every RoleBinding/ClusterRoleBinding subject list for this exact name to find where it's actually granted.", sk.Kind, sk.Name)
+}
+
+// bindingLabel names the actual Role/ClusterRoleBinding or RoleBinding
+// object granting access — not just the Role/ClusterRole it points at.
+// Citing only the Role/ClusterRole name is close to useless for tracking
+// down what to edit/delete: the same ClusterRole is commonly bound to many
+// different subjects via many different bindings, and "via ClusterRole X"
+// alone doesn't say which of them involves this particular subject.
+func bindingLabel(via BindingRef) string {
+	if via.BindingNamespace != "" {
+		return fmt.Sprintf("%s %q", via.BindingKind, via.BindingNamespace+"/"+via.BindingName)
+	}
+	return fmt.Sprintf("%s %q", via.BindingKind, via.BindingName)
+}
+
 func finding(policyID, title string, sev findings.Severity, cis []string, ref findings.ResourceRef, message, remediation, source string, discriminator ...string) findings.Finding {
 	return findings.Finding{
 		ID:          findings.NewID(policyID, ref, discriminator...),
@@ -153,7 +190,7 @@ func checkEscalationVerbs(sp *SubjectPermissions, source string) []findings.Find
 			if !contains(escalationVerbs, v) {
 				continue
 			}
-			key := v + "|" + r.Via.RoleName
+			key := v + "|" + r.Via.BindingKind + "|" + r.Via.BindingNamespace + "|" + r.Via.BindingName
 			if seen[key] {
 				continue
 			}
@@ -165,8 +202,8 @@ func checkEscalationVerbs(sp *SubjectPermissions, source string) []findings.Find
 				findings.SeverityCritical,
 				[]string{"5.1.3"},
 				ref,
-				fmt.Sprintf("%s %q can use the %q verb (via %s %q), which can be used to grant itself additional permissions.",
-					sp.Subject.Kind, sp.Subject.Name, v, r.Via.RoleKind, r.Via.RoleName),
+				fmt.Sprintf("%s can use the %q verb via %s → %s %q, which can be used to grant itself additional permissions.%s",
+					subjectLabel(sp.Subject), v, bindingLabel(r.Via), r.Via.RoleKind, r.Via.RoleName, subjectScopeNote(sp.Subject)),
 				"Remove escalate/bind/impersonate from this role unless the subject is a trusted, audited controller that genuinely needs it.",
 				source,
 				key,
@@ -186,7 +223,7 @@ func checkExecAccess(sp *SubjectPermissions, source string) []findings.Finding {
 		if !containsAny(r.Verbs, []string{"create", "get", "*"}) {
 			continue
 		}
-		key := r.Via.RoleName + "|" + r.Namespace
+		key := r.Via.BindingKind + "|" + r.Via.BindingNamespace + "|" + r.Via.BindingName
 		if seen[key] {
 			continue
 		}
@@ -199,8 +236,8 @@ func checkExecAccess(sp *SubjectPermissions, source string) []findings.Finding {
 			findings.SeverityHigh,
 			[]string{"5.1.3"},
 			ref,
-			fmt.Sprintf("%s %q can create pods/exec, pods/attach, or pods/portforward %s (via %s %q), which is equivalent to shell access on any matching pod.",
-				sp.Subject.Kind, sp.Subject.Name, scope, r.Via.RoleKind, r.Via.RoleName),
+			fmt.Sprintf("%s can create pods/exec, pods/attach, or pods/portforward %s via %s → %s %q, which is equivalent to shell access on any matching pod.%s",
+				subjectLabel(sp.Subject), scope, bindingLabel(r.Via), r.Via.RoleKind, r.Via.RoleName, subjectScopeNote(sp.Subject)),
 			"Restrict pods/exec, pods/attach, and pods/portforward to a small, audited set of subjects, ideally scoped with resourceNames.",
 			source,
 			key,
@@ -213,6 +250,8 @@ func checkSecretsBreadth(sp *SubjectPermissions, source string) []findings.Findi
 	readVerbs := []string{"get", "list", "watch", "*"}
 	clusterWide := false
 	namespaces := map[string]bool{}
+	seenBindings := map[string]bool{}
+	var bindingLabels []string
 
 	for _, r := range sp.Rules {
 		if !containsAny(r.Resources, []string{"secrets", "*"}) {
@@ -226,20 +265,28 @@ func checkSecretsBreadth(sp *SubjectPermissions, source string) []findings.Findi
 		} else {
 			namespaces[r.Namespace] = true
 		}
+		bl := fmt.Sprintf("%s → %s %q", bindingLabel(r.Via), r.Via.RoleKind, r.Via.RoleName)
+		if !seenBindings[bl] {
+			seenBindings[bl] = true
+			bindingLabels = append(bindingLabels, bl)
+		}
 	}
 
 	if !clusterWide && len(namespaces) <= 1 {
 		return nil
 	}
 
+	sort.Strings(bindingLabels)
+	via := strings.Join(bindingLabels, "; ")
+
 	ref := subjectRef(sp.Subject)
 	var message string
 	sev := findings.SeverityMedium
 	if clusterWide {
 		sev = findings.SeverityHigh
-		message = fmt.Sprintf("%s %q can read Secrets cluster-wide.", sp.Subject.Kind, sp.Subject.Name)
+		message = fmt.Sprintf("%s can read Secrets cluster-wide, via: %s.%s", subjectLabel(sp.Subject), via, subjectScopeNote(sp.Subject))
 	} else {
-		message = fmt.Sprintf("%s %q can read Secrets across %d namespaces.", sp.Subject.Kind, sp.Subject.Name, len(namespaces))
+		message = fmt.Sprintf("%s can read Secrets across %d namespaces, via: %s.%s", subjectLabel(sp.Subject), len(namespaces), via, subjectScopeNote(sp.Subject))
 	}
 	return []findings.Finding{finding(
 		"rbac-analyzer.broad-secrets-access",
@@ -263,7 +310,7 @@ func checkRBACSelfModification(sp *SubjectPermissions, source string) []findings
 		if !containsAny(r.Verbs, writeVerbs) && !contains(r.Verbs, "*") {
 			continue
 		}
-		key := r.Via.RoleName + "|" + r.Namespace
+		key := r.Via.BindingKind + "|" + r.Via.BindingNamespace + "|" + r.Via.BindingName
 		if seen[key] {
 			continue
 		}
@@ -275,8 +322,8 @@ func checkRBACSelfModification(sp *SubjectPermissions, source string) []findings
 			findings.SeverityHigh,
 			[]string{"5.1.3"},
 			ref,
-			fmt.Sprintf("%s %q can create/update/patch/delete Roles, ClusterRoles, or *Bindings %s (via %s %q), allowing it to grant itself further access.",
-				sp.Subject.Kind, sp.Subject.Name, scopeLabel(r.Namespace), r.Via.RoleKind, r.Via.RoleName),
+			fmt.Sprintf("%s can create/update/patch/delete Roles, ClusterRoles, or *Bindings %s via %s → %s %q, allowing it to grant itself further access.%s",
+				subjectLabel(sp.Subject), scopeLabel(r.Namespace), bindingLabel(r.Via), r.Via.RoleKind, r.Via.RoleName, subjectScopeNote(sp.Subject)),
 			"Remove write access to RBAC resources from this role unless the subject is a trusted RBAC-management controller.",
 			source,
 			key,

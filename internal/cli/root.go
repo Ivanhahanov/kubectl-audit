@@ -19,6 +19,7 @@ var (
 	flagPolicyDirs        []string
 	flagOutputJSON        string
 	flagOutputMD          string
+	flagOutputCSV         string
 	flagFailOn            string
 	flagFrameworks        []string
 	flagReportTemplate    string
@@ -68,8 +69,9 @@ func addTargetFlags(cmd *cobra.Command) {
 // by every command that calls writeOutputs (scan, rbac analyze).
 func addOutputFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
-	f.StringVar(&flagOutputJSON, "output-json", "", "path to write findings.json (default: from config, \"findings.json\")")
-	f.StringVar(&flagOutputMD, "output-md", "", "path to write report.md (default: from config, \"report.md\")")
+	f.StringVar(&flagOutputJSON, "output-json", "", "path to write findings JSON (default: from config, or \"findings.json\"/\"rbac-findings.json\" depending on the command)")
+	f.StringVar(&flagOutputMD, "output-md", "", "path to write the Markdown report (default: from config, or \"report.md\"/\"rbac-report.md\" depending on the command)")
+	f.StringVar(&flagOutputCSV, "output-csv", "", "path to write findings as CSV, one row per finding — for spreadsheet sort/filter/pivot (default: not written)")
 	f.StringVar(&flagFailOn, "fail-on", "", "minimum severity that causes a non-zero exit: none|low|medium|high|critical (default: from config, \"high\")")
 	f.StringVar(&flagReportTemplate, "report-template", "", "path to a custom report.md.tpl (Go text/template); default uses the built-in template (see 'kubectl-audit template dump')")
 }

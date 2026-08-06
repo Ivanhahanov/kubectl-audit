@@ -1,0 +1,32 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: rbac.no-node-proxy-access
+  annotations:
+    audit.k8s-auditor.io/title: "Role/ClusterRole grants access to the nodes/proxy sub-resource"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: rbac
+    audit.k8s-auditor.io/remediation: >-
+      Remove get/list/watch/create access to nodes/proxy unless the subject
+      genuinely needs it. It routes requests through the kubelet API,
+      bypassing normal API server admission control and authorization —
+      equivalent to direct kubelet access on the node.
+    audit.k8s-auditor.io/cis: "5.1.10"
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["rbac.authorization.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["roles", "clusterroles"]
+  validations:
+    - expression: |-
+        !has(object.rules) || object.rules.all(r,
+          !(
+            has(r.apiGroups) && (r.apiGroups.exists(g, g == "") || r.apiGroups.exists(g, g == "*")) &&
+            has(r.resources) && (r.resources.exists(x, x == "nodes/proxy") || r.resources.exists(x, x == "*")) &&
+            has(r.verbs) && (r.verbs.exists(v, v in ["get", "list", "watch", "create"]) || r.verbs.exists(v, v == "*"))
+          )
+        )
+      message: "Role/ClusterRole grants get/list/watch/create access on the nodes/proxy sub-resource."

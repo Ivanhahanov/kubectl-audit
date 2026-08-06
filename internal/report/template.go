@@ -29,6 +29,28 @@ func DefaultTemplate() string {
 type SeverityGroup struct {
 	Severity findings.Severity
 	Findings []findings.Finding
+	Checks   []CheckGroup
+}
+
+// CheckGroup is every finding for one PolicyID within a SeverityGroup. Title/
+// Category/CIS/Remediation are the same for every finding of a given policy
+// by construction, so they're hoisted out and shown once instead of once per
+// affected resource — the fix for reports where the same VAP-based check
+// fires on many near-identical workloads and used to repeat its full message
+// and remediation text for each one. UniformMessage carries the shared
+// Message text when every finding in the group has the same one (true for
+// essentially every VAP-based check, whose message is a static string in the
+// policy YAML); it's left empty when messages differ per finding (true for
+// native checks like RBAC/PSS/control-plane, whose message is built
+// per-resource), in which case each finding's own Message is rendered.
+type CheckGroup struct {
+	PolicyID       string
+	Title          string
+	Category       string
+	CIS            []string
+	Remediation    string
+	UniformMessage string
+	Findings       []findings.Finding
 }
 
 // ResourceGroup is every finding against one resource.
@@ -82,6 +104,9 @@ func newTemplateData(r Result) TemplateData {
 		}
 		current.Findings = append(current.Findings, f)
 	}
+	for i := range groups {
+		groups[i].Checks = groupByCheck(groups[i].Findings)
+	}
 
 	return TemplateData{
 		GeneratedAt:         r.GeneratedAt,
@@ -99,6 +124,41 @@ func newTemplateData(r Result) TemplateData {
 		ConsolidatedSummary: compliance.Summarize(r.Frameworks),
 		RBACModel:           r.RBACModel,
 	}
+}
+
+// groupByCheck buckets a (severity-scoped) slice of findings by PolicyID,
+// preserving first-seen order. See CheckGroup's doc comment for why.
+func groupByCheck(sorted []findings.Finding) []CheckGroup {
+	var order []string
+	byPolicy := map[string][]findings.Finding{}
+	for _, f := range sorted {
+		if _, ok := byPolicy[f.PolicyID]; !ok {
+			order = append(order, f.PolicyID)
+		}
+		byPolicy[f.PolicyID] = append(byPolicy[f.PolicyID], f)
+	}
+
+	out := make([]CheckGroup, 0, len(order))
+	for _, id := range order {
+		fs := byPolicy[id]
+		uniform := fs[0].Message
+		for _, f := range fs[1:] {
+			if f.Message != uniform {
+				uniform = ""
+				break
+			}
+		}
+		out = append(out, CheckGroup{
+			PolicyID:       id,
+			Title:          fs[0].Title,
+			Category:       fs[0].Category,
+			CIS:            fs[0].CIS,
+			Remediation:    fs[0].Remediation,
+			UniformMessage: uniform,
+			Findings:       fs,
+		})
+	}
+	return out
 }
 
 // groupByNamespace buckets findings by namespace (cluster-scoped resources
@@ -163,6 +223,7 @@ func templateFuncs() template.FuncMap {
 	return template.FuncMap{
 		"escapeCell": escapeCell,
 		"orDash":     orDash,
+		"slug":       slug,
 		"join":       func(elems []string, sep string) string { return strings.Join(elems, sep) },
 		"rfc3339":    func(t time.Time) string { return t.Format(time.RFC3339) },
 		"bindingLabels": func(bindings []rbac.BindingRef) []string {

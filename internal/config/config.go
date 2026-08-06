@@ -81,7 +81,12 @@ func (p PoliciesConfig) IsDisabled(id string) bool {
 type OutputConfig struct {
 	JSON     string `json:"json,omitempty"`
 	Markdown string `json:"markdown,omitempty"`
-	FailOn   string `json:"failOn,omitempty"`
+	// CSV is a path to write findings as CSV, one row per finding — for
+	// loading into a spreadsheet to sort/filter/assign owners. Empty (the
+	// default) skips CSV output entirely; unlike JSON/Markdown there's no
+	// default filename, since most invocations don't want it.
+	CSV    string `json:"csv,omitempty"`
+	FailOn string `json:"failOn,omitempty"`
 	// Template is a path to a custom report.md.tpl (Go text/template). Empty
 	// uses the embedded default template.
 	Template string `json:"template,omitempty"`

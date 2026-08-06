@@ -7,6 +7,29 @@
 {{- end }}
 - **Policies loaded:** {{ .PoliciesLoaded }}
 
+## Table of Contents
+
+- [Scope](#scope)
+- [Summary](#summary)
+{{- range .Frameworks }}
+- [{{ .Title }} Compliance](#compliance-{{ slug .ID }})
+{{- end }}
+{{- if .ConsolidatedSummary }}
+- [Consolidated Compliance Summary](#consolidated-summary)
+{{- end }}
+{{- if .RBACModel }}
+- [RBAC Role Model](#rbac-role-model)
+{{- end }}
+{{- if .FindingsByNamespace }}
+- [Findings by Namespace (index)](#findings-by-namespace)
+{{- end }}
+- [Findings](#findings)
+{{- range .FindingsBySeverity }}
+  - [{{ .Severity }} ({{ len .Findings }})](#findings-{{ slug (print .Severity) }})
+{{- end }}
+
+<a id="scope"></a>
+
 ## Scope
 
 {{ if .Scope.OutOfScope -}}
@@ -19,6 +42,8 @@ Full scope: no structural gaps detected — control-plane, RBAC, and NetworkPoli
 observed for this target.
 {{- end }}
 
+<a id="summary"></a>
+
 ## Summary
 
 | Severity | Count |
@@ -28,24 +53,36 @@ observed for this target.
 {{- end }}
 | **Total** | **{{ .TotalFindings }}** |
 {{ range .Frameworks }}
+<a id="compliance-{{ slug .ID }}"></a>
+
 ## {{ .Title }} Compliance (v{{ .Version }})
+
+<details>
+<summary>Full control list ({{ len .Results }} controls) — click to expand</summary>
 
 | Control | Title | Section | Status | Findings | Related controls |
 |---|---|---|---|---|---|
 {{- range .Results }}
 | {{ .Control.ID }} | {{ escapeCell .Control.Title }} | {{ escapeCell .Control.Section }} | {{ .Status }} | {{ if eq (print .Status) "FAIL" }}{{ len .Findings }}{{ end }} | {{ crossRefs .Control }} |
 {{- end }}
+
+</details>
 {{- $notes := statusNotes . }}
 {{- if $notes }}
+<details>
+<summary>Not Applicable / Not Implemented notes</summary>
+
 {{ range $notes }}{{ . }}
 {{ end -}}
-{{- end }}
+</details>
+
+{{ end -}}
 {{- $failing := failingControls . }}
 {{- if $failing }}
 ### Failing controls — affected resources
 
-Full detail (message, remediation) for each of these is in **Findings by Namespace** and
-**Findings** below; this just shows which resources make each control fail.
+Full detail (message, remediation) for each of these is in **Findings** below, grouped by check;
+this just shows which resources make each control fail.
 {{ range $failing }}
 #### {{ .Control.ID }} — {{ escapeCell .Control.Title }}
 {{ range .Findings }}- **[{{ .Severity }}]** {{ .Resource.String }} — `{{ .PolicyID }}`
@@ -53,6 +90,8 @@ Full detail (message, remediation) for each of these is in **Findings by Namespa
 {{- end }}
 {{ end -}}
 {{- if .ConsolidatedSummary }}
+<a id="consolidated-summary"></a>
+
 ## Consolidated Compliance Summary
 
 | Framework | Version | Pass | Fail | N/A | Not Implemented | Total |
@@ -62,6 +101,8 @@ Full detail (message, remediation) for each of these is in **Findings by Namespa
 {{- end }}
 {{ end -}}
 {{- if .RBACModel }}
+<a id="rbac-role-model"></a>
+
 ## RBAC Role Model
 
 | Subject | Namespace | Bindings | Permissions | Risk Flags |
@@ -71,37 +112,49 @@ Full detail (message, remediation) for each of these is in **Findings by Namespa
 {{- end }}
 {{ end }}
 {{- if .FindingsByNamespace }}
-## Findings by Namespace
+<a id="findings-by-namespace"></a>
 
-One place per app/team to see everything affecting it, instead of hunting across the
-compliance sections above. Severity-first, cluster-wide view is in **Findings** below.
+<details>
+<summary><h2 style="display:inline">Findings by Namespace (index)</h2></summary>
+
+One place per app/team to see what's affecting it, one line per finding — no message/remediation
+text repeated here; look up the policy ID in **Findings** below for full detail on any of these.
 {{ range .FindingsByNamespace }}
 ### {{ if eq .Namespace "" }}Cluster-scoped{{ else }}{{ .Namespace }}{{ end }}
 {{ range .Resources }}
-#### {{ .Resource.Kind }}/{{ escapeCell .Resource.Name }}
-{{ range .Findings }}- **[{{ .Severity }}] `{{ .PolicyID }}`** — {{ .Message }}{{ if .Remediation }} _Remediation: {{ .Remediation }}_{{ end }}
+**{{ .Resource.Kind }}/{{ escapeCell .Resource.Name }}**
+{{ range .Findings }}- **[{{ .Severity }}]** `{{ .PolicyID }}`
 {{ end }}{{ end }}{{ end }}
+
+</details>
 {{ end }}
+<a id="findings"></a>
+
 ## Findings
 {{ if not .Findings }}
 No findings.
 {{- else -}}
 {{ range .FindingsBySeverity }}
-### {{ .Severity }}
-{{ range .Findings }}
-#### [{{ .PolicyID }}] {{ .Resource.String }}
+<a id="findings-{{ slug (print .Severity) }}"></a>
+
+### {{ .Severity }} ({{ len .Findings }})
+{{ range .Checks }}
+#### [{{ .PolicyID }}] {{ .Title }}
 
 - **Category:** {{ .Category }}
 {{- if .CIS }}
 - **CIS:** {{ join .CIS ", " }}
 {{- end }}
-{{- if .Source }}
-- **Source:** {{ .Source }}
-{{- end }}
-- **Message:** {{ .Message }}
 {{- if .Remediation }}
 - **Remediation:** {{ .Remediation }}
 {{- end }}
+- **Affected resources ({{ len .Findings }}):**
+{{ if .UniformMessage }}
+  _{{ .UniformMessage }}_
+{{ range .Findings }}  - {{ .Resource.String }}{{ if .Source }} (`{{ .Source }}`){{ end }}
+{{ end }}{{ else }}
+{{ range .Findings }}  - **{{ .Resource.String }}**{{ if .Source }} (`{{ .Source }}`){{ end }} — {{ .Message }}
+{{ end }}{{ end }}
 {{ end -}}
 {{ end -}}
 {{- end }}
