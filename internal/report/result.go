@@ -26,6 +26,20 @@ type ScopeNote struct {
 // from what was actually loaded/observed (see internal/cli's buildScope).
 type Scope struct {
 	OutOfScope []ScopeNote `json:"outOfScope,omitempty"`
+	// Caveats are checks that DID run (unlike OutOfScope) but carry a
+	// lower-confidence warning worth surfacing prominently once instead of
+	// repeating in every affected finding — e.g. alpha/experimental check
+	// families like istio.*.
+	Caveats []ScopeNote `json:"caveats,omitempty"`
+}
+
+// SuppressedFinding is a finding an exclusion rule (see
+// config.ExclusionRule) matched, kept in the report with its reason instead
+// of silently vanishing. Excluded from Summary, the --fail-on gate, and CSV
+// export — but still visible in the Markdown/JSON report.
+type SuppressedFinding struct {
+	Finding findings.Finding `json:"finding"`
+	Reason  string           `json:"reason"`
 }
 
 // Result is everything a scan produced, ready to render.
@@ -39,11 +53,16 @@ type Result struct {
 	Scope          Scope
 	PoliciesLoaded int
 	Findings       []findings.Finding
+	Suppressed     []SuppressedFinding
 	RBACModel      []rbac.SubjectModel
 	Frameworks     []compliance.Scorecard
+	// ReportView selects how RenderMarkdown structures the Findings
+	// section(s): "check" (default), "namespace", or "both". Empty is
+	// treated as "check". See config.OutputConfig.ReportView.
+	ReportView string
 }
 
-// Summary counts findings by severity.
+// Summary counts findings by severity. Suppressed findings aren't counted.
 func (r Result) Summary() findings.Summary {
 	return findings.Summarize(r.Findings)
 }

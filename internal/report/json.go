@@ -18,6 +18,7 @@ type jsonOutput struct {
 	PoliciesLoaded    int                           `json:"policiesLoaded"`
 	Summary           findings.Summary              `json:"summary"`
 	Findings          []findings.Finding            `json:"findings"`
+	Suppressed        []SuppressedFinding           `json:"suppressed,omitempty"`
 	RBACModel         []rbac.SubjectModel           `json:"rbacModel,omitempty"`
 	Frameworks        []compliance.Scorecard        `json:"compliance,omitempty"`
 	ComplianceSummary []compliance.FrameworkSummary `json:"complianceSummary,omitempty"`
@@ -33,6 +34,7 @@ func RenderJSON(r Result) ([]byte, error) {
 		PoliciesLoaded:    r.PoliciesLoaded,
 		Summary:           r.Summary(),
 		Findings:          nonNil(r.Findings),
+		Suppressed:        r.Suppressed,
 		RBACModel:         r.RBACModel,
 		Frameworks:        r.Frameworks,
 		ComplianceSummary: compliance.Summarize(r.Frameworks),

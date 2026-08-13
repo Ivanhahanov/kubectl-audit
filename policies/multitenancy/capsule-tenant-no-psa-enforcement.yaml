@@ -1,0 +1,30 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: multitenancy.capsule-tenant-no-psa-enforcement
+  annotations:
+    audit.k8s-auditor.io/title: "Capsule Tenant does not pin Pod Security Standards enforcement"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: multitenancy
+    audit.k8s-auditor.io/remediation: >-
+      Add a pod-security.kubernetes.io/enforce label to
+      spec.namespaceOptions.requiredMetadata.labels on the Tenant, so every
+      namespace Capsule creates for it is required to carry Pod Security
+      Admission enforcement (same underlying gap as
+      psa-analyzer.no-active-enforcement, pinned at the tenant level so
+      tenant owners can't remove it from namespaces they self-service).
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["capsule.clastix.io"]
+        apiVersions: ["v1beta2"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["tenants"]
+  validations:
+    - expression: |-
+        has(object.spec.namespaceOptions) &&
+        has(object.spec.namespaceOptions.requiredMetadata) &&
+        has(object.spec.namespaceOptions.requiredMetadata.labels) &&
+        ('pod-security.kubernetes.io/enforce' in object.spec.namespaceOptions.requiredMetadata.labels)
+      message: "Tenant does not require the pod-security.kubernetes.io/enforce label in spec.namespaceOptions.requiredMetadata.labels, so its namespaces have no baked-in Pod Security Standards enforcement pinned by Capsule."

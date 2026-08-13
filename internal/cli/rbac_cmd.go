@@ -8,6 +8,7 @@ import (
 
 	"github.com/ivanhahanov/kubectl-audit/internal/rbac"
 	"github.com/ivanhahanov/kubectl-audit/internal/report"
+	"github.com/ivanhahanov/kubectl-audit/internal/suppress"
 )
 
 func newRBACCmd() *cobra.Command {
@@ -44,7 +45,7 @@ func newRBACAnalyzeCmd() *cobra.Command {
 				cfg.Output.Markdown = "rbac-report.md"
 			}
 
-			resources, _, target, _, err := loadResources(cmd.Context(), cfg)
+			resources, unfiltered, target, _, err := loadResources(cmd.Context(), cfg)
 			if err != nil {
 				return err
 			}
@@ -54,18 +55,26 @@ func newRBACAnalyzeCmd() *cobra.Command {
 				return err
 			}
 
+			kept, suppressed := suppress.Apply(rbacResult.Findings, cfg.Exclusions, suppress.BuildLabelIndex(unfiltered))
+
 			result := report.Result{
 				GeneratedAt: time.Now(),
 				Target:      target,
-				Findings:    rbacResult.Findings,
+				Findings:    kept,
+				Suppressed:  toReportSuppressed(suppressed),
 				RBACModel:   rbacResult.Model,
+				ReportView:  cfg.Output.ReportView,
 			}
 
 			if err := writeOutputs(cfg, result); err != nil {
 				return err
 			}
 
-			fmt.Printf("Analyzed RBAC for %s — %d subject(s), %d finding(s)\n", target, len(rbacResult.Model), len(rbacResult.Findings))
+			fmt.Printf("Analyzed RBAC for %s — %d subject(s), %d finding(s)", target, len(rbacResult.Model), len(kept))
+			if len(suppressed) > 0 {
+				fmt.Printf(" (%d suppressed)", len(suppressed))
+			}
+			fmt.Println()
 			if cfg.Output.JSON != "" {
 				fmt.Printf("Findings written to %s\n", cfg.Output.JSON)
 			}

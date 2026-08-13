@@ -79,14 +79,33 @@ type TemplateData struct {
 	Summary             findings.Summary
 	TotalFindings       int
 	Findings            []findings.Finding
+	Suppressed          []SuppressedFinding
 	FindingsBySeverity  []SeverityGroup
 	FindingsByNamespace []NamespaceGroup
 	Frameworks          []compliance.Scorecard
 	ConsolidatedSummary []compliance.FrameworkSummary
 	RBACModel           []rbac.SubjectModel
+	// ReportView is "check", "namespace", or "both" — see
+	// Result.ReportView. Controls which of Findings/FindingsBySeverity vs
+	// FindingsByNamespace the template renders, so a large report doesn't
+	// list every finding twice by default.
+	ReportView string
+	// NamespaceDetailed is true when FindingsByNamespace is the report's
+	// only findings view (ReportView == "namespace") — the template shows
+	// full message/remediation there instead of the compact
+	// severity+policyID index it uses when the check-grouped view (which
+	// already carries that detail) is also present.
+	NamespaceDetailed bool
 }
 
 func newTemplateData(r Result) TemplateData {
+	view := r.ReportView
+	if view == "" {
+		view = "check"
+	}
+	wantCheck := view == "check" || view == "both"
+	wantNamespace := view == "namespace" || view == "both"
+
 	sorted := append([]findings.Finding{}, r.Findings...)
 	findings.SortBySeverity(sorted)
 
@@ -104,8 +123,15 @@ func newTemplateData(r Result) TemplateData {
 		}
 		current.Findings = append(current.Findings, f)
 	}
-	for i := range groups {
-		groups[i].Checks = groupByCheck(groups[i].Findings)
+	if wantCheck {
+		for i := range groups {
+			groups[i].Checks = groupByCheck(groups[i].Findings)
+		}
+	}
+
+	var byNamespace []NamespaceGroup
+	if wantNamespace {
+		byNamespace = groupByNamespace(sorted)
 	}
 
 	return TemplateData{
@@ -118,11 +144,14 @@ func newTemplateData(r Result) TemplateData {
 		Summary:             r.Summary(),
 		TotalFindings:       len(r.Findings),
 		Findings:            sorted,
+		Suppressed:          r.Suppressed,
 		FindingsBySeverity:  groups,
-		FindingsByNamespace: groupByNamespace(sorted),
+		FindingsByNamespace: byNamespace,
 		Frameworks:          r.Frameworks,
 		ConsolidatedSummary: compliance.Summarize(r.Frameworks),
 		RBACModel:           r.RBACModel,
+		ReportView:          view,
+		NamespaceDetailed:   view == "namespace",
 	}
 }
 

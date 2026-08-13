@@ -1,0 +1,28 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: multitenancy.capsule-tenant-no-network-policies
+  annotations:
+    audit.k8s-auditor.io/title: "Capsule Tenant has no baked-in NetworkPolicy isolation"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: multitenancy
+    audit.k8s-auditor.io/remediation: >-
+      Set spec.networkPolicies.items on the Tenant so Capsule provisions a
+      default NetworkPolicy in every namespace it creates for this tenant.
+      Without it, tenant namespaces start with no isolation from each other
+      or the rest of the cluster (same underlying gap as
+      netpol-analyzer.no-network-policy-coverage, but at the tenant
+      definition instead of per-workload).
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["capsule.clastix.io"]
+        apiVersions: ["v1beta2"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["tenants"]
+  validations:
+    - expression: |-
+        has(object.spec.networkPolicies) && has(object.spec.networkPolicies.items) &&
+        size(object.spec.networkPolicies.items) > 0
+      message: "Tenant does not set spec.networkPolicies.items, so its namespaces get no baked-in NetworkPolicy isolation from Capsule."

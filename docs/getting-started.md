@@ -70,6 +70,10 @@ Available on `scan` and `rbac analyze`:
 
 - `--config audit.yaml` — load settings from a config file (see [Configuration]({{ '/configuration/' | relative_url }})); CLI flags override it. Global, works on every command.
 - `--context`, `--kubeconfig` — cluster targeting.
+- `--cluster-name` — human-readable name to use in the report's Target field and every finding's
+  Source, instead of the raw kube-context name (which defaults to `current-context` when
+  `--context` isn't set, or can be an unreadable cloud-provider ARN/UUID). Cosmetic only — doesn't
+  change what's scanned. Useful when scanning several clusters and archiving/diffing their reports.
 - `-f/--filename` (repeatable) — static manifest files or directories, matching `kubectl apply`'s own `-f/--filename`.
 - `--mode cluster|static|both` — defaults to `both`, or `static` automatically if `-f` is given without an explicit `--mode`.
 - `-n/--namespace` (repeatable), `-A/--all-namespaces` — namespace scoping in cluster mode.
@@ -84,6 +88,13 @@ Available on `scan` and `rbac analyze`:
   remediation who doesn't want the full Markdown/JSON — JSON is the better fit for feeding another
   tool programmatically.
 - `--report-template <file>` — custom `report.md.tpl`; see [Report Templates]({{ '/report-templates/' | relative_url }}).
+- `--report-view check|namespace|both` — how the Markdown report's Findings section(s) are
+  structured (default `check`). `check` groups findings by check/policy ID — each check's
+  title/remediation shown once, followed by the resources it fired on. `namespace` groups by
+  namespace/resource instead, full detail per finding — useful for a per-team/per-app handoff.
+  `both` renders the check-grouped view plus a compact by-namespace index. On a large cluster
+  `both` roughly doubles the number of finding lines in the report (every finding listed once per
+  view); pick `check` or `namespace` alone once the finding count gets into the hundreds/thousands.
 - `--fail-on none|low|medium|high|critical` — CI exit-code gate (default `high`).
 
 `scan`-only:
@@ -157,3 +168,8 @@ These are deliberate, documented boundaries rather than bugs:
   `matchConstraints` is applied directly to every resource.
 - Cilium/Calico NetworkPolicy coverage is presence-based, not a full selector simulation — see
   [NetworkPolicy Coverage]({{ '/network-policy/' | relative_url }}).
+- `matchConstraints.resourceRules[].resources` is matched against a fixed Kind→plural-resource-name
+  table (`internal/loader/kinds.go`), not derived from cluster discovery — a custom policy
+  targeting a Kind not in that table never matches anything (compiles fine, silently finds
+  nothing). Built-in Kinds and CRDs the bundled policies already target (e.g. Capsule's `Tenant`)
+  are covered; a custom policy for an unlisted Kind needs an entry added there.

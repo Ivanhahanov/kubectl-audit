@@ -28,6 +28,33 @@ checks whether any `NetworkPolicy` in the same namespace:
 If neither holds, the workload gets a `netpol-analyzer.no-network-policy-coverage` finding
 (severity High).
 
+## Reachability: two checks beyond presence
+
+Coverage answers "does *some* NetworkPolicy select this workload" — it doesn't say the policy is
+actually tight, or that egress is restricted at all. Two further, native-NetworkPolicy-only checks
+answer the concrete "where can this actually go" questions that are easiest to miss reading YAML by
+eye. Both are deliberately narrow, unambiguous structural checks, not a full connectivity-graph
+simulation (see [np-guard/netpol-analyzer](https://github.com/np-guard/netpol-analyzer) if you want
+that level of detail as a separate tool) — same Cilium/Calico presence-based skip as coverage above,
+so neither produces a false positive on a cluster that relies on them instead of native
+NetworkPolicy.
+
+- **`netpol-analyzer.broad-namespace-selector-rule`** (Medium): a rule's `from`/`to` entry sets
+  `namespaceSelector` without a `podSelector`. Per the NetworkPolicy API, that matches **every pod**
+  in the matched namespace(s), not specific ones — a well-known, easy-to-miss surprise when
+  reviewing a policy. An additionally-empty `namespaceSelector: {}` (matches all namespaces) is
+  called out explicitly in the message as the maximally broad case.
+- **`netpol-analyzer.no-egress-restriction`** (Medium): the egress mirror of the coverage check —
+  no NetworkPolicy actually restricts this workload's egress, so it can reach any destination
+  outbound, including the Kubernetes API server itself, every other namespace, and (network layer
+  permitting) the internet. Correctly follows the NetworkPolicy API's own `policyTypes` defaulting:
+  an explicit `policyTypes: ["Egress"]` counts even with zero `egress` rules (that's a strict
+  deny-all, still "restricted"); an *omitted* `policyTypes` only implies Egress coverage if the
+  policy actually has non-empty `egress` rules, mirroring how Kubernetes itself interprets it.
+
+Neither is currently mapped to a CIS/FSTEC/NSA control — they're a precision signal on top of
+`5.3.2`'s presence check, not a distinct external requirement.
+
 ## Cilium and Calico — presence, not simulation
 
 Both are detected automatically:

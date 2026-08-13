@@ -1,0 +1,54 @@
+# kubectl-audit's own Capsule (github.com/projectcapsule/capsule)
+# multi-tenancy hardening checklist — not an external, third-party
+# authoritative standard.
+#
+# We looked for a real, maintained "Kubernetes multi-tenancy benchmark" to
+# map against instead of inventing our own IDs (the way cis.yaml/fstec.yaml/
+# nsa.yaml map to real external documents). The closest thing,
+# kubernetes-retired/multi-tenancy's kubectl-mtb sub-project, is archived
+# (retired June 2023) and its own README stated it was "in development and
+# not ready for usage" at the time — not something this tool should present
+# as an authoritative standard. So this mapping is scoped narrowly and
+# honestly: every control here corresponds 1:1 to a bundled
+# policies/multitenancy/*.yaml check against Capsule's Tenant CRD
+# (capsule.clastix.io/v1beta2), nothing more.
+#
+# This is NOT a general Kubernetes multi-tenancy assessment: node isolation,
+# storage isolation, and control-plane isolation (all covered in Kubernetes'
+# own "Multi-tenancy" docs and in kubectl-mtb's ideas) require node/
+# infrastructure-level observation this tool doesn't have, so they're left
+# out entirely rather than listed as NOT_APPLICABLE padding — there's no
+# fixed external control count to be honest about being incomplete against.
+id: capsule
+title: "Capsule Multi-Tenancy Hardening Checklist"
+version: "1beta2"
+controls:
+  - id: "isolation.network-policies"
+    title: "Tenant defines default NetworkPolicy isolation for its namespaces"
+    section: "Namespace & Network Isolation"
+    applicable: true
+    policyIds: ["multitenancy.capsule-tenant-no-network-policies"]
+
+  - id: "isolation.resource-quota"
+    title: "Tenant defines a resource quota ceiling for its namespaces"
+    section: "Resource Governance"
+    applicable: true
+    policyIds: ["multitenancy.capsule-tenant-no-resource-quota"]
+
+  - id: "isolation.limit-range"
+    title: "Tenant defines default/max container resource limits"
+    section: "Resource Governance"
+    applicable: true
+    policyIds: ["multitenancy.capsule-tenant-no-limit-range"]
+
+  - id: "isolation.psa-enforcement"
+    title: "Tenant pins Pod Security Standards enforcement on its namespaces"
+    section: "Pod Security"
+    applicable: true
+    policyIds: ["multitenancy.capsule-tenant-no-psa-enforcement"]
+
+  - id: "isolation.no-cluster-admin"
+    title: "Tenant does not grant cluster-admin to tenant subjects"
+    section: "RBAC Isolation"
+    applicable: true
+    policyIds: ["multitenancy.capsule-tenant-cluster-admin-binding"]

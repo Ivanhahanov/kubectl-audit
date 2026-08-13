@@ -15,10 +15,29 @@ frameworks at once, each from its own control table in
 | CIS Kubernetes Benchmark | `cis` | Public CIS Kubernetes Benchmark control structure. |
 | FSTEC | `fstec` | "Требования по безопасности информации, предъявляемые к средствам контейнеризации" — certifies the containerization *product* itself, not cluster config. |
 | NSA/CISA Kubernetes Hardening Guidance | `nsa` | v1.2 (August 2022), verified against the official PDF text section-by-section. |
+| Capsule Multi-Tenancy Hardening Checklist | `capsule` | **Not** an external standard — see below. |
 
 Default is `cis` alone. Treat every mapping as a practical cross-reference, not a substitute for
 the official document when compliance-grade attestation is required — wording/numbering can shift
 between revisions, and this tool only sees what's observable through the Kubernetes API.
+
+### `capsule`: this tool's own checklist, not a third-party standard
+
+Unlike the other three, `capsule` doesn't mirror an external document. We looked for a real,
+maintained "Kubernetes multi-tenancy benchmark" to map against — the closest thing,
+`kubernetes-retired/multi-tenancy`'s `kubectl-mtb` sub-project, is archived (retired June 2023) and
+its own README said it was "in development and not ready for usage" at the time, so presenting it
+as an authoritative standard would be dishonest. `capsule.yaml` is instead a narrow, self-authored
+checklist: every control corresponds 1:1 to a bundled `policies/multitenancy/*.yaml` check against
+[Capsule](https://github.com/projectcapsule/capsule)'s `Tenant` CRD (`capsule.clastix.io/v1beta2`)
+— whether a Tenant defines default NetworkPolicy isolation, a resource quota, a LimitRange, pinned
+Pod Security Standards enforcement, and whether it grants `cluster-admin` to tenant subjects.
+
+It only produces findings if the scan actually has Capsule `Tenant` objects; on any other cluster
+every control just shows zero findings, harmlessly. It's not a general multi-tenancy assessment —
+node isolation, storage isolation, and control-plane isolation aren't covered at all (not listed as
+`NOT_APPLICABLE` padding either, since there's no fixed external control count to be honest about
+being incomplete against).
 
 ## Cluster version awareness
 

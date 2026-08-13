@@ -28,9 +28,13 @@ func newScanCmd() *cobra.Command {
 			}
 
 			summary := result.Summary()
-			fmt.Printf("Scanned %s — %d polic%s loaded, %d finding(s): critical=%d high=%d medium=%d low=%d info=%d\n",
+			fmt.Printf("Scanned %s — %d polic%s loaded, %d finding(s): critical=%d high=%d medium=%d low=%d info=%d",
 				result.Target, result.PoliciesLoaded, plural(result.PoliciesLoaded, "y", "ies"), len(result.Findings),
 				summary["CRITICAL"], summary["HIGH"], summary["MEDIUM"], summary["LOW"], summary["INFO"])
+			if len(result.Suppressed) > 0 {
+				fmt.Printf(" (%d suppressed)", len(result.Suppressed))
+			}
+			fmt.Println()
 			for _, s := range compliance.Summarize(result.Frameworks) {
 				fmt.Printf("%s (%s) v%s — pass=%d fail=%d not_applicable=%d not_implemented=%d\n",
 					s.Title, s.ID, s.Version, s.Pass, s.Fail, s.NotApplicable, s.NotImplemented)

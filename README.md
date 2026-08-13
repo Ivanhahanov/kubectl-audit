@@ -96,6 +96,8 @@ relevant to it. Key flags available on `scan` and `rbac analyze`:
 
 - `--config audit.yaml` — load settings from a config file (see below); CLI flags override it. Global, works on every command.
 - `--context`, `--kubeconfig` — cluster targeting.
+- `--cluster-name` — human-readable name for the report's Target field and every finding's Source
+  instead of the raw context name; cosmetic only.
 - `-f/--filename` (repeatable) — static manifest files or directories, matching `kubectl apply`'s own `-f/--filename`.
 - `--mode cluster|static|both` — defaults to `both`, or `static` automatically if `-f` is given
   without an explicit `--mode`.
@@ -107,6 +109,9 @@ relevant to it. Key flags available on `scan` and `rbac analyze`:
 - `--output-csv` — write findings as CSV, one row per finding; not written by default.
 - `--report-template <file>` — custom `report.md.tpl` (Go `text/template`); default renders the
   same structure as before. See [Report template customization](#report-template-customization).
+- `--report-view check|namespace|both` — how the Findings section(s) are structured (default
+  `check`, grouped by check/policy ID). `both` lists every finding twice (once per view) — use
+  `check` or `namespace` alone once findings run into the hundreds/thousands.
 - `--fail-on none|low|medium|high|critical` — CI exit-code gate (default `high`).
 
 `scan`-only:

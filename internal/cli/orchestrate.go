@@ -23,6 +23,7 @@ import (
 	"github.com/ivanhahanov/kubectl-audit/internal/pss"
 	"github.com/ivanhahanov/kubectl-audit/internal/rbac"
 	"github.com/ivanhahanov/kubectl-audit/internal/report"
+	"github.com/ivanhahanov/kubectl-audit/internal/suppress"
 )
 
 // loadEffectiveConfig merges audit.yaml with the persistent CLI flags.
@@ -34,6 +35,9 @@ func loadEffectiveConfig(cmd *cobra.Command) (*config.AuditConfig, error) {
 
 	if flagContextName != "" {
 		cfg.Target.Context = flagContextName
+	}
+	if flagClusterName != "" {
+		cfg.Target.ClusterName = flagClusterName
 	}
 	if flagKubeconfig != "" {
 		cfg.Target.Kubeconfig = flagKubeconfig
@@ -86,6 +90,12 @@ func loadEffectiveConfig(cmd *cobra.Command) (*config.AuditConfig, error) {
 	}
 	if flagReportTemplate != "" {
 		cfg.Output.Template = flagReportTemplate
+	}
+	if flagReportView != "" {
+		cfg.Output.ReportView = flagReportView
+	}
+	if !config.ValidReportViews[cfg.Output.ReportView] {
+		return nil, fmt.Errorf("invalid --report-view %q: must be one of check, namespace, both", cfg.Output.ReportView)
 	}
 	if len(flagFrameworks) > 0 {
 		cfg.Compliance.Frameworks = splitCommaList(flagFrameworks)
@@ -153,6 +163,9 @@ func loadResources(ctx context.Context, cfg *config.AuditConfig) ([]loader.Resou
 		} else {
 			k8sVersion = versionInfo.GitVersion
 			src := loader.SourceLabel(cfg.Target.Context)
+			if cfg.Target.ClusterName != "" {
+				src = "cluster:" + cfg.Target.ClusterName
+			}
 			res, err := loader.LoadCluster(ctx, client, loader.ClusterOptions{
 				Namespaces:    cfg.Target.Namespaces,
 				AllNamespaces: cfg.Target.AllNamespaces || len(cfg.Target.Namespaces) == 0,
@@ -216,12 +229,17 @@ func namespaceIndex(resources []loader.Resource) map[string]*loader.Resource {
 // an incomplete-static-scan false positive/negative for a real finding.
 func buildScope(cfg *config.AuditConfig, resources []loader.Resource, k8sVersion string, observed map[string]bool) report.Scope {
 	var notes []report.ScopeNote
+	var caveats []report.ScopeNote
 
 	hasRBAC := false
 	hasNetPol := false
+	hasIstio := false
 	netpolGVKs := netpol.CoverageGVKs()
 	for _, r := range resources {
 		gvk := r.GVK()
+		if gvk.Group == "security.istio.io" {
+			hasIstio = true
+		}
 		if gvk.Group == "rbac.authorization.k8s.io" {
 			hasRBAC = true
 		}
@@ -304,7 +322,19 @@ func buildScope(cfg *config.AuditConfig, resources []loader.Resource, k8sVersion
 		})
 	}
 
-	return report.Scope{OutOfScope: notes}
+	if hasIstio {
+		caveats = append(caveats, report.ScopeNote{
+			Title: "Istio checks (alpha — istio.* policies)",
+			Reason: "Each PeerAuthentication/AuthorizationPolicy object is evaluated independently; precedence across mesh/namespace/" +
+				"workload-level objects and merged-effective policy (what istioctl x authz check computes from a live sidecar) isn't " +
+				"computed. In Istio ambient mode (sidecarless), L4 mTLS is enforced by ztunnel, but L7 rules " +
+				"(to.operation.methods/paths/hosts) require a waypoint proxy deployed for the target workload/namespace — without " +
+				"one, an L7 AuthorizationPolicy silently isn't enforced at all. Treat istio.* findings as a starting point for manual " +
+				"review, not a final verdict.",
+		})
+	}
+
+	return report.Scope{OutOfScope: notes, Caveats: caveats}
 }
 
 // runScan executes the full pipeline: policy engine, RBAC analyzer,
@@ -353,6 +383,10 @@ func runScan(ctx context.Context, cfg *config.AuditConfig) (report.Result, error
 	if err != nil {
 		return report.Result{}, fmt.Errorf("analyzing network policy coverage: %w", err)
 	}
+	netpolReachabilityFindings, err := netpol.AnalyzeReachability(resources, target)
+	if err != nil {
+		return report.Result{}, fmt.Errorf("analyzing network policy reachability: %w", err)
+	}
 
 	pssFindings, err := pss.Analyze(resources, target, k8sVersion)
 	if err != nil {
@@ -383,6 +417,7 @@ func runScan(ctx context.Context, cfg *config.AuditConfig) (report.Result, error
 
 	all := append(policyFindings, rbacResult.Findings...)
 	all = append(all, netpolFindings...)
+	all = append(all, netpolReachabilityFindings...)
 	all = append(all, pssFindings...)
 	all = append(all, deprecatedAPIFindings...)
 	all = append(all, cpPolicyFindings...)
@@ -392,14 +427,18 @@ func runScan(ctx context.Context, cfg *config.AuditConfig) (report.Result, error
 	all = findings.Dedupe(all)
 	findings.SortBySeverity(all)
 
+	kept, suppressed := suppress.Apply(all, cfg.Exclusions, suppress.BuildLabelIndex(unfiltered))
+
 	result := report.Result{
 		GeneratedAt:    time.Now(),
 		Target:         target,
 		ClusterVersion: k8sVersion,
 		Scope:          buildScope(cfg, resources, k8sVersion, cpResult.Observed),
 		PoliciesLoaded: len(policies),
-		Findings:       all,
+		Findings:       kept,
+		Suppressed:     toReportSuppressed(suppressed),
 		RBACModel:      rbacResult.Model,
+		ReportView:     cfg.Output.ReportView,
 	}
 
 	validPolicyIDs := make(map[string]bool, len(policies))
@@ -416,7 +455,10 @@ func runScan(ctx context.Context, cfg *config.AuditConfig) (report.Result, error
 		mapping = compliance.OverrideUnobserved(mapping, controlplane.CheckIDPrefix, cpResult.Observed)
 		mapping = compliance.OverrideUnobserved(mapping, controlplane.VAPCheckIDPrefix, cpResult.Observed)
 		mapping = compliance.OverrideUnobserved(mapping, "version-analyzer.", map[string]bool{"cluster": k8sVersion != ""})
-		result.Frameworks = append(result.Frameworks, compliance.BuildScorecard(mapping, all))
+		// Uses result.Findings (post-suppression), not all: a suppressed
+		// finding is an accepted, documented risk, and shouldn't leave its
+		// compliance control showing FAIL.
+		result.Frameworks = append(result.Frameworks, compliance.BuildScorecard(mapping, result.Findings))
 	}
 
 	return result, nil
@@ -461,6 +503,20 @@ func writeOutputs(cfg *config.AuditConfig, result report.Result) error {
 		}
 	}
 	return nil
+}
+
+// toReportSuppressed adapts suppress.Suppressed (internal/suppress's view)
+// to report.SuppressedFinding (internal/report's view) — kept as distinct
+// types so report doesn't need to import suppress just for this struct.
+func toReportSuppressed(in []suppress.Suppressed) []report.SuppressedFinding {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]report.SuppressedFinding, len(in))
+	for i, s := range in {
+		out[i] = report.SuppressedFinding{Finding: s.Finding, Reason: s.Reason}
+	}
+	return out
 }
 
 // loadReportTemplate reads a custom report.md.tpl if configured; an empty

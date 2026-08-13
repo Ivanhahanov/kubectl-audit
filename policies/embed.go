@@ -4,5 +4,5 @@ package policies
 
 import "embed"
 
-//go:embed workload/*.yaml rbac/*.yaml network/*.yaml controlplane/*.yaml secrets/*.yaml
+//go:embed workload/*.yaml rbac/*.yaml network/*.yaml controlplane/*.yaml secrets/*.yaml multitenancy/*.yaml istio/*.yaml
 var FS embed.FS

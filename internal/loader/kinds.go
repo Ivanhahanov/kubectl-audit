@@ -26,6 +26,12 @@ var kindToResource = map[string]string{
 	"ClusterRoleBinding":    "clusterrolebindings",
 	"NetworkPolicy":         "networkpolicies",
 	"Ingress":               "ingresses",
+	// Tenant is Capsule's (github.com/projectcapsule/capsule) multi-tenancy
+	// CRD, capsule.clastix.io/v1beta2 — see policies/multitenancy/*.yaml.
+	"Tenant": "tenants",
+	// Istio security.istio.io CRDs — see policies/istio/*.yaml (alpha).
+	"PeerAuthentication":  "peerauthentications",
+	"AuthorizationPolicy": "authorizationpolicies",
 }
 
 // ResourceNameForKind returns the plural resource name for a known Kind.

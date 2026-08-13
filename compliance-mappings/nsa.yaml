@@ -152,14 +152,20 @@ controls:
   - id: "auth.authentication"
     title: "Authentication"
     section: "Authentication and authorization"
-    applicable: false
-    naReason: >-
-      The cluster's configured authentication method(s) and whether
-      anonymous requests are disabled are kube-apiserver flags, not API
-      objects. rbac.no-anonymous-binding (see RBAC and CIS 5.1.1) is
-      complementary: it flags bindings that grant access to
-      system:anonymous/system:unauthenticated if anonymous auth happens to
-      be enabled, but doesn't check the apiserver flag itself.
+    applicable: true
+    policyIds: ["controlplane.apiserver.anonymous-auth"]
+    crossRefs:
+      cis: ["1.2.1"]
+    note: >-
+      Only the --anonymous-auth apiserver flag is checked (indirect: from
+      the static Pod's command-line flags via the Kubernetes API, not
+      node/file access). Which other authentication method(s) are
+      configured (x509, OIDC, webhook, ...) and whether they're
+      appropriate is not evaluated — no single API-observable "correct"
+      answer applies to every cluster. rbac.no-anonymous-binding (CIS
+      5.1.1) is complementary: it flags bindings that grant access to
+      system:anonymous/system:unauthenticated if anonymous auth is
+      enabled.
 
   - id: "auth.rbac"
     title: "Role-based access control"
@@ -185,8 +191,21 @@ controls:
   - id: "audit.native-audit-logging"
     title: "Kubernetes native audit logging configuration"
     section: "Audit Logging and Threat Detection"
-    applicable: false
-    naReason: "kube-apiserver --audit-policy-file and audit backend flags are control-plane configuration, not visible via the API."
+    applicable: true
+    policyIds: ["controlplane.apiserver.audit-log-path", "controlplane.apiserver.audit-policy-file"]
+    nativeCheckIds:
+      - "controlplane-analyzer.apiserver.audit-log-maxage"
+      - "controlplane-analyzer.apiserver.audit-log-maxbackup"
+      - "controlplane-analyzer.apiserver.audit-log-maxsize"
+    crossRefs:
+      cis: ["1.2.16", "1.2.17", "1.2.18", "1.2.19", "3.2.1"]
+    note: >-
+      Indirect/heuristic: inferred from the kube-apiserver static Pod's
+      command-line flags via the Kubernetes API, not confirmed via
+      node/file access. Confirms an audit policy file and log path/
+      retention are configured; the audit policy's actual content (whether
+      it covers the key security-relevant events, CIS 3.2.2) isn't
+      inspected.
 
   - id: "audit.worker-node-logging"
     title: "Worker node and container logging"

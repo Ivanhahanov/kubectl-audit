@@ -8,6 +8,7 @@ import (
 var (
 	flagConfig            string
 	flagContextName       string
+	flagClusterName       string
 	flagKubeconfig        string
 	flagMode              string
 	flagFiles             []string
@@ -23,6 +24,7 @@ var (
 	flagFailOn            string
 	flagFrameworks        []string
 	flagReportTemplate    string
+	flagReportView        string
 )
 
 // NewRootCmd builds the kubectl-audit command tree.
@@ -56,6 +58,7 @@ func NewRootCmd() *cobra.Command {
 func addTargetFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 	f.StringVar(&flagContextName, "context", "", "kube context to use in cluster mode (default: current context)")
+	f.StringVar(&flagClusterName, "cluster-name", "", "human-readable cluster name to use in the report's Target field and every finding's Source, instead of the raw kube-context name (e.g. \"prod-eu-west-1\"); cosmetic only, doesn't change what's scanned")
 	f.StringVar(&flagKubeconfig, "kubeconfig", "", "path to kubeconfig (default: $KUBECONFIG or ~/.kube/config)")
 	f.StringVar(&flagMode, "mode", "", "target mode: cluster|static|both (default: from config, or \"static\" if -f is set)")
 	f.StringArrayVarP(&flagFiles, "filename", "f", nil, "static manifest file or directory to audit (repeatable) — matches kubectl apply's -f/--filename")
@@ -74,6 +77,7 @@ func addOutputFlags(cmd *cobra.Command) {
 	f.StringVar(&flagOutputCSV, "output-csv", "", "path to write findings as CSV, one row per finding — for spreadsheet sort/filter/pivot (default: not written)")
 	f.StringVar(&flagFailOn, "fail-on", "", "minimum severity that causes a non-zero exit: none|low|medium|high|critical (default: from config, \"high\")")
 	f.StringVar(&flagReportTemplate, "report-template", "", "path to a custom report.md.tpl (Go text/template); default uses the built-in template (see 'kubectl-audit template dump')")
+	f.StringVar(&flagReportView, "report-view", "", "how the Markdown report's Findings section is structured: check|namespace|both (default: from config, \"check\"). \"both\" lists every finding twice (once per view) — use \"check\" or \"namespace\" alone on large reports to avoid that duplication.")
 }
 
 // addPolicyDirFlag registers --policy-dir on commands that load VAP
@@ -87,7 +91,7 @@ func addPolicyDirFlag(cmd *cobra.Command) {
 // explicitly disables compliance scoring, so offering the flag there would
 // silently do nothing.
 func addFrameworksFlag(cmd *cobra.Command) {
-	cmd.Flags().StringArrayVar(&flagFrameworks, "frameworks", nil, "compliance framework(s) to score against: cis|fstec|nsa, or a path to a custom mapping YAML (repeatable or comma-separated; default: from config, \"cis\")")
+	cmd.Flags().StringArrayVar(&flagFrameworks, "frameworks", nil, "compliance framework(s) to score against: cis|fstec|nsa|capsule, or a path to a custom mapping YAML (repeatable or comma-separated; default: from config, \"cis\")")
 }
 
 // addCheckUpdatesFlag registers --check-updates on scan only: it's read by

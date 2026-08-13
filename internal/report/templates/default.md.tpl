@@ -21,11 +21,16 @@
 - [RBAC Role Model](#rbac-role-model)
 {{- end }}
 {{- if .FindingsByNamespace }}
-- [Findings by Namespace (index)](#findings-by-namespace)
+- [Findings by Namespace{{ if not .NamespaceDetailed }} (index){{ end }}](#findings-by-namespace)
 {{- end }}
+{{- if ne .ReportView "namespace" }}
 - [Findings](#findings)
 {{- range .FindingsBySeverity }}
   - [{{ .Severity }} ({{ len .Findings }})](#findings-{{ slug (print .Severity) }})
+{{- end }}
+{{- end }}
+{{- if .Suppressed }}
+- [Suppressed Findings](#suppressed-findings)
 {{- end }}
 
 <a id="scope"></a>
@@ -41,6 +46,13 @@ Not covered by this scan:
 Full scope: no structural gaps detected — control-plane, RBAC, and NetworkPolicy objects were all
 observed for this target.
 {{- end }}
+{{- if .Scope.Caveats }}
+
+Checked, but with a lower-confidence caveat worth reading before trusting the result:
+
+{{ range .Scope.Caveats }}- **{{ .Title }}** — {{ .Reason }}
+{{ end -}}
+{{- end }}
 
 <a id="summary"></a>
 
@@ -52,6 +64,9 @@ observed for this target.
 | {{ . }} | {{ index $.Summary . }} |
 {{- end }}
 | **Total** | **{{ .TotalFindings }}** |
+{{- if .Suppressed }}
+| **Suppressed** | **{{ len .Suppressed }}** (see [Suppressed Findings](#suppressed-findings)) |
+{{- end }}
 {{ range .Frameworks }}
 <a id="compliance-{{ slug .ID }}"></a>
 
@@ -111,10 +126,20 @@ this just shows which resources make each control fail.
 | {{ .Subject.Kind }}/{{ escapeCell .Subject.Name }} | {{ orDash .Subject.Namespace }} | {{ escapeCell (join (bindingLabels .Bindings) "<br>") }} | {{ escapeCell (join .Permissions "<br>") }} | {{ escapeCell (join .RiskFlags "<br>") }} |
 {{- end }}
 {{ end }}
-{{- if .FindingsByNamespace }}
+{{- if or .FindingsByNamespace .NamespaceDetailed }}
 <a id="findings-by-namespace"></a>
 
-<details>
+{{ if .NamespaceDetailed }}## Findings by Namespace
+
+{{ if not .FindingsByNamespace }}No findings.
+{{ else }}Every finding, grouped by namespace and then by resource.
+{{ range .FindingsByNamespace }}
+### {{ if eq .Namespace "" }}Cluster-scoped{{ else }}{{ .Namespace }}{{ end }}
+{{ range .Resources }}
+#### {{ .Resource.Kind }}/{{ escapeCell .Resource.Name }}
+{{ range .Findings }}- **[{{ .Severity }}] `{{ .PolicyID }}`** — {{ .Message }}{{ if .Remediation }} _Remediation: {{ .Remediation }}_{{ end }}
+{{ end }}{{ end }}{{ end }}{{ end }}
+{{ else }}<details>
 <summary><h2 style="display:inline">Findings by Namespace (index)</h2></summary>
 
 One place per app/team to see what's affecting it, one line per finding — no message/remediation
@@ -128,6 +153,8 @@ text repeated here; look up the policy ID in **Findings** below for full detail 
 
 </details>
 {{ end }}
+{{ end }}
+{{- if ne .ReportView "namespace" }}
 <a id="findings"></a>
 
 ## Findings
@@ -157,4 +184,19 @@ No findings.
 {{ end }}{{ end }}
 {{ end -}}
 {{ end -}}
+{{- end }}
+{{- end }}
+{{- if .Suppressed }}
+
+<a id="suppressed-findings"></a>
+
+<details>
+<summary><h2 style="display:inline">Suppressed Findings ({{ len .Suppressed }})</h2></summary>
+
+Matched an `exclusions` rule in `audit.yaml` — not counted in Summary and don't affect `--fail-on`.
+{{ range .Suppressed }}
+- **[{{ .Finding.Severity }}] `{{ .Finding.PolicyID }}`** {{ .Finding.Resource.String }} — _{{ .Reason }}_
+{{- end }}
+
+</details>
 {{- end }}

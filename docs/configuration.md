@@ -20,6 +20,13 @@ target:
   # Kube context to use in cluster mode. Empty = current context.
   context: ""
 
+  # Human-readable cluster name for the report's Target field and every
+  # finding's Source, instead of the raw context name above (which can be
+  # an unreadable cloud-provider ARN/UUID, or just "current-context" if
+  # `context` is empty). Cosmetic only. Useful when scanning several
+  # clusters and archiving/diffing their reports.
+  clusterName: ""
+
   # Scan every namespace (cluster mode). Set to false and list `namespaces`
   # to scope to specific namespaces.
   allNamespaces: true
@@ -70,13 +77,54 @@ output:
   # Custom report.md.tpl (Go text/template). Empty uses the built-in
   # template — see `kubectl audit template dump` and Report Templates.
   template: ""
+  # How the Markdown report's Findings section(s) are structured:
+  # check:     group by check/policy ID, title/remediation shown once per
+  #            check followed by the resources it fired on (default).
+  # namespace: group by namespace/resource instead, full detail per
+  #            finding — useful for a per-team/per-app handoff.
+  # both:      the check-grouped view plus a compact by-namespace index.
+  #            Roughly doubles the finding-line count on a large report
+  #            (every finding listed once per view) — prefer check or
+  #            namespace alone once findings run into the hundreds/thousands.
+  reportView: check
 
 compliance:
-  # Requirement framework(s) to score against: cis|fstec|nsa (see
+  # Requirement framework(s) to score against: cis|fstec|nsa|capsule (see
   # compliance-mappings/ for the full list), or a path to a custom mapping
-  # YAML. --frameworks on the CLI (scan only) overrides this.
+  # YAML. --frameworks on the CLI (scan only) overrides this. capsule is
+  # this tool's own Capsule (github.com/projectcapsule/capsule)
+  # multi-tenancy checklist, not an external standard like the other
+  # three — only produces findings if the cluster/manifests have Capsule
+  # Tenant objects.
   frameworks:
     - cis
+
+# Waivers for specific (check, resource) pairs — an accepted, documented
+# risk, not a silent gap. Config-file only (no CLI flag: a rule has too many
+# structured fields to fit one). Suppressed findings are never dropped: they
+# still get computed normally, then set aside with their reason preserved
+# in the report ("Suppressed Findings" section, findings.json's
+# `suppressed` array) — excluded only from Summary counts, --fail-on, CSV
+# export, and compliance scorecards.
+exclusions:
+  - # Restricts this rule to specific checks; omit (or ["*"]) to apply it
+    # to every check.
+    policyIds:
+      - workload.no-latest-tag
+
+    # At least one of kind/namespace/name/labels is required — an empty
+    # match is rejected at load time (it would silently suppress
+    # everything). All fields set here must match (AND).
+    match:
+      kind: Deployment          # exact match
+      namespace: legacy         # exact match
+      name: "legacy-*"          # path.Match glob; a literal name still
+                                 # works as an exact match
+      labels:                   # every key must be present with this
+        team: platform-legacy   # exact value on the source object
+
+    # Required — shown next to every finding this rule suppresses.
+    reason: "Legacy app pending migration, tracked in JIRA-1234"
 ```
 
 ## Field reference

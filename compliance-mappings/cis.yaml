@@ -639,8 +639,20 @@ controls:
   - id: "5.5.1"
     title: "Configure Image Provenance using ImagePolicyWebhook admission controller"
     section: "Extensible Admission Control"
-    applicable: false
-    naReason: "Whether the ImagePolicyWebhook admission plugin is enabled is a kube-apiserver startup flag, not visible via the Kubernetes API."
+    applicable: true
+    implemented: false
+    note: >-
+      Not implemented in this release: whether --enable-admission-plugins
+      includes ImagePolicyWebhook is visible via the kube-apiserver static
+      Pod's command-line flags (the same mechanism already used for
+      admission-serviceaccount/admission-namespacelifecycle/
+      admission-noderestriction), so this is technically checkable. Left
+      out because, like EventRateLimit (1.2.9) and AlwaysPullImages
+      (1.2.11), it's an opt-in plugin CIS itself frames as situational —
+      it also requires a working ImagePolicyWebhook backend service that
+      almost no cluster runs, so a presence-only check would FAIL on
+      nearly every cluster regardless of actual image-provenance posture,
+      which isn't an actionable signal.
 
   # 5.6 General Policies
 

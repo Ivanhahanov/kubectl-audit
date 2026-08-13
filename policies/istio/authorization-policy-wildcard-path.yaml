@@ -1,0 +1,34 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: istio.authorization-policy-wildcard-path
+  annotations:
+    audit.k8s-auditor.io/title: "[ALPHA] AuthorizationPolicy ALLOW rule grants every HTTP path"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: istio
+    audit.k8s-auditor.io/remediation: >-
+      Replace the wildcard in to.operation.paths with the specific path(s)
+      this caller actually needs. An L7 path/method restriction is only
+      enforced by the sidecar/ztunnel+waypoint data plane — in Istio
+      ambient mode, "to" (L7) rules require a waypoint proxy deployed for
+      the target workload/namespace, or they're not enforced at all; see
+      the Scope section for this caveat.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["security.istio.io"]
+        apiVersions: ["v1", "v1beta1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["authorizationpolicies"]
+  validations:
+    - expression: |-
+        (has(object.spec.action) && object.spec.action != "ALLOW") ||
+        !has(object.spec.rules) ||
+        !object.spec.rules.exists(r,
+          has(r.to) && r.to.exists(t,
+            has(t.operation) && has(t.operation.paths) &&
+            t.operation.paths.exists(p, p == "*" || p == "/*")
+          )
+        )
+      message: "[ALPHA] AuthorizationPolicy ALLOW rule's to.operation.paths includes a wildcard (\"*\" or \"/*\"), granting access to every HTTP path on the selected workload(s) instead of specific endpoints."

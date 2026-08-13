@@ -85,7 +85,7 @@ func TestSummarize(t *testing.T) {
 }
 
 func TestLoadMappingKnownFrameworks(t *testing.T) {
-	for _, id := range []string{"cis", "fstec", "nsa"} {
+	for _, id := range []string{"cis", "fstec", "nsa", "capsule"} {
 		m, err := compliance.LoadMapping(id)
 		if err != nil {
 			t.Fatalf("LoadMapping(%q): %v", id, err)
@@ -270,7 +270,7 @@ func TestMappedCheckIDsExist(t *testing.T) {
 		"controlplane-analyzer.apiserver.audit-log-maxsize":            true,
 	}
 
-	for _, id := range []string{"cis", "fstec", "nsa"} {
+	for _, id := range []string{"cis", "fstec", "nsa", "capsule"} {
 		m, err := compliance.LoadMapping(id)
 		if err != nil {
 			t.Fatalf("LoadMapping(%q): %v", id, err)
