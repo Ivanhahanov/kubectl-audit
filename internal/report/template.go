@@ -96,6 +96,14 @@ type TemplateData struct {
 	// severity+policyID index it uses when the check-grouped view (which
 	// already carries that detail) is also present.
 	NamespaceDetailed bool
+	// MultipleSources is true when this scan's findings actually came from
+	// more than one distinct Source (e.g. several files in a directory
+	// scan, or --mode both mixing static files with a live cluster). The
+	// template only prints each finding's per-resource "(source)" suffix
+	// when this is true — with a single source it's always identical to
+	// the report's own Target line, repeated on every single finding for
+	// no reason.
+	MultipleSources bool
 }
 
 func newTemplateData(r Result) TemplateData {
@@ -152,6 +160,7 @@ func newTemplateData(r Result) TemplateData {
 		RBACModel:           r.RBACModel,
 		ReportView:          view,
 		NamespaceDetailed:   view == "namespace",
+		MultipleSources:     r.MultipleSources,
 	}
 }
 
@@ -255,11 +264,21 @@ func templateFuncs() template.FuncMap {
 		"slug":       slug,
 		"join":       func(elems []string, sep string) string { return strings.Join(elems, sep) },
 		"rfc3339":    func(t time.Time) string { return t.Format(time.RFC3339) },
+		// bindingLabels names the actual Binding object(s) granting each
+		// row's Permissions, not just the Role/ClusterRole they point to —
+		// a shared ClusterRole can be bound by several different
+		// bindings, and only the binding name tells you which one to
+		// edit/delete (same reasoning as the per-finding messages in
+		// internal/rbac/leastprivilege.go).
 		"bindingLabels": func(bindings []rbac.BindingRef) []string {
 			var out []string
 			seen := map[string]bool{}
 			for _, b := range bindings {
-				label := fmt.Sprintf("%s/%s", b.RoleKind, b.RoleName)
+				bindingName := b.BindingName
+				if b.BindingNamespace != "" {
+					bindingName = b.BindingNamespace + "/" + b.BindingName
+				}
+				label := fmt.Sprintf("%s %q → %s/%s", b.BindingKind, bindingName, b.RoleKind, b.RoleName)
 				if seen[label] {
 					continue
 				}

@@ -60,6 +60,18 @@ type Result struct {
 	// section(s): "check" (default), "namespace", or "both". Empty is
 	// treated as "check". See config.OutputConfig.ReportView.
 	ReportView string
+	// MultipleSources is true when this scan actually loaded resources
+	// from more than one distinct place (e.g. several files in a
+	// directory scan, or --mode both mixing static files with a live
+	// cluster). Computed from the loaded resources themselves (see
+	// internal/cli's runScan), not from findings' Source strings — native
+	// analyzers (RBAC, PSS, NetworkPolicy, ...) stamp their findings with
+	// the whole scan's target string rather than one input resource's
+	// origin, which would make a naive per-finding comparison unreliable.
+	// The template only prints each finding's "(source)" suffix when this
+	// is true — with a single source it's always identical to the
+	// report's own Target line already shown once at the top.
+	MultipleSources bool
 }
 
 // Summary counts findings by severity. Suppressed findings aren't counted.

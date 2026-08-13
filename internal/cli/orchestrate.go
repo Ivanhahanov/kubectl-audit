@@ -430,15 +430,16 @@ func runScan(ctx context.Context, cfg *config.AuditConfig) (report.Result, error
 	kept, suppressed := suppress.Apply(all, cfg.Exclusions, suppress.BuildLabelIndex(unfiltered))
 
 	result := report.Result{
-		GeneratedAt:    time.Now(),
-		Target:         target,
-		ClusterVersion: k8sVersion,
-		Scope:          buildScope(cfg, resources, k8sVersion, cpResult.Observed),
-		PoliciesLoaded: len(policies),
-		Findings:       kept,
-		Suppressed:     toReportSuppressed(suppressed),
-		RBACModel:      rbacResult.Model,
-		ReportView:     cfg.Output.ReportView,
+		GeneratedAt:     time.Now(),
+		Target:          target,
+		ClusterVersion:  k8sVersion,
+		Scope:           buildScope(cfg, resources, k8sVersion, cpResult.Observed),
+		PoliciesLoaded:  len(policies),
+		Findings:        kept,
+		Suppressed:      toReportSuppressed(suppressed),
+		RBACModel:       rbacResult.Model,
+		ReportView:      cfg.Output.ReportView,
+		MultipleSources: hasMultipleSources(resources),
 	}
 
 	validPolicyIDs := make(map[string]bool, len(policies))
@@ -503,6 +504,25 @@ func writeOutputs(cfg *config.AuditConfig, result report.Result) error {
 		}
 	}
 	return nil
+}
+
+// hasMultipleSources reports whether the loaded resources actually came
+// from more than one distinct place (several files in a directory scan,
+// or --mode both mixing static files with a live cluster) — see
+// report.Result.MultipleSources for why this drives whether the report
+// prints each finding's per-resource source.
+func hasMultipleSources(resources []loader.Resource) bool {
+	seen := map[string]bool{}
+	for _, r := range resources {
+		if r.Source == "" {
+			continue
+		}
+		seen[r.Source] = true
+		if len(seen) > 1 {
+			return true
+		}
+	}
+	return false
 }
 
 // toReportSuppressed adapts suppress.Suppressed (internal/suppress's view)

@@ -58,12 +58,13 @@ func newRBACAnalyzeCmd() *cobra.Command {
 			kept, suppressed := suppress.Apply(rbacResult.Findings, cfg.Exclusions, suppress.BuildLabelIndex(unfiltered))
 
 			result := report.Result{
-				GeneratedAt: time.Now(),
-				Target:      target,
-				Findings:    kept,
-				Suppressed:  toReportSuppressed(suppressed),
-				RBACModel:   rbacResult.Model,
-				ReportView:  cfg.Output.ReportView,
+				GeneratedAt:     time.Now(),
+				Target:          target,
+				Findings:        kept,
+				Suppressed:      toReportSuppressed(suppressed),
+				RBACModel:       rbacResult.Model,
+				ReportView:      cfg.Output.ReportView,
+				MultipleSources: hasMultipleSources(resources),
 			}
 
 			if err := writeOutputs(cfg, result); err != nil {

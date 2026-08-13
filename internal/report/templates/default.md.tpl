@@ -47,7 +47,6 @@ Full scope: no structural gaps detected — control-plane, RBAC, and NetworkPoli
 observed for this target.
 {{- end }}
 {{- if .Scope.Caveats }}
-
 Checked, but with a lower-confidence caveat worth reading before trusting the result:
 
 {{ range .Scope.Caveats }}- **{{ .Title }}** — {{ .Reason }}
@@ -90,10 +89,10 @@ Checked, but with a lower-confidence caveat worth reading before trusting the re
 {{ range $notes }}{{ . }}
 {{ end -}}
 </details>
-
-{{ end -}}
+{{- end }}
 {{- $failing := failingControls . }}
 {{- if $failing }}
+
 ### Failing controls — affected resources
 
 Full detail (message, remediation) for each of these is in **Findings** below, grouped by check;
@@ -178,9 +177,9 @@ No findings.
 - **Affected resources ({{ len .Findings }}):**
 {{ if .UniformMessage }}
   _{{ .UniformMessage }}_
-{{ range .Findings }}  - {{ .Resource.String }}{{ if .Source }} (`{{ .Source }}`){{ end }}
+{{ range .Findings }}  - {{ .Resource.String }}{{ if and .Source $.MultipleSources }} (`{{ .Source }}`){{ end }}
 {{ end }}{{ else }}
-{{ range .Findings }}  - **{{ .Resource.String }}**{{ if .Source }} (`{{ .Source }}`){{ end }} — {{ .Message }}
+{{ range .Findings }}  - **{{ .Resource.String }}**{{ if and .Source $.MultipleSources }} (`{{ .Source }}`){{ end }} — {{ .Message }}
 {{ end }}{{ end }}
 {{ end -}}
 {{ end -}}

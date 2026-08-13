@@ -90,6 +90,32 @@ func TestRenderMarkdownWithFindings(t *testing.T) {
 	}
 }
 
+func TestRenderMarkdownSourceSuffix(t *testing.T) {
+	finding := findings.Finding{
+		ID: "1", PolicyID: "workload.x", Title: "Bad thing", Severity: findings.SeverityHigh, Category: "workload-security",
+		Resource: findings.ResourceRef{Kind: "Pod", Name: "p", Namespace: "default"}, Message: "bad thing happened",
+		Source: "/manifests/a.yaml",
+	}
+
+	single := report.Result{GeneratedAt: time.Now(), Target: "test", Findings: []findings.Finding{finding}, MultipleSources: false}
+	md, err := report.RenderMarkdown(single, "")
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
+	if strings.Contains(md, "/manifests/a.yaml") {
+		t.Errorf("expected no per-finding source suffix with a single source (redundant with Target), got:\n%s", md)
+	}
+
+	multi := report.Result{GeneratedAt: time.Now(), Target: "test", Findings: []findings.Finding{finding}, MultipleSources: true}
+	md, err = report.RenderMarkdown(multi, "")
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
+	if !strings.Contains(md, "/manifests/a.yaml") {
+		t.Errorf("expected the per-finding source suffix when MultipleSources is true, got:\n%s", md)
+	}
+}
+
 func TestRenderCSV(t *testing.T) {
 	r := report.Result{
 		GeneratedAt: time.Now(),
