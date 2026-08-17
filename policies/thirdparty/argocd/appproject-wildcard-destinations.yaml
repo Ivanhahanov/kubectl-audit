@@ -1,0 +1,29 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: argocd.appproject-wildcard-destinations
+  annotations:
+    audit.k8s-auditor.io/title: "ArgoCD AppProject allows deploying to any namespace on any cluster"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: argocd
+    audit.k8s-auditor.io/remediation: >-
+      Replace the wildcard destination entry with the specific
+      cluster/namespace pairs this project's Applications actually deploy
+      to. This is ArgoCD's own out-of-the-box "default" AppProject
+      configuration — if you haven't created a scoped project, your
+      Applications are inheriting unrestricted deploy scope.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["argoproj.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["appprojects"]
+  validations:
+    - expression: |-
+        !has(object.spec.destinations) || !object.spec.destinations.exists(d,
+          has(d.namespace) && d.namespace == "*" &&
+          ((has(d.server) && d.server == "*") || (has(d.name) && d.name == "*"))
+        )
+      message: "AppProject.spec.destinations includes an entry with namespace \"*\" and cluster (server or name) \"*\", allowing this project's Applications to deploy to any namespace on any registered cluster."

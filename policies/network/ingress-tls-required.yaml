@@ -13,8 +13,17 @@ spec:
   failurePolicy: Fail
   matchConstraints:
     resourceRules:
-      - apiGroups: ["networking.k8s.io"]
-        apiVersions: ["v1"]
+      # spec.tls (an array of {hosts, secretName}) has been byte-identical
+      # since Ingress's earliest v1beta1 shape (verified against
+      # k8s.io/api's networking/v1beta1 and extensions/v1beta1 types.go) —
+      # covering all three historical API surfaces here, unlike most
+      # bundled policies pinned to a single "v1", is deliberate: a static
+      # scan of old manifests (or a genuinely old cluster) using a removed
+      # Ingress apiVersion should still get this check, not silently skip
+      # it. See network.no-deprecated-ingress-api-version for the
+      # complementary check that flags using those old versions at all.
+      - apiGroups: ["networking.k8s.io", "extensions"]
+        apiVersions: ["*"]
         operations: ["CREATE", "UPDATE"]
         resources: ["ingresses"]
   validations:

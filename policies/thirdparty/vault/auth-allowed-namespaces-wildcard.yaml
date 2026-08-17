@@ -1,0 +1,35 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: vault.auth-allowed-namespaces-wildcard
+  annotations:
+    audit.k8s-auditor.io/title: "VaultAuth allows every namespace to authenticate with it"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: vault
+    audit.k8s-auditor.io/remediation: >-
+      Replace the "*" entry in spec.allowedNamespaces with the specific
+      namespace(s) that legitimately need this auth method, or remove the
+      field entirely to fall back to the secure default. The Vault
+      Secrets Operator's own VaultAuth CRD reference: "AllowedNamespaces
+      Kubernetes Namespaces which are allow-listed for use with this
+      AuthMethod. ... [] {\"*\"} - wildcard, all namespaces. ... unset -
+      disallow all namespaces except ... the VaultAuthMethod's namespace,
+      this is the default behavior." A wildcard here lets any tenant
+      namespace authenticate via this method's Vault role/policy — the
+      same cross-tenant-authorization-boundary concern this tool's ArgoCD
+      AppProject wildcard checks flag.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      # secrets.hashicorp.com has shipped only v1beta1 for the Vault
+      # Secrets Operator's entire history (no v1alpha1/v1 seen) — "*" used
+      # for consistency with this tool's other CRD-backed policies.
+      - apiGroups: ["secrets.hashicorp.com"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["vaultauths"]
+  validations:
+    - expression: |-
+        !has(object.spec.allowedNamespaces) || !object.spec.allowedNamespaces.exists(n, n == "*")
+      message: "VaultAuth.spec.allowedNamespaces includes \"*\", letting any namespace in the cluster authenticate using this method instead of only its own."

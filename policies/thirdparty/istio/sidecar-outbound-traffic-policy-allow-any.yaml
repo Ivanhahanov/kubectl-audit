@@ -1,0 +1,41 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: istio.sidecar-outbound-traffic-policy-allow-any
+  annotations:
+    audit.k8s-auditor.io/title: "Istio Sidecar resource explicitly allows unrestricted outbound traffic"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: istio
+    audit.k8s-auditor.io/remediation: >-
+      Remove spec.outboundTrafficPolicy.mode: ALLOW_ANY (or set it to
+      REGISTRY_ONLY) on this Sidecar resource. Istio's own API reference
+      (networking/v1alpha3/sidecar.proto, OutboundTrafficPolicy.Mode
+      enum): "ALLOW_ANY - outbound traffic to unknown destinations will
+      be allowed" vs. "REGISTRY_ONLY - outbound traffic will be
+      restricted to services defined in the service registry." This
+      check only fires on an explicit ALLOW_ANY here — an unset value
+      inherits the mesh-wide default, already covered by
+      istio.mesh-config-outbound-traffic-policy-allow-any. A Sidecar
+      resource setting this explicitly and per-workload is an intentional
+      override of whatever the mesh-wide default is (including a
+      REGISTRY_ONLY mesh default), the same "operator can explicitly
+      switch something off" shape as this tool's other opt-out checks.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      # "*" instead of pinned versions, same reasoning as this tool's
+      # other Istio checks.
+      - apiGroups: ["networking.istio.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["sidecars"]
+  validations:
+    - expression: |-
+        !has(object.spec.outboundTrafficPolicy) ||
+        !has(object.spec.outboundTrafficPolicy.mode) ||
+        object.spec.outboundTrafficPolicy.mode != "ALLOW_ANY"
+      message: >-
+        This Sidecar resource sets spec.outboundTrafficPolicy.mode to
+        "ALLOW_ANY" — workloads it applies to can reach any outbound
+        destination, not just services in Istio's service registry.

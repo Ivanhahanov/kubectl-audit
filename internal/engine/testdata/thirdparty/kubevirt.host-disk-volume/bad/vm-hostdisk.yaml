@@ -1,0 +1,14 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: bad-vm
+  namespace: default
+spec:
+  running: true
+  template:
+    spec:
+      volumes:
+        - name: host-disk
+          hostDisk:
+            path: /data/disk.img
+            type: DiskOrCreate

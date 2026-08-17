@@ -1,0 +1,7 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMSingle
+metadata:
+  name: insecure
+  namespace: monitoring
+spec:
+  retentionPeriod: "1"

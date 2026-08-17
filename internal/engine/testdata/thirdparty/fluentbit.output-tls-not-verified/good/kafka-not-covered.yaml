@@ -1,0 +1,8 @@
+apiVersion: fluentbit.fluent.io/v1alpha2
+kind: ClusterOutput
+metadata:
+  name: kafka-not-covered
+spec:
+  kafka:
+    brokers: "kafka.example.com:9092"
+    topics: "logs"

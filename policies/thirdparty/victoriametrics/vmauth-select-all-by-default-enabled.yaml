@@ -1,0 +1,35 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: victoriametrics.vmauth-select-all-by-default-enabled
+  annotations:
+    audit.k8s-auditor.io/title: "VMAuth trusts every VMUser in the cluster, not just an explicit selector"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: victoriametrics
+    audit.k8s-auditor.io/remediation: >-
+      Remove selectAllByDefault: true and scope userSelector/
+      userNamespaceSelector to the specific VMUsers this VMAuth should
+      trust. VictoriaMetrics operator's own doc comment
+      (api/operator/v1beta1/vmauth_types.go): "changes default behavior
+      for empty CRD selectors, such userSelector. with
+      selectAllByDefault: true and empty userSelector and
+      userNamespaceSelector Operator selects all exist users." An
+      explicit opt-out of namespace/label-scoped trust boundaries — the
+      same shape as vault.auth-allowed-namespaces-wildcard. Weaker-sourced
+      than most checks in this repo (no explicit "insecure" warning from
+      VictoriaMetrics itself, same tier as istio.gateway-weak-tls-version).
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["operator.victoriametrics.com"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["vmauths"]
+  validations:
+    - expression: |-
+        !has(object.spec.selectAllByDefault) || object.spec.selectAllByDefault == false
+      message: >-
+        VMAuth.spec.selectAllByDefault is true — every VMUser in the
+        cluster is trusted by this VMAuth instead of only VMUsers
+        matching an explicit userSelector/userNamespaceSelector.

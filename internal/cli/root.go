@@ -6,25 +6,28 @@ import (
 )
 
 var (
-	flagConfig            string
-	flagContextName       string
-	flagClusterName       string
-	flagKubeconfig        string
-	flagMode              string
-	flagFiles             []string
-	flagNamespaces        []string
-	flagAllNamespaces     bool
-	flagExcludeNamespaces []string
-	flagIncludeSystemRBAC bool
-	flagCheckUpdates      bool
-	flagPolicyDirs        []string
-	flagOutputJSON        string
-	flagOutputMD          string
-	flagOutputCSV         string
-	flagFailOn            string
-	flagFrameworks        []string
-	flagReportTemplate    string
-	flagReportView        string
+	flagConfig                     string
+	flagContextName                string
+	flagClusterName                string
+	flagKubeconfig                 string
+	flagMode                       string
+	flagFiles                      []string
+	flagNamespaces                 []string
+	flagAllNamespaces              bool
+	flagExcludeNamespaces          []string
+	flagIncludeSystemRBAC          bool
+	flagCheckUpdates               bool
+	flagPolicyDirs                 []string
+	flagOutputJSON                 string
+	flagOutputMD                   string
+	flagOutputCSV                  string
+	flagFailOn                     string
+	flagFrameworks                 []string
+	flagReportTemplate             string
+	flagReportView                 string
+	flagNoBuiltinExceptions        bool
+	flagDisableBuiltinExceptionIDs []string
+	flagVerbose                    bool
 )
 
 // NewRootCmd builds the kubectl-audit command tree.
@@ -43,6 +46,14 @@ func NewRootCmd() *cobra.Command {
 	// friends below — instead of being a blanket persistent flag every
 	// leaf command's --help has to show regardless of relevance.
 	root.PersistentFlags().StringVar(&flagConfig, "config", "", "path to audit.yaml")
+	// Also genuinely shared: every command hits the same diagnostic
+	// call sites (warnf/debugf in orchestrate.go) regardless of which
+	// leaf command runs. Debug-level detail is off by default (see
+	// internal/logging) — this surfaces it: per-kind cluster fetch
+	// outcomes, third-party CRD-group resolution, control-plane
+	// container-matching misses, and similar decisions that are silent
+	// otherwise. warning: lines already show unconditionally.
+	root.PersistentFlags().BoolVarP(&flagVerbose, "verbose", "v", false, "show debug-level diagnostic detail (per-kind fetch outcomes, CRD resolution, heuristic misses) in addition to warnings")
 
 	root.AddCommand(newScanCmd())
 	root.AddCommand(newPolicyCmd())
@@ -64,8 +75,10 @@ func addTargetFlags(cmd *cobra.Command) {
 	f.StringArrayVarP(&flagFiles, "filename", "f", nil, "static manifest file or directory to audit (repeatable) — matches kubectl apply's -f/--filename")
 	f.StringArrayVarP(&flagNamespaces, "namespace", "n", nil, "namespace to scan in cluster mode (repeatable; default: all)")
 	f.BoolVarP(&flagAllNamespaces, "all-namespaces", "A", false, "scan all namespaces in cluster mode")
-	f.StringArrayVar(&flagExcludeNamespaces, "exclude-namespace", nil, "namespace to exclude (repeatable; default: kube-system, kube-public, kube-node-lease). Pass an empty string to clear the defaults.")
+	f.StringArrayVar(&flagExcludeNamespaces, "exclude-namespace", nil, "namespace to exclude (repeatable; default: kube-public, kube-node-lease). Pass an empty string to clear the defaults.")
 	f.BoolVar(&flagIncludeSystemRBAC, "include-system-rbac", false, "include Role/ClusterRole/*Binding objects with the reserved \"system:\" prefix (Kubernetes built-ins), excluded by default")
+	f.BoolVar(&flagNoBuiltinExceptions, "no-builtin-exceptions", false, "disable this tool's built-in exclusion rules for well-known, legitimately privileged infrastructure DaemonSets (Cilium's agent, prometheus-node-exporter, ...) — on by default; set this for a stricter scan showing literally everything, see docs")
+	f.StringArrayVar(&flagDisableBuiltinExceptionIDs, "disable-builtin-exception-id", nil, "disable one built-in exclusion rule by its id (repeatable; see internal/suppress/builtin-exclusions.yaml for ids), leaving the rest active — finer-grained than --no-builtin-exceptions")
 }
 
 // addOutputFlags registers flags for where/how results get written. Shared

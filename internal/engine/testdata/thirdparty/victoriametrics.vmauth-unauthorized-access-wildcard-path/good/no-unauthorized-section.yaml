@@ -1,0 +1,7 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAuth
+metadata:
+  name: good2
+  namespace: monitoring
+spec:
+  userNamespaceSelector: {}

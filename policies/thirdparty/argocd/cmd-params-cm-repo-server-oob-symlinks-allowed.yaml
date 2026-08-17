@@ -1,0 +1,37 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: argocd.cmd-params-cm-repo-server-oob-symlinks-allowed
+  annotations:
+    audit.k8s-auditor.io/title: "ArgoCD repo-server allows out-of-bounds symlinks"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: argocd
+    audit.k8s-auditor.io/remediation: >-
+      Remove reposerver.allow.oob.symlinks (or set it back to "false",
+      the default) from argocd-cmd-params-cm. Verified directly against
+      the official reference
+      (docs/operator-manual/argocd-cmd-params-cm.yaml in argoproj/argo-cd),
+      quoted in full: "Allow repositories to contain symlinks that leave
+      the boundaries of the repository. Changing this to \"true\" will
+      not allow _all_ out-of-bounds symlinks. Those will still be
+      blocked for things like values files in Helm charts. But symlinks
+      which are not explicitly blocked by other checks will be allowed."
+      An explicit opt-out of repo-server's default path-traversal
+      protection for any repository it syncs.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["configmaps"]
+  validations:
+    - expression: |-
+        object.metadata.name != "argocd-cmd-params-cm" || !has(object.data) ||
+        !('reposerver.allow.oob.symlinks' in object.data) ||
+        object.data['reposerver.allow.oob.symlinks'] != "true"
+      message: >-
+        argocd-cmd-params-cm sets reposerver.allow.oob.symlinks: "true" —
+        symlinks that leave the boundaries of a synced repository are
+        allowed through unless separately blocked by another check.

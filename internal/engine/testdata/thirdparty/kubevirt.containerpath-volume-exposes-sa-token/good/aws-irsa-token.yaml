@@ -1,0 +1,12 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: good-vm
+  namespace: default
+spec:
+  template:
+    spec:
+      volumes:
+        - name: irsa-token
+          containerPath:
+            path: /var/run/secrets/eks.amazonaws.com/serviceaccount

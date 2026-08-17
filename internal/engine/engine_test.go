@@ -76,8 +76,8 @@ func TestBuiltinPoliciesLoadAndCompile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadBuiltin: %v", err)
 	}
-	if len(policies) != 60 {
-		t.Fatalf("expected 60 built-in policies, got %d", len(policies))
+	if len(policies) != 113 {
+		t.Fatalf("expected 113 built-in policies, got %d", len(policies))
 	}
 }
 
@@ -311,6 +311,36 @@ spec:
 	good := engine.EvaluateAll(policies, []loader.Resource{withTLS}, engine.EvalOptions{})
 	if len(findingsForPolicy(good, "network.ingress-tls-required")) != 0 {
 		t.Errorf("expected no finding on an Ingress with spec.tls set")
+	}
+}
+
+// TestIngressTLSRequired_MatchesOldAPIVersionsToo guards against the
+// version-skew bug class this policy used to have: matchConstraints was
+// pinned to networking.k8s.io/v1 only, so an Ingress loaded from an old
+// manifest (extensions/v1beta1, still parseable by this tool's static-file
+// mode even though Kubernetes itself removed it in 1.22) silently never
+// matched — not an error, just zero findings. spec.tls has been
+// byte-identical since Ingress's earliest v1beta1 shape, so there's no
+// reason this check should be version-pinned at all.
+func TestIngressTLSRequired_MatchesOldAPIVersionsToo(t *testing.T) {
+	policies, err := engine.LoadBuiltin()
+	if err != nil {
+		t.Fatalf("LoadBuiltin: %v", err)
+	}
+
+	old := mustResource(t, `
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: old-plain
+  namespace: default
+spec:
+  rules:
+    - host: example.com
+`)
+	results := engine.EvaluateAll(policies, []loader.Resource{old}, engine.EvalOptions{})
+	if len(findingsForPolicy(results, "network.ingress-tls-required")) == 0 {
+		t.Error("expected network.ingress-tls-required to fire on an extensions/v1beta1 Ingress with no spec.tls, not just networking.k8s.io/v1")
 	}
 }
 

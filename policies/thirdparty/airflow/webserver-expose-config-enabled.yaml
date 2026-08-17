@@ -1,0 +1,39 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: airflow.webserver-expose-config-enabled
+  annotations:
+    audit.k8s-auditor.io/title: "Airflow webserver exposes its running configuration"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: airflow
+    audit.k8s-auditor.io/remediation: >-
+      Remove expose_config from the [webserver] section of airflow.cfg (or
+      unset config.webserver.expose_config in the Helm chart's values) —
+      Airflow's own configuration reference: expose_config "Expose the
+      configuration file in the web server[.] Set to True to expose
+      configuration with sensitive values always masked[.] ... False
+      hides the configuration completely," and it defaults to False.
+  # Airflow has no CRD of its own — this is a plain ConfigMap check, the
+  # same pattern as secrets.configmap-no-embedded-credentials. The
+  # official apache-airflow/airflow Helm chart renders [webserver]
+  # expose_config into a ConfigMap's data["airflow.cfg"] key as an ini
+  # text blob (verified against the chart's rendered output), not a
+  # separate typed field or env var — a regex/contains check against that
+  # key is the only way to observe it from a single Kubernetes object.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["configmaps"]
+  validations:
+    - expression: |-
+        !has(object.data) || !('airflow.cfg' in object.data) ||
+        !object.data['airflow.cfg'].matches(r'(?i)expose_config\s*=\s*true')
+      message: >-
+        airflow.cfg sets expose_config = True — the Airflow web UI exposes
+        the running configuration (sensitive values masked, but hostnames,
+        paths, and other settings are still visible) to any authenticated
+        user. Airflow's own docs: defaults to False.

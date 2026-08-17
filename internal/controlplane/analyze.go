@@ -186,8 +186,15 @@ type Result struct {
 }
 
 // Analyze looks for control-plane static Pods among resources and evaluates
-// every registered check against each one found.
-func Analyze(resources []loader.Resource, source string) (Result, error) {
+// every registered check against each one found. warn (nil is a valid
+// no-op default, same as loader/engine's Warn callbacks) reports a Pod
+// that was classified as a control-plane component but couldn't actually
+// be checked — e.g. zero containers, which real cluster data essentially
+// never produces but a hand-written/incomplete static manifest can.
+func Analyze(resources []loader.Resource, source string, warn func(format string, args ...any)) (Result, error) {
+	if warn == nil {
+		warn = func(string, ...any) {}
+	}
 	res := Result{Observed: map[string]bool{}}
 	var apiserverFlags flags
 
@@ -202,6 +209,7 @@ func Analyze(resources []loader.Resource, source string) (Result, error) {
 		}
 		container, ok := mainContainer(pod, component)
 		if !ok {
+			warn("%s/%s was classified as %s but has no containers — skipping, nothing to check", r.Namespace(), r.Name(), component)
 			continue
 		}
 		res.Observed[component] = true

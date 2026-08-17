@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: airflow-config
+data:
+  airflow.cfg: |
+    [core]
+    hide_sensitive_var_conn_fields = False

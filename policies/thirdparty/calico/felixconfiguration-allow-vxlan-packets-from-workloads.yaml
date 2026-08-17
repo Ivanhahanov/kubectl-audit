@@ -1,0 +1,35 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: calico.felixconfiguration-allow-vxlan-packets-from-workloads
+  annotations:
+    audit.k8s-auditor.io/title: "Calico allows VXLAN-encapsulated traffic from workloads, a known NetworkPolicy-bypass technique"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: calico
+    audit.k8s-auditor.io/remediation: >-
+      Remove spec.allowVXLANPacketsFromWorkloads (or set it back to
+      false, the default) on the FelixConfiguration. Verified directly
+      against Felix's own source (felixconfig.go,
+      AllowVXLANPacketsFromWorkloads field comment): "controls whether
+      Felix will add a rule to drop VXLAN encapsulated traffic from
+      workloads." Same bypass shape as
+      calico.felixconfiguration-allow-ipip-packets-from-workloads: a
+      malicious or compromised workload can encapsulate traffic in VXLAN
+      to smuggle it past NetworkPolicy enforcement that only inspects the
+      inner, unencapsulated packet.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["crd.projectcalico.org"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["felixconfigurations"]
+  validations:
+    - expression: |-
+        !has(object.spec.allowVXLANPacketsFromWorkloads) ||
+        object.spec.allowVXLANPacketsFromWorkloads == false
+      message: >-
+        FelixConfiguration.spec.allowVXLANPacketsFromWorkloads is true —
+        workloads can send VXLAN-encapsulated traffic that bypasses
+        NetworkPolicy enforcement on the inner packet.

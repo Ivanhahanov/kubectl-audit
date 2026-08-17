@@ -1,0 +1,9 @@
+apiVersion: capsule.clastix.io/v1beta2
+kind: Tenant
+metadata:
+  name: restricted
+spec:
+  imagePullPolicies: ["Always"]
+  owners:
+    - name: carol
+      kind: User

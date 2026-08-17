@@ -47,18 +47,49 @@ var defaultResources = []clusterResource{
 	{schema.GroupVersionResource{Group: "networking.k8s.io", Version: "v1", Resource: "ingresses"}, true, "ingresses"},
 }
 
-// optionalResources are CRD-backed kinds that only exist if the cluster has
-// the corresponding CNI installed. Unlike defaultResources, a missing CRD
-// here is the common case (most clusters run neither Cilium nor Calico) and
-// is skipped silently rather than warned about; see gvrRegistered.
-var optionalResources = []clusterResource{
-	{schema.GroupVersionResource{Group: "cilium.io", Version: "v2", Resource: "ciliumnetworkpolicies"}, true, "ciliumnetworkpolicies"},
-	{schema.GroupVersionResource{Group: "cilium.io", Version: "v2", Resource: "ciliumclusterwidenetworkpolicies"}, false, "ciliumclusterwidenetworkpolicies"},
-	// crd.projectcalico.org/v1 is the CRD-mode storage Calico uses in the
+// crdResource describes a CRD-backed kind that only exists if the
+// corresponding operator/CNI is installed — unlike defaultResources
+// (built-in API kinds every cluster serves at a fixed, known version), a
+// missing CRD group here is the common case and is skipped silently rather
+// than warned about. Deliberately has no Version field: CRD versions (v1
+// vs v1beta1/v1beta2/v1alpha1, or a future promotion this tool hasn't been
+// updated for yet) are resolved dynamically per-cluster via
+// resolvePreferredVersion instead of being hardcoded — the same "ask
+// discovery, don't guess" approach kubectl itself uses, so an older or
+// newer CRD release than whatever this tool was last tested against still
+// gets listed correctly instead of silently returning zero objects.
+type crdResource struct {
+	Group      string
+	Resource   string
+	Namespaced bool
+	Name       string // e.g. "ciliumnetworkpolicies", for --include-kinds/--exclude-kinds
+}
+
+var optionalResources = []crdResource{
+	{Group: "cilium.io", Resource: "ciliumnetworkpolicies", Namespaced: true, Name: "ciliumnetworkpolicies"},
+	{Group: "cilium.io", Resource: "ciliumclusterwidenetworkpolicies", Namespaced: false, Name: "ciliumclusterwidenetworkpolicies"},
+	// crd.projectcalico.org is the CRD-mode storage Calico uses in the
 	// overwhelming majority of installs; the alternative aggregated-API-server
 	// mode (projectcalico.org/v3, calico-apiserver) is not covered.
-	{schema.GroupVersionResource{Group: "crd.projectcalico.org", Version: "v1", Resource: "networkpolicies"}, true, "calico-networkpolicies"},
-	{schema.GroupVersionResource{Group: "crd.projectcalico.org", Version: "v1", Resource: "globalnetworkpolicies"}, false, "calico-globalnetworkpolicies"},
+	{Group: "crd.projectcalico.org", Resource: "networkpolicies", Namespaced: true, Name: "calico-networkpolicies"},
+	{Group: "crd.projectcalico.org", Resource: "globalnetworkpolicies", Namespaced: false, Name: "calico-globalnetworkpolicies"},
+	// capsule.clastix.io — see policies/thirdparty/capsule/*.yaml.
+	{Group: "capsule.clastix.io", Resource: "tenants", Namespaced: false, Name: "tenants"},
+	// security.istio.io — see policies/thirdparty/istio/*.yaml (alpha).
+	{Group: "security.istio.io", Resource: "peerauthentications", Namespaced: true, Name: "peerauthentications"},
+	{Group: "security.istio.io", Resource: "authorizationpolicies", Namespaced: true, Name: "authorizationpolicies"},
+	// argoproj.io — see policies/thirdparty/argocd/*.yaml. AppProject is cluster-scoped.
+	{Group: "argoproj.io", Resource: "appprojects", Namespaced: false, Name: "appprojects"},
+	// secrets.hashicorp.com (Vault Secrets Operator) — see policies/thirdparty/vault/*.yaml.
+	{Group: "secrets.hashicorp.com", Resource: "vaultconnections", Namespaced: true, Name: "vaultconnections"},
+	// fluentbit.fluent.io (Fluent Operator) — see policies/thirdparty/fluentbit/*.yaml.
+	{Group: "fluentbit.fluent.io", Resource: "outputs", Namespaced: true, Name: "outputs"},
+	{Group: "fluentbit.fluent.io", Resource: "clusteroutputs", Namespaced: false, Name: "clusteroutputs"},
+	// operator.victoriametrics.com — see policies/thirdparty/victoriametrics/*.yaml.
+	{Group: "operator.victoriametrics.com", Resource: "vmsingles", Namespaced: true, Name: "vmsingles"},
+	{Group: "operator.victoriametrics.com", Resource: "vmclusters", Namespaced: true, Name: "vmclusters"},
+	// postgresql.cnpg.io (CloudNativePG) — see policies/thirdparty/cnpg/*.yaml.
+	{Group: "postgresql.cnpg.io", Resource: "clusters", Namespaced: true, Name: "cnpg-clusters"},
 }
 
 // ClusterOptions controls which namespaces/kinds are fetched from the cluster.
@@ -69,6 +100,12 @@ type ClusterOptions struct {
 	ExcludeKinds  []string
 	Source        string // label used on Resource.Source, e.g. "cluster:my-context"
 	Warn          func(format string, args ...any)
+	// Debug receives routine, expected-most-of-the-time detail not worth
+	// a warning by default — e.g. an optional third-party CRD group
+	// simply not being registered, the common case for a cluster that
+	// doesn't run that component. Nil is a valid no-op default, same as
+	// Warn.
+	Debug func(format string, args ...any)
 }
 
 // LoadCluster enumerates the default (or filtered) set of security-relevant
@@ -80,6 +117,10 @@ func LoadCluster(ctx context.Context, c *k8sclient.Client, opts ClusterOptions) 
 	warn := opts.Warn
 	if warn == nil {
 		warn = func(string, ...any) {}
+	}
+	debug := opts.Debug
+	if debug == nil {
+		debug = func(string, ...any) {}
 	}
 
 	var out []Resource
@@ -93,11 +134,13 @@ func LoadCluster(ctx context.Context, c *k8sclient.Client, opts ClusterOptions) 
 		out = append(out, items...)
 	}
 
-	for _, r := range filterResources(optionalResources, opts.IncludeKinds, opts.ExcludeKinds) {
-		if !gvrRegistered(c, r.GVR) {
+	for _, r := range filterCRDResources(optionalResources, opts.IncludeKinds, opts.ExcludeKinds) {
+		version, ok := resolvePreferredVersion(c, r.Group, r.Name, warn, debug)
+		if !ok {
 			continue
 		}
-		items, err := listResource(ctx, c, r, opts)
+		gvr := schema.GroupVersionResource{Group: r.Group, Version: version, Resource: r.Resource}
+		items, err := listResource(ctx, c, clusterResource{GVR: gvr, Namespaced: r.Namespaced, Name: r.Name}, opts)
 		if err != nil {
 			warn("skipping %s: %v", r.Name, err)
 			continue
@@ -146,26 +189,58 @@ func toResources(items []unstructured.Unstructured, source string) []Resource {
 	return out
 }
 
-// gvrRegistered reports whether a GroupVersionResource is served by the
-// cluster's API server, used to decide whether to even attempt listing an
-// optional CRD-backed kind.
-func gvrRegistered(c *k8sclient.Client, gvr schema.GroupVersionResource) bool {
-	resourceList, err := c.Discovery.ServerResourcesForGroupVersion(gvr.GroupVersion().String())
+// resolvePreferredVersion returns the version the cluster's API server
+// actually prefers/serves for group, and false if the group isn't
+// registered at all (the common case for an optional CRD-backed kind whose
+// operator/CNI isn't installed). This is how the served version is
+// determined for every crdResource — never hardcoded — so an older or
+// newer CRD release than whatever this tool was last tested against is
+// still listed correctly instead of silently returning zero objects.
+//
+// The two false-returning paths are deliberately not the same signal: a
+// ServerGroups() failure is a real discovery-API problem (RBAC-denied,
+// API server hiccup) indistinguishable from "not installed" to a caller
+// that only sees a bool — surfaced via warn so it isn't silently
+// misread as "this component genuinely isn't here" (which matters
+// directly for the Detected Components feature's accuracy). The group
+// simply not being present in a healthy discovery response is the
+// ordinary, expected case for most optional resources on most clusters,
+// so it only gets a debug line, not a warning.
+func resolvePreferredVersion(c *k8sclient.Client, group, resourceName string, warn, debug func(format string, args ...any)) (string, bool) {
+	groups, err := c.Discovery.ServerGroups()
 	if err != nil {
-		return false
+		warn("checking whether %s (group %s) is installed: %v", resourceName, group, err)
+		return "", false
 	}
-	for _, res := range resourceList.APIResources {
-		if res.Name == gvr.Resource {
-			return true
+	for _, g := range groups.Groups {
+		if g.Name == group && g.PreferredVersion.Version != "" {
+			return g.PreferredVersion.Version, true
 		}
 	}
-	return false
+	debug("%s: CRD group %s is not registered on this cluster — skipping (component not installed)", resourceName, group)
+	return "", false
 }
 
 func filterResources(all []clusterResource, include, exclude []string) []clusterResource {
 	inSet := toSet(include)
 	exSet := toSet(exclude)
 	var out []clusterResource
+	for _, r := range all {
+		if len(inSet) > 0 && !inSet[r.Name] {
+			continue
+		}
+		if exSet[r.Name] {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+func filterCRDResources(all []crdResource, include, exclude []string) []crdResource {
+	inSet := toSet(include)
+	exSet := toSet(exclude)
+	var out []crdResource
 	for _, r := range all {
 		if len(inSet) > 0 && !inSet[r.Name] {
 			continue

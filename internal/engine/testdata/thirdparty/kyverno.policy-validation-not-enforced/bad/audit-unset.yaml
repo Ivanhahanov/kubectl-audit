@@ -1,0 +1,17 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: audit-mode
+spec:
+  rules:
+    - name: check-team-label
+      match:
+        any:
+          - resources:
+              kinds: ["Pod"]
+      validate:
+        message: "label 'team' is required"
+        pattern:
+          metadata:
+            labels:
+              team: "?*"

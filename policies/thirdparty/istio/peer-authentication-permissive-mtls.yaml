@@ -1,0 +1,41 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: istio.peer-authentication-permissive-mtls
+  annotations:
+    audit.k8s-auditor.io/title: "[ALPHA] PeerAuthentication allows plaintext (non-mTLS) traffic"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: istio
+    audit.k8s-auditor.io/remediation: >-
+      Set spec.mtls.mode to STRICT unless plaintext traffic is genuinely
+      required (e.g. during a migration). PeerAuthentication precedence is
+      specificity-based (workload-level overrides namespace-level overrides
+      the mesh-level "default" object in the root namespace) — this check
+      evaluates each object independently and doesn't compute the
+      cluster-wide effective mode, so confirm a more specific object isn't
+      already enforcing STRICT, and that this object isn't unintentionally
+      weakening one. In Istio ambient mode, DISABLE is unsupported and
+      STRICT is the mode that actually guarantees mesh traffic can't bypass
+      the ztunnel — see the Scope section for ambient-mode caveats.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["security.istio.io"]
+        # "*" instead of pinned versions. Verified (2026-08, against
+        # istio/api's security/v1/peer_authentication_alias.gen.go):
+        # security.istio.io/v1's PeerAuthentication is a literal Go type
+        # alias of v1beta1's — `type PeerAuthentication = v1beta1.PeerAuthentication`
+        # — zero field differences between the two versions Istio has ever
+        # shipped for this group, so this check is safe regardless of which
+        # one the cluster serves. No v1alpha1 exists for security.istio.io.
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["peerauthentications"]
+  validations:
+    - expression: |-
+        !has(object.spec.mtls) || !has(object.spec.mtls.mode) ||
+        !(object.spec.mtls.mode in ["DISABLE", "PERMISSIVE"])
+      messageExpression: |-
+        "[ALPHA] PeerAuthentication sets spec.mtls.mode to \"" + object.spec.mtls.mode +
+        "\", allowing plaintext connections alongside (or instead of) mTLS."

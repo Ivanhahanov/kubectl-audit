@@ -9,6 +9,7 @@ import (
 	"github.com/ivanhahanov/kubectl-audit/internal/rbac"
 	"github.com/ivanhahanov/kubectl-audit/internal/report"
 	"github.com/ivanhahanov/kubectl-audit/internal/suppress"
+	"github.com/ivanhahanov/kubectl-audit/internal/thirdparty"
 )
 
 func newRBACCmd() *cobra.Command {
@@ -55,16 +56,18 @@ func newRBACAnalyzeCmd() *cobra.Command {
 				return err
 			}
 
-			kept, suppressed := suppress.Apply(rbacResult.Findings, cfg.Exclusions, suppress.BuildLabelIndex(unfiltered))
+			kept, suppressed := suppress.Apply(rbacResult.Findings, effectiveExclusions(cfg), suppress.BuildLabelIndex(unfiltered))
+			detected := thirdparty.Detect(unfiltered, effectiveComponents(cfg))
 
 			result := report.Result{
-				GeneratedAt:     time.Now(),
-				Target:          target,
-				Findings:        kept,
-				Suppressed:      toReportSuppressed(suppressed),
-				RBACModel:       rbacResult.Model,
-				ReportView:      cfg.Output.ReportView,
-				MultipleSources: hasMultipleSources(resources),
+				GeneratedAt:        time.Now(),
+				Target:             target,
+				Findings:           kept,
+				Suppressed:         toReportSuppressed(suppressed),
+				RBACModel:          rbacResult.Model,
+				ReportView:         cfg.Output.ReportView,
+				MultipleSources:    hasMultipleSources(resources),
+				DetectedComponents: detected,
 			}
 
 			if err := writeOutputs(cfg, result); err != nil {
@@ -76,6 +79,12 @@ func newRBACAnalyzeCmd() *cobra.Command {
 				fmt.Printf(" (%d suppressed)", len(suppressed))
 			}
 			fmt.Println()
+			if len(detected) > 0 {
+				fmt.Println("Detected components:")
+				for _, label := range detectedComponentLabels(detected) {
+					fmt.Printf("  - %s\n", label)
+				}
+			}
 			if cfg.Output.JSON != "" {
 				fmt.Printf("Findings written to %s\n", cfg.Output.JSON)
 			}

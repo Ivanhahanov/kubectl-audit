@@ -1,0 +1,13 @@
+apiVersion: capsule.clastix.io/v1beta2
+kind: Tenant
+metadata:
+  name: bad
+spec:
+  owners:
+    - name: alice
+      kind: User
+  additionalRoleBindings:
+    - clusterRoleName: cluster-admin
+      subjects:
+        - kind: User
+          name: alice

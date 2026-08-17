@@ -1,0 +1,38 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: kubevirt.sidecar-feature-gate-enabled
+  annotations:
+    audit.k8s-auditor.io/title: "KubeVirt's Sidecar feature gate allows arbitrary code injection into virt-launcher"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: kubevirt
+    audit.k8s-auditor.io/remediation: >-
+      Remove "Sidecar" from
+      spec.configuration.developerConfiguration.featureGates unless hook
+      sidecars are actually required and every VM owner who can create a
+      VM/VirtualMachineInstance is trusted with that capability.
+      KubeVirt's own hook-sidecar documentation
+      (cmd/sidecars/README.md in kubevirt/kubevirt): "The Sidecar feature
+      gate must be enabled in the KubeVirt Custom Resource before using
+      sidecars" and, in the same doc, KubeVirt's own words: "Once
+      enabled, every VM owner may use it to run arbitrary code in the
+      context of virt-launcher which may have unexpected effects." That
+      is a first-party admission that this gate is an explicit,
+      cluster-wide opt-in to arbitrary code execution in the pod that
+      runs every VM. See also kubevirt.hook-sidecar-annotation-present,
+      which flags VMs actually using this once the gate is on.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["kubevirt.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["kubevirts"]
+  validations:
+    - expression: |-
+        !has(object.spec.configuration) ||
+        !has(object.spec.configuration.developerConfiguration) ||
+        !has(object.spec.configuration.developerConfiguration.featureGates) ||
+        !object.spec.configuration.developerConfiguration.featureGates.exists(g, g == "Sidecar")
+      message: "KubeVirt.spec.configuration.developerConfiguration.featureGates includes \"Sidecar\" — any VM owner may run arbitrary code inside virt-launcher via a hook sidecar (KubeVirt's own documented risk)."

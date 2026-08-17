@@ -21,13 +21,11 @@ target:
   paths:
     - ./manifests
 
-  # Namespaces to skip entirely, regardless of mode. Defaults to these
-  # platform-managed namespaces (see README: Noise reduction) since their
-  # workloads/RBAC are Kubernetes/CNI/CSI internals, not actionable
-  # findings. Ignored if `namespaces` above is a non-empty allowlist. Set
-  # to [] to audit everything, including kube-system.
+  # Namespaces to skip entirely, regardless of mode. Defaults to these two
+  # (see README: Noise reduction) since they hold nothing worth auditing.
+  # kube-system is deliberately NOT excluded by default — see README for
+  # why. Ignored if `namespaces` above is a non-empty allowlist.
   excludeNamespaces:
-    - kube-system
     - kube-public
     - kube-node-lease
 
@@ -67,3 +65,24 @@ compliance:
     - cis
     # - fstec
     # - nsa
+
+# Disable individual built-in exclusion rules by id (cilium-agent,
+# prometheus-node-exporter, falco, tetragon, kube-proxy, control-plane-static-pods — see
+# internal/suppress/builtin-exclusions.yaml) while leaving the rest active.
+# --no-builtin-exceptions / disableBuiltinExceptions: true disables all of
+# them at once instead.
+disableBuiltinExceptionIds: []
+#  - cilium-agent
+
+# Extend the built-in third-party component inventory with your own
+# in-house operators/CNIs (see docs/third-party-operators.md) — no
+# rebuild needed, works the same when installed via krew. Adding an entry
+# here does NOT by itself create a suppression exception; pair a
+# System-category entry with your own `exclusions` rule above for that.
+components:
+  extra: []
+  #  - name: InternalWidgetOperator
+  #    category: Application       # System | Application (default: Application)
+  #    group: internal.example.com
+  #    labels:
+  #      app.kubernetes.io/name: internal-widget-operator

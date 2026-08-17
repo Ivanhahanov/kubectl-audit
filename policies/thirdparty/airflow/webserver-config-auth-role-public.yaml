@@ -1,0 +1,38 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: airflow.webserver-config-auth-role-public
+  annotations:
+    audit.k8s-auditor.io/title: "Airflow grants unauthenticated users a role via AUTH_ROLE_PUBLIC"
+    audit.k8s-auditor.io/severity: critical
+    audit.k8s-auditor.io/category: airflow
+    audit.k8s-auditor.io/remediation: >-
+      Remove the AUTH_ROLE_PUBLIC assignment from webserver_config.py (its
+      secure default is unset/empty — no anonymous access). Airflow's own
+      docs: "To deactivate the authentication and allow users to be
+      identified as Anonymous, the following entry in
+      $AIRFLOW_HOME/webserver_config.py needs to be set with the desired
+      role that the Anonymous user will have by default: AUTH_ROLE_PUBLIC
+      = 'Admin'" — assigning any non-empty role here grants that access
+      level to every unauthenticated visitor, not just Admin.
+  # Like expose_config, this is a ConfigMap-content check (no CRD) — the
+  # official apache-airflow/airflow chart renders webserver_config.py into
+  # a ConfigMap only when apiServer.apiServerConfig/webserver.webserverConfig
+  # is set (verified via helm template) — harmless (zero findings) on the
+  # common case where a cluster doesn't customize it at all.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["configmaps"]
+  validations:
+    - expression: |-
+        !has(object.data) || !('webserver_config.py' in object.data) ||
+        !object.data['webserver_config.py'].matches(r"AUTH_ROLE_PUBLIC\s*=\s*'[^']+'")
+      message: >-
+        webserver_config.py sets AUTH_ROLE_PUBLIC to a non-empty role —
+        every unauthenticated visitor is treated as Anonymous with that
+        role's permissions, bypassing login entirely.

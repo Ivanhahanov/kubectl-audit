@@ -4,9 +4,11 @@ package config
 import (
 	"fmt"
 	"os"
+	"path"
 	"strings"
 
 	"github.com/ivanhahanov/kubectl-audit/internal/findings"
+	"github.com/ivanhahanov/kubectl-audit/internal/thirdparty"
 
 	"sigs.k8s.io/yaml"
 )
@@ -38,10 +40,10 @@ type TargetConfig struct {
 	ExcludeKinds  []string `json:"excludeKinds,omitempty"`
 
 	// ExcludeNamespaces are skipped entirely, regardless of mode. Defaults
-	// to the platform-managed namespaces (see config.Default), since their
-	// workloads/RBAC objects are Kubernetes/CNI/CSI internals that dominate
-	// reports without being actionable. Ignored when Namespaces (an
-	// explicit allowlist) is set.
+	// to kube-public/kube-node-lease (see config.Default) — namespaces
+	// with nothing worth auditing. kube-system is deliberately not
+	// excluded by default: see loader.DefaultExcludedNamespaces. Ignored
+	// when Namespaces (an explicit allowlist) is set.
 	ExcludeNamespaces []string `json:"excludeNamespaces,omitempty"`
 
 	// IncludeSystemRBAC, when true, keeps Role/ClusterRole/*Binding objects
@@ -146,6 +148,12 @@ type ExclusionMatch struct {
 // and listed with Reason in the Markdown/JSON report (see report.Result),
 // and excluded from the --fail-on gate and CSV export.
 type ExclusionRule struct {
+	// ID optionally names this rule so it can be referenced elsewhere —
+	// currently only meaningful for this tool's own built-in rules (see
+	// internal/suppress/builtin-exclusions.yaml), which can be disabled
+	// individually via disableBuiltinExceptionIds. User-authored rules
+	// don't need one.
+	ID string `json:"id,omitempty"`
 	// PolicyIDs restricts this rule to specific checks; empty or ["*"]
 	// applies it to every check.
 	PolicyIDs []string       `json:"policyIds,omitempty"`
@@ -156,6 +164,21 @@ type ExclusionRule struct {
 	Reason string `json:"reason"`
 }
 
+// ComponentsConfig lets a user extend this tool's built-in third-party
+// component inventory (see internal/thirdparty) without forking or
+// rebuilding — the same audit.yaml a krew-installed user already edits,
+// rather than a separate file (there's no way to edit the embedded
+// components.yaml short of rebuilding the binary).
+type ComponentsConfig struct {
+	// Extra components are merged with this tool's built-in inventory —
+	// same schema as internal/thirdparty/components.yaml (name, category,
+	// group, labels). Purely additive to the Detected Components table and
+	// orphan/mismatch detection: adding an entry here does NOT create a
+	// suppression exception by itself — pair a System-category entry with
+	// your own `exclusions` rule (optionally with a matching `id`) for that.
+	Extra []thirdparty.Component `json:"extra,omitempty"`
+}
+
 // AuditConfig is the root audit.yaml schema.
 type AuditConfig struct {
 	Target     TargetConfig     `json:"target,omitempty"`
@@ -163,6 +186,24 @@ type AuditConfig struct {
 	Output     OutputConfig     `json:"output,omitempty"`
 	Compliance ComplianceConfig `json:"compliance,omitempty"`
 	Exclusions []ExclusionRule  `json:"exclusions,omitempty"`
+	// DisableBuiltinExceptions turns off this tool's built-in exclusion
+	// rules for well-known, legitimately privileged infrastructure
+	// DaemonSets (Cilium's agent, prometheus-node-exporter, ...) — see
+	// internal/suppress.BuiltinRules. On by default; set true for a
+	// stricter scan that shows literally everything, including violations
+	// those components are documented to require.
+	DisableBuiltinExceptions bool `json:"disableBuiltinExceptions,omitempty"`
+	// DisableBuiltinExceptionIDs disables individually-named built-in
+	// exclusion rules (by their ExclusionRule.ID — see
+	// internal/suppress/builtin-exclusions.yaml for the current IDs) while
+	// leaving the rest active. Finer-grained than DisableBuiltinExceptions,
+	// which is all-or-nothing. An ID with no matching built-in rule is a
+	// no-op (warned about, not an error, in case a rule is renamed/removed
+	// across a version upgrade).
+	DisableBuiltinExceptionIDs []string `json:"disableBuiltinExceptionIds,omitempty"`
+	// Components extends the built-in third-party component inventory —
+	// see ComponentsConfig.
+	Components ComponentsConfig `json:"components,omitempty"`
 }
 
 // Default returns an AuditConfig with sane production defaults.
@@ -171,11 +212,11 @@ func Default() *AuditConfig {
 		Target: TargetConfig{
 			Mode:          ModeBoth,
 			AllNamespaces: true,
-			// Platform-managed namespaces present on virtually every
-			// cluster; see loader.DefaultExcludedNamespaces for why these
-			// are excluded by default. Override with an explicit
-			// excludeNamespaces (possibly []) or a -n allowlist.
-			ExcludeNamespaces: []string{"kube-system", "kube-public", "kube-node-lease"},
+			// Namespaces with nothing worth auditing; see
+			// loader.DefaultExcludedNamespaces for why these two (and not
+			// kube-system) are excluded by default. Override with an
+			// explicit excludeNamespaces (possibly []) or a -n allowlist.
+			ExcludeNamespaces: []string{"kube-public", "kube-node-lease"},
 		},
 		Policies: PoliciesConfig{
 			Builtin: boolPtr(true),
@@ -213,7 +254,30 @@ func Load(path string) (*AuditConfig, error) {
 	if err := validateExclusions(cfg.Exclusions); err != nil {
 		return nil, fmt.Errorf("parsing config %s: %w", path, err)
 	}
+	if err := validateExtraComponents(cfg.Components.Extra); err != nil {
+		return nil, fmt.Errorf("parsing config %s: %w", path, err)
+	}
+	for i, c := range cfg.Components.Extra {
+		if c.Category == "" {
+			cfg.Components.Extra[i].Category = thirdparty.CategoryApplication
+		}
+	}
 	return cfg, nil
+}
+
+// validateExtraComponents rejects entries with neither Group nor Labels
+// set — such an entry would never match anything, which is almost always
+// a typo rather than an intentional inert placeholder.
+func validateExtraComponents(components []thirdparty.Component) error {
+	for i, c := range components {
+		if strings.TrimSpace(c.Name) == "" {
+			return fmt.Errorf("components.extra[%d]: name is required", i)
+		}
+		if c.Group == "" && len(c.Labels) == 0 {
+			return fmt.Errorf("components.extra[%d] (%s): must set at least one of group or labels", i, c.Name)
+		}
+	}
+	return nil
 }
 
 // validateExclusions rejects rules that would silently suppress more than
@@ -228,6 +292,18 @@ func validateExclusions(rules []ExclusionRule) error {
 		m := r.Match
 		if m.Kind == "" && m.Namespace == "" && m.Name == "" && len(m.Labels) == 0 {
 			return fmt.Errorf("exclusions[%d]: match must set at least one of kind, namespace, name, or labels", i)
+		}
+		// match.name is matched via path.Match glob syntax (see
+		// suppress.matchesResource) — a syntax error there (e.g. an
+		// unterminated "[" character class) would otherwise be silently
+		// treated as "never matches" on every single finding evaluated
+		// against this rule, forever, with no visible sign the rule is
+		// broken rather than just narrowly scoped. Reject it here instead,
+		// same as the two structural checks above.
+		if m.Name != "" {
+			if _, err := path.Match(m.Name, ""); err != nil {
+				return fmt.Errorf("exclusions[%d]: match.name %q is not a valid glob pattern: %w", i, m.Name, err)
+			}
 		}
 	}
 	return nil

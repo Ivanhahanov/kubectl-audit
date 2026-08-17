@@ -1,0 +1,49 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: kubevirt.kubevirt-use-emulation-enabled
+  annotations:
+    audit.k8s-auditor.io/title: "KubeVirt falls back to software emulation instead of hardware virtualization"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: kubevirt
+    audit.k8s-auditor.io/remediation: >-
+      Remove spec.configuration.developerConfiguration.useEmulation (or
+      set it to false, the default) and ensure nodes expose /dev/kvm.
+      KubeVirt's own source comment on this field (verified against
+      staging/src/kubevirt.io/api/core/v1/types.go): "UseEmulation can be
+      set to true to allow fallback to software emulation" when hardware
+      virtualization isn't available. KubeVirt's own docs
+      (docs/software-emulation.md, linked from the official installation
+      guide): "If useEmulation is enabled, qemu will be used for software
+      emulation, in case that hardware emulation via /dev/kvm is
+      unavailable." Software (QEMU TCG) emulation lacks the
+      hardware-enforced VT-x/AMD-V isolation between a VM and its host
+      that /dev/kvm provides — a materially larger VM-escape attack
+      surface. Not an explicit security warning from KubeVirt itself
+      (weaker-sourced than most checks in this repo, same tier as
+      istio.gateway-weak-tls-version) — reinforcing signal: the field
+      lives under developerConfiguration, KubeVirt's own naming
+      convention for dev/test-only settings, not production ones.
+  # KubeVirt is a cluster-wide singleton config object (conventionally
+  # named "kubevirt", one per KubeVirt install) — like Calico's
+  # FelixConfiguration, this is "is emulation enabled cluster-wide," not
+  # per-VM.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      # kubevirt.io has shipped v1 (primary) and v1alpha3 concurrently —
+      # "*" used for consistency with this tool's other CRD-backed
+      # policies, verified against the real CRD
+      # (kubevirts.kubevirt.io: both versions served).
+      - apiGroups: ["kubevirt.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["kubevirts"]
+  validations:
+    - expression: |-
+        !has(object.spec.configuration) ||
+        !has(object.spec.configuration.developerConfiguration) ||
+        !has(object.spec.configuration.developerConfiguration.useEmulation) ||
+        object.spec.configuration.developerConfiguration.useEmulation == false
+      message: "KubeVirt.spec.configuration.developerConfiguration.useEmulation is true — VMs run under software (QEMU TCG) emulation instead of hardware-virtualized isolation (/dev/kvm)."

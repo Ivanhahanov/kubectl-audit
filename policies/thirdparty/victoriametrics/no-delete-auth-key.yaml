@@ -1,0 +1,35 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: victoriametrics.no-delete-auth-key
+  annotations:
+    audit.k8s-auditor.io/title: "VictoriaMetrics component has no deleteAuthKey protecting its delete API"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: victoriametrics
+    audit.k8s-auditor.io/remediation: >-
+      Add deleteAuthKey to spec.extraArgs (referencing a Secret-backed
+      value, not a plaintext one in the manifest) so
+      /api/v1/admin/tsdb/delete_series requires a key. VictoriaMetrics'
+      own security docs document this flag as the way to protect the
+      delete endpoint from unauthorized access. This isn't the only valid
+      mitigation — putting a vmauth/vmgateway proxy in front of this
+      component (VictoriaMetrics' own recommended general access-control
+      approach) or restricting access via NetworkPolicy covers the same
+      gap — so treat this as one missing layer, not proof the endpoint is
+      actually reachable by an attacker.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      # operator.victoriametrics.com/v1beta1 is the only version VMSingle/
+      # VMCluster have ever shipped (confirmed via groupversion_info.go) —
+      # "*" used for consistency with this tool's other CRD-backed
+      # policies.
+      - apiGroups: ["operator.victoriametrics.com"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["vmsingles", "vmclusters"]
+  validations:
+    - expression: |-
+        has(object.spec.extraArgs) && ('deleteAuthKey' in object.spec.extraArgs)
+      message: "spec.extraArgs does not set deleteAuthKey, so /api/v1/admin/tsdb/delete_series is reachable without a key (unless mitigated by a vmauth/vmgateway proxy or NetworkPolicy)."

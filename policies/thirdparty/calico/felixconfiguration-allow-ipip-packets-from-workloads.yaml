@@ -1,0 +1,33 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: calico.felixconfiguration-allow-ipip-packets-from-workloads
+  annotations:
+    audit.k8s-auditor.io/title: "Calico allows IPIP-encapsulated traffic from workloads, a known NetworkPolicy-bypass technique"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: calico
+    audit.k8s-auditor.io/remediation: >-
+      Remove spec.allowIPIPPacketsFromWorkloads (or set it back to false,
+      the default) on the FelixConfiguration. Verified directly against
+      Felix's own source (felixconfig.go, AllowIPIPPacketsFromWorkloads
+      field comment): "controls whether Felix will add a rule to drop
+      IPIP encapsulated traffic from workloads." Left enabled, a
+      malicious or compromised workload can encapsulate traffic in IPIP
+      to smuggle it past NetworkPolicy enforcement that only inspects the
+      inner, unencapsulated packet.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["crd.projectcalico.org"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["felixconfigurations"]
+  validations:
+    - expression: |-
+        !has(object.spec.allowIPIPPacketsFromWorkloads) ||
+        object.spec.allowIPIPPacketsFromWorkloads == false
+      message: >-
+        FelixConfiguration.spec.allowIPIPPacketsFromWorkloads is true —
+        workloads can send IPIP-encapsulated traffic that bypasses
+        NetworkPolicy enforcement on the inner packet.

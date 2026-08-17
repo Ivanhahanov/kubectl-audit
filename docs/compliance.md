@@ -28,16 +28,49 @@ maintained "Kubernetes multi-tenancy benchmark" to map against — the closest t
 `kubernetes-retired/multi-tenancy`'s `kubectl-mtb` sub-project, is archived (retired June 2023) and
 its own README said it was "in development and not ready for usage" at the time, so presenting it
 as an authoritative standard would be dishonest. `capsule.yaml` is instead a narrow, self-authored
-checklist: every control corresponds 1:1 to a bundled `policies/multitenancy/*.yaml` check against
+checklist: every control corresponds 1:1 to a bundled `policies/thirdparty/capsule/*.yaml` check against
 [Capsule](https://github.com/projectcapsule/capsule)'s `Tenant` CRD (`capsule.clastix.io/v1beta2`)
 — whether a Tenant defines default NetworkPolicy isolation, a resource quota, a LimitRange, pinned
-Pod Security Standards enforcement, and whether it grants `cluster-admin` to tenant subjects.
+Pod Security Standards enforcement, whether it grants `cluster-admin` to tenant subjects, restricts
+container registries, restricts which nodes its workloads schedule on, and restricts
+`imagePullPolicy` to `Always`. The registry-allowlist and node-isolation checks come from Capsule's
+own [best-practices guide](https://projectcapsule.dev/docs/operating/best-practices/admission-policies/);
+the `imagePullPolicy` check comes from the
+[images page](https://projectcapsule.dev/docs/operating/best-practices/images/) of the same
+guide — "it's recommended to use the ImagePullPolicy `Always` for private registries on shared
+nodes. This ensures that no images can be used which are already pulled to the node." — not this
+tool's own reasoning; that guide's own recommendations are what
+`multitenancy.capsule-tenant-no-registry-allowlist`, `multitenancy.capsule-tenant-no-node-isolation`,
+and `multitenancy.capsule-tenant-no-image-pull-policy-restriction` check for.
 
 It only produces findings if the scan actually has Capsule `Tenant` objects; on any other cluster
 every control just shows zero findings, harmlessly. It's not a general multi-tenancy assessment —
-node isolation, storage isolation, and control-plane isolation aren't covered at all (not listed as
-`NOT_APPLICABLE` padding either, since there's no fixed external control count to be honest about
-being incomplete against).
+storage isolation and control-plane isolation aren't covered at all (not listed as `NOT_APPLICABLE`
+padding either, since there's no fixed external control count to be honest about being incomplete
+against). Node isolation is checked, but only the declared intent (`spec.nodeSelector`) — this tool
+can't confirm workloads are actually only scheduled on the selected nodes, only that the Tenant asks
+for it.
+
+In cluster mode, `Tenant` objects are fetched by resolving `capsule.clastix.io`'s actual
+served/preferred version via the cluster's own API discovery, not a version hardcoded into this
+tool — so an older or newer Capsule release than `v1beta2` (whatever this doc was written against)
+still gets picked up correctly, and a cluster without Capsule installed at all is skipped silently
+rather than erroring. Static-manifest mode (`-f`) has no such concern: it just parses whatever
+`apiVersion` is in the YAML you give it.
+
+**Version-skew caveat, checked concretely rather than assumed**: Capsule has shipped two Tenant
+API versions, `v1beta1` and `v1beta2` (no `v1` yet). The fields `isolation.network-policies`,
+`isolation.resource-quota`, `isolation.limit-range`, `isolation.no-cluster-admin`, and
+`isolation.image-pull-policy` depend on (`spec.networkPolicies.items`, `spec.resourceQuotas.items`,
+`spec.limitRanges.items`, `spec.additionalRoleBindings[]`, `spec.imagePullPolicies`) are present
+with identical field paths in both versions — verified directly against `projectcapsule/capsule`'s
+`api/v1beta1` and `api/v1beta2` source, not assumed.
+`isolation.psa-enforcement` is the one exception: it depends on
+`spec.namespaceOptions.requiredMetadata`, which was only introduced in `v1beta2` and has no
+`v1beta1` equivalent. A Tenant that's still `v1beta1`-shaped will **always** fail
+`isolation.psa-enforcement` — correctly, since the mechanism the check looks for genuinely doesn't
+exist on that Tenant, not a false positive — but it's worth knowing why before assuming the check
+itself is broken.
 
 ## Cluster version awareness
 

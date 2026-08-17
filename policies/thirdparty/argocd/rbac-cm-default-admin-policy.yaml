@@ -1,0 +1,39 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: argocd.rbac-cm-default-admin-policy
+  annotations:
+    audit.k8s-auditor.io/title: "ArgoCD grants admin to every authenticated user by default"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: argocd
+    audit.k8s-auditor.io/remediation: >-
+      Set data['policy.default'] to a minimal custom role instead of
+      role:admin — ArgoCD's own RBAC docs: "When a user is authenticated
+      in Argo CD, it will be granted the role specified in
+      policy.default[.] ... All authenticated users get *at least* the
+      permissions granted by the default policies. This access cannot be
+      blocked by a deny rule[.] It is recommended to create a new
+      role:authenticated with the minimum set of permissions possible."
+  # No CRD: argocd-rbac-cm is ArgoCD's own well-known, name-stable RBAC
+  # config object (verified against the official install manifest,
+  # manifests/base/config/argocd-rbac-cm.yaml — name argocd-rbac-cm,
+  # labels app.kubernetes.io/name: argocd-rbac-cm, app.kubernetes.io/
+  # part-of: argocd). Gated on object name inside the expression itself
+  # (matchConstraints has no per-object-name filter) so this never fires
+  # on an unrelated ConfigMap that happens to share the same key name.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["configmaps"]
+  validations:
+    - expression: |-
+        object.metadata.name != "argocd-rbac-cm" || !has(object.data) ||
+        !('policy.default' in object.data) || object.data['policy.default'] != "role:admin"
+      message: >-
+        argocd-rbac-cm's policy.default is "role:admin" — every
+        authenticated ArgoCD user gets full admin access by default, and
+        this cannot be overridden by a deny rule.

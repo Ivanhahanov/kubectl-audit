@@ -1,0 +1,36 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: istio.authorization-policy-no-source-restriction
+  annotations:
+    audit.k8s-auditor.io/title: "[ALPHA] AuthorizationPolicy ALLOW rule has no source restriction"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: istio
+    audit.k8s-auditor.io/remediation: >-
+      Add a from.source restriction (principals, namespaces, or
+      serviceAccounts) to this rule so it only grants access to specific
+      callers, instead of any source reachable to the selected workload(s).
+      If this is intentionally an unauthenticated/public rule, scope it as
+      narrowly as possible with "to" (specific paths/methods) and consider
+      whether it needs to exist at all.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["security.istio.io"]
+        # "*" instead of pinned versions. Verified (2026-08, against
+        # istio/api's security/v1/authorization_policy_alias.gen.go):
+        # security.istio.io/v1's AuthorizationPolicy is a literal Go type
+        # alias of v1beta1's — `type AuthorizationPolicy = v1beta1.AuthorizationPolicy`
+        # — zero field differences between the two versions Istio has ever
+        # shipped for this group, so this check is safe regardless of which
+        # one the cluster serves. No v1alpha1 exists for security.istio.io.
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["authorizationpolicies"]
+  validations:
+    - expression: |-
+        (has(object.spec.action) && object.spec.action != "ALLOW") ||
+        !has(object.spec.rules) ||
+        object.spec.rules.all(r, has(r.from) && size(r.from) > 0)
+      message: "[ALPHA] AuthorizationPolicy has an ALLOW rule with no \"from\" (source) restriction — it matches requests from any source (any principal, namespace, or IP), scoped only by \"to\"/\"when\" if present."

@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: apisix
+data:
+  config.yaml: |
+    deployment:
+      admin:
+        allow_admin:
+          - 0.0.0.0/0

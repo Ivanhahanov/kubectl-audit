@@ -1,0 +1,12 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: bad-vm
+  namespace: default
+spec:
+  template:
+    spec:
+      volumes:
+        - name: sa-token
+          containerPath:
+            path: /var/run/secrets/kubernetes.io/serviceaccount

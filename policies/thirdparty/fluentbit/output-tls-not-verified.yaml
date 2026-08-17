@@ -1,0 +1,93 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: fluentbit.output-tls-not-verified
+  annotations:
+    audit.k8s-auditor.io/title: "Fluent Bit output does not verify TLS certificates"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: fluentbit
+    audit.k8s-auditor.io/remediation: >-
+      Set tls.verify: true (and configure a CA if the endpoint uses a
+      private CA) on this Output/ClusterOutput's destination. Fluent
+      Bit's own Transport Security docs are explicit: "always keep [TLS]
+      verification ON in production." Each of these output types
+      defaults to plaintext with no TLS at all unless its own tls block
+      is set, and unverified TLS is only marginally better — log data
+      (which can contain secrets, tokens, or PII) can otherwise be
+      intercepted or redirected via a MITM impersonating the log
+      destination.
+  # Covers http, es (Elasticsearch — json tag "es", not "elasticsearch"),
+  # forward, splunk, loki, influxDB (json tag "influxDB"), opensearch
+  # (json tag "opensearch", not "open_search"), opentelemetry (json tag
+  # "opentelemetry", not "open_telemetry"), prometheusRemoteWrite (json
+  # tag "prometheusRemoteWrite", not "prometheus_remote_write"), syslog,
+  # tcp, and gelf — verified field-by-field against exact Go source (both
+  # the parent OutputSpec's json tags in clusteroutput_types.go and each
+  # plugin's own *_types.go under plugins/output/), not assumed from
+  # naming convention: all twelve embed the identical plugins.TLS struct
+  # (a tls.verify bool) under spec.<type>.tls. kafka and datadog are
+  # deliberately NOT covered: kafka uses raw rdkafka properties instead
+  # of plugins.TLS (no equivalent field to check); datadog's TLS field is
+  # a bare *bool ("use TLS at all," not "verify the certificate") —
+  # different semantics, not the same check.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      # fluentbit.fluent.io has shipped only v1alpha2 for the Fluent
+      # Operator's history so far — "*" used for consistency with this
+      # tool's other CRD-backed policies. Output (namespaced) and
+      # ClusterOutput (cluster-scoped) share the same spec shape.
+      - apiGroups: ["fluentbit.fluent.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["outputs", "clusteroutputs"]
+  validations:
+    - expression: |-
+        !has(object.spec.http) ||
+        (has(object.spec.http.tls) && has(object.spec.http.tls.verify) && object.spec.http.tls.verify == true)
+      message: "This Output/ClusterOutput's http destination has no tls.verify: true — either TLS isn't configured at all (plaintext) or certificate verification is disabled."
+    - expression: |-
+        !has(object.spec.es) ||
+        (has(object.spec.es.tls) && has(object.spec.es.tls.verify) && object.spec.es.tls.verify == true)
+      message: "This Output/ClusterOutput's es (Elasticsearch) destination has no tls.verify: true — either TLS isn't configured at all (plaintext) or certificate verification is disabled."
+    - expression: |-
+        !has(object.spec.forward) ||
+        (has(object.spec.forward.tls) && has(object.spec.forward.tls.verify) && object.spec.forward.tls.verify == true)
+      message: "This Output/ClusterOutput's forward destination has no tls.verify: true — either TLS isn't configured at all (plaintext) or certificate verification is disabled."
+    - expression: |-
+        !has(object.spec.splunk) ||
+        (has(object.spec.splunk.tls) && has(object.spec.splunk.tls.verify) && object.spec.splunk.tls.verify == true)
+      message: "This Output/ClusterOutput's splunk destination has no tls.verify: true — either TLS isn't configured at all (plaintext) or certificate verification is disabled."
+    - expression: |-
+        !has(object.spec.loki) ||
+        (has(object.spec.loki.tls) && has(object.spec.loki.tls.verify) && object.spec.loki.tls.verify == true)
+      message: "This Output/ClusterOutput's loki destination has no tls.verify: true — either TLS isn't configured at all (plaintext) or certificate verification is disabled."
+    - expression: |-
+        !has(object.spec.influxDB) ||
+        (has(object.spec.influxDB.tls) && has(object.spec.influxDB.tls.verify) && object.spec.influxDB.tls.verify == true)
+      message: "This Output/ClusterOutput's influxDB destination has no tls.verify: true — either TLS isn't configured at all (plaintext) or certificate verification is disabled."
+    - expression: |-
+        !has(object.spec.opensearch) ||
+        (has(object.spec.opensearch.tls) && has(object.spec.opensearch.tls.verify) && object.spec.opensearch.tls.verify == true)
+      message: "This Output/ClusterOutput's opensearch destination has no tls.verify: true — either TLS isn't configured at all (plaintext) or certificate verification is disabled."
+    - expression: |-
+        !has(object.spec.opentelemetry) ||
+        (has(object.spec.opentelemetry.tls) && has(object.spec.opentelemetry.tls.verify) && object.spec.opentelemetry.tls.verify == true)
+      message: "This Output/ClusterOutput's opentelemetry destination has no tls.verify: true — either TLS isn't configured at all (plaintext) or certificate verification is disabled."
+    - expression: |-
+        !has(object.spec.prometheusRemoteWrite) ||
+        (has(object.spec.prometheusRemoteWrite.tls) && has(object.spec.prometheusRemoteWrite.tls.verify) && object.spec.prometheusRemoteWrite.tls.verify == true)
+      message: "This Output/ClusterOutput's prometheusRemoteWrite destination has no tls.verify: true — either TLS isn't configured at all (plaintext) or certificate verification is disabled."
+    - expression: |-
+        !has(object.spec.syslog) ||
+        (has(object.spec.syslog.tls) && has(object.spec.syslog.tls.verify) && object.spec.syslog.tls.verify == true)
+      message: "This Output/ClusterOutput's syslog destination has no tls.verify: true — either TLS isn't configured at all (plaintext) or certificate verification is disabled."
+    - expression: |-
+        !has(object.spec.tcp) ||
+        (has(object.spec.tcp.tls) && has(object.spec.tcp.tls.verify) && object.spec.tcp.tls.verify == true)
+      message: "This Output/ClusterOutput's tcp destination has no tls.verify: true — either TLS isn't configured at all (plaintext) or certificate verification is disabled."
+    - expression: |-
+        !has(object.spec.gelf) ||
+        (has(object.spec.gelf.tls) && has(object.spec.gelf.tls.verify) && object.spec.gelf.tls.verify == true)
+      message: "This Output/ClusterOutput's gelf destination has no tls.verify: true — either TLS isn't configured at all (plaintext) or certificate verification is disabled."

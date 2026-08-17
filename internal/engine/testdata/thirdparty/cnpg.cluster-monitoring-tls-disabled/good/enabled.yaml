@@ -1,0 +1,10 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: good
+  namespace: default
+spec:
+  instances: 3
+  monitoring:
+    tls:
+      enabled: true

@@ -1,0 +1,36 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: multitenancy.capsule-tenant-owner-cluster-admin-role
+  annotations:
+    audit.k8s-auditor.io/title: "Capsule Tenant grants an owner the cluster-admin ClusterRole"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: multitenancy
+    audit.k8s-auditor.io/remediation: >-
+      Remove cluster-admin from this owner's clusterRoles (Capsule's own
+      default is {admin, capsule-namespace-deleter}) and grant a
+      narrower role scoped to what the owner actually needs. Verified
+      directly against Capsule's own source (pkg/api/rbac/owner.go,
+      CoreOwnerSpec.ClusterRoles field comment): "Defines additional
+      cluster-roles for the specific Owner" — Capsule synchronizes a
+      RoleBinding for each into every namespace the tenant owns. Distinct
+      from multitenancy.capsule-tenant-cluster-admin-binding, which only
+      inspects spec.additionalRoleBindings — this checks the separate
+      spec.owners[].clusterRoles field. Same underlying risk as that
+      check: a tenant subject with cluster-admin defeats tenant isolation
+      entirely.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["capsule.clastix.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["tenants"]
+  validations:
+    - expression: |-
+        !has(object.spec.owners) ||
+        object.spec.owners.all(o,
+          !has(o.clusterRoles) || !o.clusterRoles.exists(r, r == "cluster-admin")
+        )
+      message: "Tenant's spec.owners grants an owner the cluster-admin ClusterRole, defeating tenant isolation."

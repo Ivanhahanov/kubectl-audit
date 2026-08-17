@@ -1,0 +1,42 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: apisix.etcd-connection-plaintext
+  annotations:
+    audit.k8s-auditor.io/title: "APISIX connects to etcd over plaintext HTTP"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: apisix
+    audit.k8s-auditor.io/remediation: >-
+      Change etcd.host entries to https:// and configure etcd.tls (and
+      etcd.user/password, or mutual TLS, on the etcd side) — APISIX's own
+      ["decoupled" deployment mode docs](https://apisix.apache.org/docs/apisix/deployment-modes/)
+      show `etcd.host: [https://${etcd_IP}:${etcd_Port}]`, unlike the
+      plaintext example used for "traditional" mode. etcd itself is
+      explicit about the risk: "An etcd cluster which doesn't enable
+      security features can expose its data to any clients." etcd is
+      where APISIX stores its entire routing/plugin/consumer
+      configuration — equivalent in sensitivity to the Admin API this
+      tool's other apisix.admin-* checks cover, but reachable without
+      going through the Admin API's own auth at all if etcd is exposed.
+  # Weaker-sourced than apisix.admin-auth-disabled/admin-allow-wide-open:
+  # APISIX's own config.yaml.example ships plaintext http:// as the
+  # default for BOTH its "traditional" mode example and the official
+  # apisix/apisix Helm chart's rendered output (verified against the
+  # chart) — only the "decoupled" mode doc example uses https://, with no
+  # explicit "you must do this" warning from APISIX itself. The
+  # data-sensitivity argument above rests on etcd's own docs, the same
+  # cross-project sourcing pattern used by istio.gateway-weak-tls-version
+  # (which cites IETF RFC 8996 rather than an Istio-authored warning).
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["configmaps"]
+  validations:
+    - expression: |-
+        !has(object.data) || !('config.yaml' in object.data) ||
+        !object.data['config.yaml'].matches(r'(?s)etcd:.*?host:.*?-\s*"?http://')
+      message: "config.yaml's etcd.host uses http:// — the connection carrying APISIX's entire routing/plugin/consumer configuration to and from etcd is unencrypted."

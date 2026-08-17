@@ -69,6 +69,73 @@ func Matches(mc *admissionregistrationv1.MatchResources, in MatchInput) bool {
 	return true
 }
 
+// resourceIndex buckets compiled policies by the exact (group, resource)
+// pairs their matchConstraints.resourceRules declare, so EvaluateAll only
+// has to consider policies that could possibly match a given resource
+// instead of scanning every bundled policy for every single resource in
+// the scan. This matters as the built-in policy count grows — most
+// policies are third-party-specific and only ever apply to their own
+// CRD/kind (e.g. an istio.* policy can never match a Deployment), so a
+// full O(resources × policies) scan spends most of its time on
+// comparisons that were always going to fail.
+//
+// Every bundled policy declares explicit (non-"*") apiGroups/resources —
+// true of every policies/*.yaml file as of this writing. A policy with a
+// wildcard apiGroup/resource, or no resourceRules at all (which Matches
+// treats as matching unconditionally on that axis), falls back into
+// "always" instead of a specific bucket, so correctness holds even if
+// that convention is ever broken by a future policy — it just won't get
+// the fast path.
+type resourceIndex struct {
+	byGroupResource map[string][]*CompiledPolicy
+	always          []*CompiledPolicy
+}
+
+func buildResourceIndex(policies []*CompiledPolicy) *resourceIndex {
+	idx := &resourceIndex{byGroupResource: make(map[string][]*CompiledPolicy)}
+	for _, p := range policies {
+		mc := p.Policy.Spec.MatchConstraints
+		if mc == nil || len(mc.ResourceRules) == 0 {
+			idx.always = append(idx.always, p)
+			continue
+		}
+		keys := map[string]bool{}
+		wildcard := false
+		for _, rule := range mc.ResourceRules {
+			for _, g := range rule.APIGroups {
+				for _, r := range rule.Resources {
+					if g == "*" || r == "*" {
+						wildcard = true
+						continue
+					}
+					keys[g+"/"+r] = true
+				}
+			}
+		}
+		if wildcard {
+			idx.always = append(idx.always, p)
+			continue
+		}
+		for key := range keys {
+			idx.byGroupResource[key] = append(idx.byGroupResource[key], p)
+		}
+	}
+	return idx
+}
+
+// candidates returns every policy that could possibly match a resource of
+// the given (group, resource) — still subject to the full Matches() check
+// (apiVersion, namespace/object selectors) by the caller.
+func (idx *resourceIndex) candidates(group, resource string) []*CompiledPolicy {
+	if len(idx.always) == 0 {
+		return idx.byGroupResource[group+"/"+resource]
+	}
+	out := make([]*CompiledPolicy, 0, len(idx.always)+len(idx.byGroupResource[group+"/"+resource]))
+	out = append(out, idx.always...)
+	out = append(out, idx.byGroupResource[group+"/"+resource]...)
+	return out
+}
+
 func isEmptySelector(sel *metav1.LabelSelector) bool {
 	return sel == nil || (len(sel.MatchLabels) == 0 && len(sel.MatchExpressions) == 0)
 }

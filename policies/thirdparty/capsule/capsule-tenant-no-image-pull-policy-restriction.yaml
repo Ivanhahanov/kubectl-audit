@@ -1,0 +1,40 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: multitenancy.capsule-tenant-no-image-pull-policy-restriction
+  annotations:
+    audit.k8s-auditor.io/title: "Capsule Tenant does not restrict container imagePullPolicy to Always"
+    audit.k8s-auditor.io/severity: low
+    audit.k8s-auditor.io/category: multitenancy
+    audit.k8s-auditor.io/remediation: >-
+      Set spec.imagePullPolicies to ["Always"]. Capsule's own best-practices
+      guide: "it's recommended to use the ImagePullPolicy `Always` for
+      private registries on shared nodes. This ensures that no images can
+      be used which are already pulled to the node." Without this, one
+      tenant's workload could reference an image tag already cached on a
+      shared node from a different tenant's private-registry pull,
+      bypassing registry access control entirely.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["capsule.clastix.io"]
+        # "*" instead of a pinned version — matches the Tenant object
+        # regardless of which Capsule release the cluster runs. Verified
+        # (2026-08, against api/v1beta2/tenant_types.go in
+        # projectcapsule/capsule): field is
+        # `spec.imagePullPolicies []rules.ImagePullPolicySpec` (a string
+        # enum type), json tag `imagePullPolicies`.
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["tenants"]
+  validations:
+    - expression: |-
+        has(object.spec.imagePullPolicies) &&
+        size(object.spec.imagePullPolicies) > 0 &&
+        object.spec.imagePullPolicies.all(p, p == "Always")
+      message: >-
+        Tenant does not restrict spec.imagePullPolicies to ["Always"] —
+        workloads on shared nodes can reference an already-cached image
+        pulled by a different tenant's private-registry credentials,
+        without re-authenticating against the registry.

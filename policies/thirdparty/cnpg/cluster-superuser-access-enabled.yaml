@@ -1,0 +1,30 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: cnpg.cluster-superuser-access-enabled
+  annotations:
+    audit.k8s-auditor.io/title: "CloudNativePG Cluster enables PostgreSQL superuser password access"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: cnpg
+    audit.k8s-auditor.io/remediation: >-
+      Remove spec.enableSuperuserAccess (or set it to false) unless a
+      specific, justified need exists. CloudNativePG's own security docs
+      state that when this is false (the default), "the operator removes
+      generated secrets and sets the postgres user password to NULL,
+      preventing remote access via password authentication" — the secure
+      posture is a single documented value, not situational.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      # postgresql.cnpg.io has shipped only v1 for CloudNativePG's entire
+      # history (no v1alpha1/v1beta1) — "*" used for consistency with this
+      # tool's other CRD-backed policies.
+      - apiGroups: ["postgresql.cnpg.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["clusters"]
+  validations:
+    - expression: |-
+        !has(object.spec.enableSuperuserAccess) || object.spec.enableSuperuserAccess == false
+      message: "Cluster.spec.enableSuperuserAccess is true, keeping a live postgres superuser password enabling remote password authentication."

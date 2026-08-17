@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: some-app
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: some-app
+  template:
+    metadata:
+      labels:
+        app: some-app
+    spec:
+      containers:
+        - name: app
+          image: example.com/some-app:1.0

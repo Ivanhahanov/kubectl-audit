@@ -1,0 +1,37 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: apisix.admin-auth-disabled
+  annotations:
+    audit.k8s-auditor.io/title: "APISIX Admin API authentication is explicitly disabled"
+    audit.k8s-auditor.io/severity: critical
+    audit.k8s-auditor.io/category: apisix
+    audit.k8s-auditor.io/remediation: >-
+      Remove admin_key_required: false (or set it to true, the default)
+      from config.yaml. The official raw config
+      (github.com/apache/apisix/blob/master/conf/config.yaml.example):
+      `` admin_key_required: true   # Enable Admin API authentication by
+      default for security. `` — setting this to false disables Admin API
+      authentication entirely, independent of whatever admin_key is
+      configured: anyone who can reach the Admin API port gets full
+      control-plane access (routes, upstreams, consumers) with no key at
+      all.
+  # Same ConfigMap/pattern as apisix.admin-api-default-key (config.yaml
+  # text blob, no CRD) — not rendered by the apisix/apisix Helm chart's
+  # own values.yaml at all (the chart relies on APISIX's internal default
+  # of true), so this only matters if a user overrides raw config.yaml
+  # content directly. When they do, it's more severe than a weak/default
+  # key: no key is required at all.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["configmaps"]
+  validations:
+    - expression: |-
+        !has(object.data) || !('config.yaml' in object.data) ||
+        !object.data['config.yaml'].matches(r'(?i)admin_key_required:\s*false')
+      message: "config.yaml sets admin_key_required: false — the Admin API requires no authentication at all, regardless of any admin_key configured."

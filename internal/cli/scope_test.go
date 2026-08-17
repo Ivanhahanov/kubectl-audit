@@ -28,7 +28,7 @@ func netpolResource() loader.Resource {
 
 func TestBuildScope_SingleManifestStatic(t *testing.T) {
 	cfg := &config.AuditConfig{Target: config.TargetConfig{Mode: config.ModeStatic}}
-	scope := buildScope(cfg, nil, "", map[string]bool{})
+	scope := buildScope(cfg, nil, "", map[string]bool{}, nil)
 
 	titles := map[string]bool{}
 	for _, n := range scope.OutOfScope {
@@ -50,7 +50,7 @@ func TestBuildScope_FullClusterNoGaps(t *testing.T) {
 	resources := []loader.Resource{rbacResource(), netpolResource()}
 	observed := map[string]bool{"apiserver": true, "controller-manager": true, "scheduler": true, "etcd": true}
 
-	scope := buildScope(cfg, resources, "v1.30.0", observed)
+	scope := buildScope(cfg, resources, "v1.30.0", observed, nil)
 	if len(scope.OutOfScope) != 0 {
 		t.Errorf("expected no scope gaps for a fully-observed live cluster, got %+v", scope.OutOfScope)
 	}
@@ -61,7 +61,7 @@ func TestBuildScope_ManagedClusterControlPlaneNotObserved(t *testing.T) {
 	resources := []loader.Resource{rbacResource(), netpolResource()}
 	observed := map[string]bool{} // nothing observed, e.g. EKS/GKE/AKS
 
-	scope := buildScope(cfg, resources, "v1.30.0", observed)
+	scope := buildScope(cfg, resources, "v1.30.0", observed, nil)
 	if len(scope.OutOfScope) != 1 {
 		t.Fatalf("expected exactly one scope note (control-plane), got %+v", scope.OutOfScope)
 	}
@@ -74,7 +74,7 @@ func TestBuildScope_StaticWithRBACAndNetPolPresent(t *testing.T) {
 	cfg := &config.AuditConfig{Target: config.TargetConfig{Mode: config.ModeStatic}}
 	resources := []loader.Resource{rbacResource(), netpolResource()}
 
-	scope := buildScope(cfg, resources, "", map[string]bool{})
+	scope := buildScope(cfg, resources, "", map[string]bool{}, nil)
 	var rbacNote, netpolNote string
 	for _, n := range scope.OutOfScope {
 		switch n.Title {

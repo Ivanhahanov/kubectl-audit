@@ -10,15 +10,19 @@
 # not ready for usage" at the time — not something this tool should present
 # as an authoritative standard. So this mapping is scoped narrowly and
 # honestly: every control here corresponds 1:1 to a bundled
-# policies/multitenancy/*.yaml check against Capsule's Tenant CRD
+# policies/thirdparty/capsule/*.yaml check against Capsule's Tenant CRD
 # (capsule.clastix.io/v1beta2), nothing more.
 #
-# This is NOT a general Kubernetes multi-tenancy assessment: node isolation,
-# storage isolation, and control-plane isolation (all covered in Kubernetes'
-# own "Multi-tenancy" docs and in kubectl-mtb's ideas) require node/
+# This is NOT a general Kubernetes multi-tenancy assessment: storage
+# isolation and control-plane isolation (covered in Kubernetes' own
+# "Multi-tenancy" docs and in kubectl-mtb's ideas) require node/
 # infrastructure-level observation this tool doesn't have, so they're left
 # out entirely rather than listed as NOT_APPLICABLE padding — there's no
 # fixed external control count to be honest about being incomplete against.
+# Node isolation IS checked (isolation.node-isolation below), but only the
+# declared intent (spec.nodeSelector) — this tool has no way to confirm
+# tenant workloads are actually only scheduled on the selected nodes, only
+# that the Tenant asks for it.
 id: capsule
 title: "Capsule Multi-Tenancy Hardening Checklist"
 version: "1beta2"
@@ -52,3 +56,21 @@ controls:
     section: "RBAC Isolation"
     applicable: true
     policyIds: ["multitenancy.capsule-tenant-cluster-admin-binding"]
+
+  - id: "isolation.registry-allowlist"
+    title: "Tenant restricts which container registries its workloads may pull from"
+    section: "Container Images"
+    applicable: true
+    policyIds: ["multitenancy.capsule-tenant-no-registry-allowlist"]
+
+  - id: "isolation.node-isolation"
+    title: "Tenant restricts which nodes its workloads may schedule on"
+    section: "Namespace & Network Isolation"
+    applicable: true
+    policyIds: ["multitenancy.capsule-tenant-no-node-isolation"]
+
+  - id: "isolation.image-pull-policy"
+    title: "Tenant restricts container imagePullPolicy to Always on shared nodes"
+    section: "Container Images"
+    applicable: true
+    policyIds: ["multitenancy.capsule-tenant-no-image-pull-policy-restriction"]

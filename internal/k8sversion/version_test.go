@@ -31,16 +31,16 @@ func TestParse(t *testing.T) {
 
 func TestCheckSupportWindow(t *testing.T) {
 	// Well within the window: no finding.
-	if got := k8sversion.CheckSupportWindow("v1.36.3", "test"); len(got) != 0 {
+	if got := k8sversion.CheckSupportWindow("v1.36.3", "test", nil); len(got) != 0 {
 		t.Errorf("expected no finding for the latest known version, got %+v", got)
 	}
 	if got := k8sversion.CheckSupportWindow(
-		fmt.Sprintf("v1.%d.0", k8sversion.LatestKnownMinor-1), "test"); len(got) != 0 {
+		fmt.Sprintf("v1.%d.0", k8sversion.LatestKnownMinor-1), "test", nil); len(got) != 0 {
 		t.Errorf("expected no finding one minor version behind, got %+v", got)
 	}
 
 	// Old enough to be flagged (v1.27 with LatestKnownMinor=36 is 9 versions behind).
-	got := k8sversion.CheckSupportWindow("v1.27.16", "test")
+	got := k8sversion.CheckSupportWindow("v1.27.16", "test", nil)
 	if len(got) != 1 {
 		t.Fatalf("expected exactly one finding for an old cluster version, got %+v", got)
 	}
@@ -48,12 +48,36 @@ func TestCheckSupportWindow(t *testing.T) {
 		t.Errorf("unexpected policyId: %s", got[0].PolicyID)
 	}
 
-	// Unparseable / unknown major / newer than this build knows about: no
-	// finding, deliberately don't guess.
-	if got := k8sversion.CheckSupportWindow("not-a-version", "test"); len(got) != 0 {
+	// Unknown major / newer than this build knows about: no finding,
+	// deliberately don't guess, and no warning either — this is a
+	// legitimate, confidently-parsed version, just outside what the
+	// support-window heuristic covers.
+	if got := k8sversion.CheckSupportWindow("v2.0.0", "test", nil); len(got) != 0 {
+		t.Errorf("expected no finding for an unknown major version, got %+v", got)
+	}
+}
+
+func TestCheckSupportWindow_UnparseableVersionWarnsOnce(t *testing.T) {
+	var warnings int
+	got := k8sversion.CheckSupportWindow("not-a-version", "test", func(string, ...any) { warnings++ })
+	if len(got) != 0 {
 		t.Errorf("expected no finding for an unparseable version, got %+v", got)
 	}
-	if got := k8sversion.CheckSupportWindow("v2.0.0", "test"); len(got) != 0 {
-		t.Errorf("expected no finding for an unknown major version, got %+v", got)
+	if warnings != 1 {
+		t.Errorf("expected exactly one warning for a non-empty, unparseable version string, got %d", warnings)
+	}
+}
+
+func TestCheckSupportWindow_EmptyVersionIsSilent(t *testing.T) {
+	// "" is the routine static-manifest-only-scan case (no live cluster to
+	// detect a version from), already surfaced via the report's Scope
+	// section — must not also warn here.
+	var warnings int
+	got := k8sversion.CheckSupportWindow("", "test", func(string, ...any) { warnings++ })
+	if len(got) != 0 {
+		t.Errorf("expected no finding for an empty version, got %+v", got)
+	}
+	if warnings != 0 {
+		t.Errorf("expected no warning for an empty (static-scan) version, got %d", warnings)
 	}
 }

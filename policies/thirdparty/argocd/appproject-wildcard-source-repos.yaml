@@ -1,0 +1,30 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: argocd.appproject-wildcard-source-repos
+  annotations:
+    audit.k8s-auditor.io/title: "ArgoCD AppProject allows syncing from any Git repository"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: argocd
+    audit.k8s-auditor.io/remediation: >-
+      Replace the "*" entry in spec.sourceRepos with the specific
+      repository URLs this project's Applications actually need. This is
+      ArgoCD's own out-of-the-box "default" AppProject configuration — if
+      you haven't created a scoped project for your Applications, they're
+      inheriting this unrestricted source-repo scope.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      # argoproj.io has shipped only v1alpha1 for its entire history (no
+      # v1beta1/v1 promotion) — verified against register.go's
+      # SchemeGroupVersion — so this isn't a version-skew concern, but "*"
+      # is used for consistency with this tool's other CRD-backed policies.
+      - apiGroups: ["argoproj.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["appprojects"]
+  validations:
+    - expression: |-
+        !has(object.spec.sourceRepos) || !object.spec.sourceRepos.exists(r, r == "*")
+      message: "AppProject.spec.sourceRepos includes \"*\", allowing Applications in this project to sync from any Git repository."

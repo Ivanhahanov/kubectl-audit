@@ -1,0 +1,36 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: airflow.api-auth-backend-default-enabled
+  annotations:
+    audit.k8s-auditor.io/title: "Airflow's REST API allows unauthenticated requests"
+    audit.k8s-auditor.io/severity: critical
+    audit.k8s-auditor.io/category: airflow
+    audit.k8s-auditor.io/remediation: >-
+      Remove airflow.api.auth.backend.default from [api] auth_backends
+      in airflow.cfg — leave only airflow.api.auth.backend.session (the
+      default) or another real auth backend. Airflow's own configuration
+      reference (Airflow 2.x, [api] auth_backends), quoted verbatim:
+      "(\"airflow.api.auth.backend.default\" allows all requests for
+      historic reasons)." This is Airflow's own documentation stating, in
+      its own words, that this specific backend grants unauthenticated
+      access to the REST API — same severity tier as
+      airflow.webserver-config-auth-role-public (both are "the whole
+      app/API is open" findings).
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["configmaps"]
+  validations:
+    - expression: |-
+        !has(object.data) || !('airflow.cfg' in object.data) ||
+        !object.data['airflow.cfg'].matches(r'auth_backends\s*=.*airflow\.api\.auth\.backend\.default')
+      message: >-
+        airflow.cfg's [api] auth_backends includes
+        airflow.api.auth.backend.default — Airflow's own docs state this
+        backend "allows all requests," i.e. the REST API accepts
+        unauthenticated requests.

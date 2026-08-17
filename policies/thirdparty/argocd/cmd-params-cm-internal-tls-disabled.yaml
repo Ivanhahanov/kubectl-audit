@@ -1,0 +1,42 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: argocd.cmd-params-cm-internal-tls-disabled
+  annotations:
+    audit.k8s-auditor.io/title: "ArgoCD disables TLS on an internal component connection"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: argocd
+    audit.k8s-auditor.io/remediation: >-
+      Remove the plaintext/disable.tls key that fired (or set it back to
+      "false", the default) in argocd-cmd-params-cm. Verified directly
+      against the official reference
+      (docs/operator-manual/argocd-cmd-params-cm.yaml in argoproj/argo-cd):
+      reposerver.disable.tls ("Disable TLS on the gRPC endpoint"),
+      dexserver.disable.tls ("Disable TLS on the HTTP endpoint"),
+      controller.repo.server.plaintext / server.repo.server.plaintext /
+      notificationscontroller.repo.server.plaintext ("Disable TLS on
+      connections to repo server" / "Use a plaintext client (non-TLS) to
+      connect to repository server"), and server.dex.server.plaintext
+      ("Use a plaintext client (non-TLS) to connect to dex server") — all
+      default "false". Each is an explicit opt-out of TLS between two
+      ArgoCD components communicating in-cluster.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["configmaps"]
+  validations:
+    - expression: |-
+        object.metadata.name != "argocd-cmd-params-cm" || !has(object.data) ||
+        ['reposerver.disable.tls', 'dexserver.disable.tls',
+         'controller.repo.server.plaintext', 'server.repo.server.plaintext',
+         'server.dex.server.plaintext', 'notificationscontroller.repo.server.plaintext']
+          .all(k, !(k in object.data) || object.data[k] != "true")
+      message: >-
+        argocd-cmd-params-cm disables TLS on an internal component
+        connection (one of reposerver.disable.tls, dexserver.disable.tls,
+        *.repo.server.plaintext, server.dex.server.plaintext set to
+        "true") — traffic between ArgoCD's own components is unencrypted.

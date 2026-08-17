@@ -1,0 +1,37 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: kyverno.cluster-policy-failure-policy-ignore
+  annotations:
+    audit.k8s-auditor.io/title: "Kyverno policy fails open if the webhook is unreachable"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: kyverno
+    audit.k8s-auditor.io/remediation: >-
+      Remove failurePolicy: Ignore (either spec.failurePolicy, deprecated
+      but still functional, or the current
+      spec.webhookConfiguration.failurePolicy) unless this specific
+      policy is intentionally best-effort. Verified directly against
+      Kyverno's own source (api/kyverno/v1/common_types.go,
+      WebhookConfiguration.FailurePolicy field comment): "Allowed values
+      are Ignore or Fail. Defaults to Fail." Per-policy analog of
+      kyverno.admission-controller-force-failure-policy-ignore (which
+      flags the admission-controller-wide container flag) — this flags
+      the same fail-open downgrade set on an individual policy object.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["kyverno.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["clusterpolicies", "policies"]
+  validations:
+    - expression: |-
+        (!has(object.spec.failurePolicy) || object.spec.failurePolicy != "Ignore") &&
+        (!has(object.spec.webhookConfiguration) ||
+         !has(object.spec.webhookConfiguration.failurePolicy) ||
+         object.spec.webhookConfiguration.failurePolicy != "Ignore")
+      message: >-
+        This policy sets failurePolicy: Ignore — if the Kyverno webhook
+        is unreachable when this policy would apply, the request is
+        allowed through unchecked instead of being blocked.

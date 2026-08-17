@@ -1,0 +1,29 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: argocd.appproject-wildcard-cluster-resources
+  annotations:
+    audit.k8s-auditor.io/title: "ArgoCD AppProject allows creating arbitrary cluster-scoped resources"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: argocd
+    audit.k8s-auditor.io/remediation: >-
+      Replace the wildcard entry in spec.clusterResourceWhitelist with the
+      specific cluster-scoped group/kind pairs this project's Applications
+      actually need (or remove the field to allow none). A wildcard here
+      lets synced Applications create any cluster-scoped resource,
+      including RBAC objects like ClusterRole/ClusterRoleBinding — this is
+      ArgoCD's own out-of-the-box "default" AppProject configuration.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["argoproj.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["appprojects"]
+  validations:
+    - expression: |-
+        !has(object.spec.clusterResourceWhitelist) || !object.spec.clusterResourceWhitelist.exists(g,
+          has(g.group) && g.group == "*" && has(g.kind) && g.kind == "*"
+        )
+      message: "AppProject.spec.clusterResourceWhitelist includes {group: \"*\", kind: \"*\"}, allowing this project's Applications to create arbitrary cluster-scoped resources."

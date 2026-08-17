@@ -1,0 +1,199 @@
+# Inventory of every third-party operator/CNI this tool has checks or
+# exceptions for. Data-driven deliberately: extending coverage to a new
+# product should be "add an entry here (+ a policies/*.yaml check and/or a
+# internal/suppress/builtin-exclusions.yaml rule)", not a Go code change.
+#
+# category: System | Application — System means the component needs
+# host/OS-level access (privileged, hostNetwork, hostPath, hostPID, ...) as
+# a documented, unavoidable part of its job, and has a corresponding rule
+# in internal/suppress/builtin-exclusions.yaml. Application means an
+# ordinary application-layer operator/CRD — no host access needed, no
+# built-in PSS exception; everything it does gets checked at full
+# strength.
+#
+# group: the CRD API group to detect by. Empty/omitted if this component
+# has no CRD of its own (e.g. node-exporter, a plain DaemonSet with no
+# operator/CRD layer).
+#
+# labels: a label match (all key/values required) against a
+# Deployment/StatefulSet/DaemonSet, identifying the actual
+# controller/operator/agent workload doing the work — not just that the
+# component's CRDs are installed. Deliberately restricted to workload
+# kinds (see isWorkloadKind in detect.go): a leftover Namespace or
+# ServiceAccount from the same install often carries the same label long
+# after the actual controller is gone, which would otherwise defeat the
+# whole point of this signal. Used
+# either as the *only* detection signal (no CRD to key off, e.g.
+# node-exporter) or *alongside* group. This is what makes "CRD group
+# present but no matching workload" (see Detection.Mismatched in
+# detect.go) detectable for every component, not just the System ones:
+# CRDs commonly outlive the component that installed them (e.g. `helm
+# uninstall` doesn't remove CRDs by default), so a group match alone
+# can't tell "still installed" from "uninstalled, CRDs left behind".
+# Verified 2026-08 against each project's own official Helm chart (or,
+# where noted, raw install manifest) — the Deployment/StatefulSet/
+# DaemonSet actually doing the reconciling, not just any pod carrying a
+# vendor's name.
+components:
+  # Verified against projectcapsule/capsule chart's Deployment.
+  - name: Capsule
+    category: Application
+    group: capsule.clastix.io
+    labels:
+      app.kubernetes.io/name: capsule
+
+  # Verified against istio/istiod chart's Deployment — istiod is the
+  # control-plane component that actually processes security.istio.io
+  # objects; the data-plane sidecars carry different labels entirely.
+  - name: Istio
+    category: Application
+    group: security.istio.io
+    labels:
+      app.kubernetes.io/name: istiod
+
+  # Verified against argo/argo-cd chart's application-controller
+  # StatefulSet — the ArgoCD component that actually reconciles
+  # AppProject/Application objects (argocd-server and argocd-repo-server
+  # carry different labels and don't evaluate this tool's checks).
+  - name: ArgoCD
+    category: Application
+    group: argoproj.io
+    labels:
+      app.kubernetes.io/name: argocd-application-controller
+
+  - name: Vault Secrets Operator
+    category: Application
+    group: secrets.hashicorp.com
+    labels:
+      # Verified against hashicorp/vault-secrets-operator chart's
+      # controller-manager Deployment.
+      app.kubernetes.io/name: vault-secrets-operator
+
+  - name: Fluent Operator
+    category: Application
+    group: fluentbit.fluent.io
+    labels:
+      # Verified against fluent/fluent-operator chart's Deployment.
+      app.kubernetes.io/name: fluent-operator
+
+  - name: VictoriaMetrics Operator
+    category: Application
+    group: operator.victoriametrics.com
+    labels:
+      # Verified against vm/victoria-metrics-operator chart's Deployment.
+      app.kubernetes.io/name: victoria-metrics-operator
+
+  - name: CloudNativePG
+    category: Application
+    group: postgresql.cnpg.io
+    labels:
+      # Verified against the official install manifest's
+      # cnpg-controller-manager Deployment
+      # (github.com/cloudnative-pg/cloudnative-pg/releases).
+      app.kubernetes.io/name: cloudnative-pg
+
+  - name: Kyverno
+    category: Application
+    group: kyverno.io
+    labels:
+      # Verified against kyverno/kyverno chart's admission-controller
+      # Deployment — app.kubernetes.io/part-of: kyverno is stable across
+      # all of its component Deployments (admission-controller,
+      # background-controller, ...) and release-name-independent, unlike
+      # app.kubernetes.io/instance.
+      app.kubernetes.io/part-of: kyverno
+
+  # Airflow has no CRD of its own — labels-only, like node-exporter. The
+  # official apache-airflow/airflow chart still uses the older
+  # tier/component/release/chart/heritage label convention (not
+  # app.kubernetes.io/*) across every Deployment it renders (api-server,
+  # scheduler, workers, ...); tier: airflow is the one constant across
+  # all of them, verified against the chart's rendered output.
+  - name: Airflow
+    category: Application
+    labels:
+      tier: airflow
+
+  - name: APISIX
+    category: Application
+    group: apisix.apache.org
+    labels:
+      # Verified against apisix/apisix chart's gateway Deployment. Note:
+      # this group comes from the separate apisix-ingress-controller CRDs
+      # (ApisixRoute, ApisixTls, ...) — a plain APISIX gateway install
+      # without the ingress-controller has no CRD of its own, only this
+      # label; group and labels can legitimately be observed independently
+      # of each other here, unlike Cilium where both come from the same
+      # component.
+      app.kubernetes.io/name: apisix
+
+  # Calico's CRD group (NetworkPolicy/GlobalNetworkPolicy) is a
+  # configuration surface, same category as the entries above —
+  # calico-node (its privileged agent DaemonSet, architecturally the same
+  # shape as Cilium's agent) doesn't have a built-in exception yet.
+  # Promoting this to System is exactly the extension path described
+  # above, once that agent's full privilege requirements are verified the
+  # same way Cilium's were (see internal/suppress/builtin-exclusions.yaml)
+  # — the label below is only wired up for orphan/mismatch detection so
+  # far, not (yet) a suppression rule.
+  - name: Calico
+    category: Application
+    group: crd.projectcalico.org
+    labels:
+      # Verified against the official raw install manifest
+      # (github.com/projectcalico/calico/manifests/calico.yaml) —
+      # k8s-app: calico-node is stable across both the plain-manifest and
+      # Tigera-operator install paths.
+      k8s-app: calico-node
+
+  # See internal/suppress/builtin-exclusions.yaml for the verified source
+  # behind each System entry's labels, and exactly which PolicyIDs get
+  # suppressed for them.
+  - name: Cilium
+    category: System
+    group: cilium.io
+    labels:
+      k8s-app: cilium
+
+  - name: prometheus-node-exporter
+    category: System
+    labels:
+      app.kubernetes.io/name: prometheus-node-exporter
+
+  # No group: Falco's base Helm chart ships no CRD at all (rules are
+  # ConfigMaps) — only the falco-operator chart, a separate, not-yet-
+  # covered component, introduces one.
+  - name: Falco
+    category: System
+    labels:
+      app.kubernetes.io/name: falco
+
+  # No group, deliberately: Tetragon's CRDs (TracingPolicy, ...) use group
+  # cilium.io — the *same* group as Cilium's own CRDs. Setting group:
+  # cilium.io here would double-count against Cilium's entry (a
+  # TracingPolicy object would look like "Cilium's CRD is present") and
+  # vice versa, since Detect keys purely by API group. Labels-only
+  # detection (like node-exporter) sidesteps the collision entirely.
+  - name: Tetragon
+    category: System
+    labels:
+      app.kubernetes.io/name: tetragon
+
+  # virt-handler (the node-level agent that actually runs VMs, needs
+  # /dev/kvm and likely other host-level access) is architecturally the
+  # same "should probably be System" shape as Calico's calico-node above
+  # — but its real privilege requirements haven't been verified against a
+  # live manifest yet (virt-handler isn't part of the static operator
+  # install manifest; it's created dynamically by virt-operator based on
+  # the KubeVirt CR, so there's nothing to fetch from GitHub directly).
+  # Promoting this to System is the same extension path as Calico: verify
+  # the real DaemonSet's securityContext/hostPath/hostNetwork against a
+  # live cluster or the operator's generated manifests first, don't
+  # assume. Application category (and this label) cover only
+  # virt-operator, the cluster-wide control-plane component — verified
+  # against the official release manifest's Deployment.
+  - name: KubeVirt
+    category: Application
+    group: kubevirt.io
+    labels:
+      kubevirt.io: virt-operator

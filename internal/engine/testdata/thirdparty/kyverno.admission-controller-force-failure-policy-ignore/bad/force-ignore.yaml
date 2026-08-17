@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kyverno-admission-controller
+  namespace: kyverno
+spec:
+  selector:
+    matchLabels:
+      app: kyverno
+  template:
+    metadata:
+      labels:
+        app: kyverno
+    spec:
+      containers:
+        - name: kyverno
+          image: ghcr.io/kyverno/kyverno:v1.13.0
+          args:
+            - --autoUpdateWebhooks=true
+            - --forceFailurePolicyIgnore=true

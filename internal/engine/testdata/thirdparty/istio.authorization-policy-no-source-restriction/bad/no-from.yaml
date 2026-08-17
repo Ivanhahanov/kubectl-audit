@@ -1,0 +1,11 @@
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: wide-open
+  namespace: payments
+spec:
+  action: ALLOW
+  rules:
+    - to:
+        - operation:
+            paths: ["/health"]

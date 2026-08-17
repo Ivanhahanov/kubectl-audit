@@ -36,13 +36,16 @@ target:
   paths:
     - ./manifests
 
-  # Namespaces to skip entirely, regardless of mode. Defaults to these
-  # platform-managed namespaces (see Getting Started: Noise reduction) since
-  # their workloads/RBAC are Kubernetes/CNI/CSI internals, not actionable
-  # findings. Ignored if `namespaces` above is a non-empty allowlist. Set
-  # to [] to audit everything, including kube-system.
+  # Namespaces to skip entirely, regardless of mode. Defaults to these two
+  # (see Getting Started: Noise reduction) since they hold nothing worth
+  # auditing (a public ConfigMap, Lease objects). kube-system is
+  # deliberately NOT excluded by default — it commonly hosts real,
+  # auditable third-party infrastructure; the genuinely unavoidable
+  # findings from core plumbing (kube-proxy, static control-plane pods)
+  # are handled precisely by built-in exceptions instead, not by hiding
+  # the whole namespace. Ignored if `namespaces` above is a non-empty
+  # allowlist.
   excludeNamespaces:
-    - kube-system
     - kube-public
     - kube-node-lease
 
@@ -106,6 +109,13 @@ compliance:
 # in the report ("Suppressed Findings" section, findings.json's
 # `suppressed` array) — excluded only from Summary counts, --fail-on, CSV
 # export, and compliance scorecards.
+#
+# This list is merged with (not a replacement for) this tool's own built-in
+# exclusion rules for well-known privileged infrastructure (Cilium's agent,
+# prometheus-node-exporter, kube-proxy, static control-plane pods) — set
+# disableBuiltinExceptions: true / --no-builtin-exceptions to turn all of
+# those off, or disableBuiltinExceptionIds (below) to turn off just one. See
+# third-party-operators.md#built-in-exceptions-for-privileged-system-infrastructure.
 exclusions:
   - # Restricts this rule to specific checks; omit (or ["*"]) to apply it
     # to every check.
@@ -125,6 +135,32 @@ exclusions:
 
     # Required — shown next to every finding this rule suppresses.
     reason: "Legacy app pending migration, tracked in JIRA-1234"
+
+# Disable individual built-in exclusion rules by id (see
+# internal/suppress/builtin-exclusions.yaml for the current ids: cilium-agent,
+# prometheus-node-exporter, falco, tetragon, kube-proxy, control-plane-static-pods) while
+# leaving the rest active — finer-grained than disableBuiltinExceptions,
+# which turns off all of them at once. An id with no matching rule is a
+# harmless no-op (just a warning), not an error.
+disableBuiltinExceptionIds: []
+#  - cilium-agent
+
+# Extend this tool's built-in third-party component inventory (see
+# internal/thirdparty/components.yaml) — the only way to add your own
+# in-house operator/CNI to the Detected Components table and orphan/
+# mismatch detection without forking or rebuilding, which matters
+# especially for a krew install (there's no components.yaml file on disk to
+# edit — it's compiled into the binary). Same schema as the built-in file;
+# merged with it, not a replacement. Adding an entry here does NOT by
+# itself create a suppression exception — pair a System-category entry
+# with your own `exclusions` rule (above) for that.
+components:
+  extra: []
+  #  - name: InternalWidgetOperator
+  #    category: Application       # System | Application (default: Application)
+  #    group: internal.example.com # CRD API group, if any
+  #    labels:                     # label selector for the actual
+  #      app.kubernetes.io/name: internal-widget-operator  # controller Deployment/StatefulSet/DaemonSet
 ```
 
 ## Field reference
@@ -135,7 +171,7 @@ exclusions:
 | `target.context` | string | current context | Kube context for cluster mode. |
 | `target.allNamespaces` / `target.namespaces` | bool / []string | `true` / `[]` | An explicit `namespaces` allowlist disables `excludeNamespaces`. |
 | `target.paths` | []string | `[]` | Static manifest files/directories (`static`/`both` mode). |
-| `target.excludeNamespaces` | []string | `[kube-system, kube-public, kube-node-lease]` | See [Getting Started: Noise reduction]({{ '/getting-started/#noise-reduction' | relative_url }}). |
+| `target.excludeNamespaces` | []string | `[kube-public, kube-node-lease]` | See [Getting Started: Noise reduction]({{ '/getting-started/#noise-reduction' | relative_url }}). |
 | `target.includeSystemRBAC` | bool | `false` | Include `system:`-prefixed RBAC objects. |
 | `target.includeKinds` / `target.excludeKinds` | []string | `[]` | Filter which resource kinds are fetched in cluster mode. |
 | `policies.dirs` | []string | `[]` | Extra `--policy-dir` directories. |
@@ -145,6 +181,9 @@ exclusions:
 | `output.failOn` | severity | `high` | `none` disables the CI exit-code gate. |
 | `output.template` | string | `""` | Custom `report.md.tpl` path; empty uses the embedded default. See [Report Templates]({{ '/report-templates/' | relative_url }}). |
 | `compliance.frameworks` | []string | `[cis]` | Which framework(s) to score against; see [Compliance Frameworks]({{ '/compliance/' | relative_url }}). |
+| `disableBuiltinExceptions` | bool | `false` | `--no-builtin-exceptions` on the CLI. Disables all of this tool's built-in PSS exceptions for well-known privileged infrastructure (Cilium's agent, prometheus-node-exporter, kube-proxy, static control-plane pods) — see [Third-Party Operators: Built-in exceptions]({{ '/third-party-operators/#built-in-exceptions-for-privileged-system-infrastructure' | relative_url }}). |
+| `disableBuiltinExceptionIds` | []string | `[]` | `--disable-builtin-exception-id` on the CLI (repeatable). Disables one built-in exclusion rule by id, leaving the rest active. |
+| `components.extra` | []Component | `[]` | Config-file only. Adds your own components to the Detected Components inventory/orphan-detection — same schema as `internal/thirdparty/components.yaml`. See [Third-Party Operators: Component inventory]({{ '/third-party-operators/#component-inventory-internalthirdparty' | relative_url }}). |
 
 See [`examples/audit.yaml`](https://github.com/{{ site.repository }}/blob/main/examples/audit.yaml)
 in the repo for this same file with inline comments.

@@ -1,0 +1,11 @@
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-all-admin
+  namespace: payments
+spec:
+  action: DENY
+  rules:
+    - to:
+        - operation:
+            paths: ["/admin/*"]

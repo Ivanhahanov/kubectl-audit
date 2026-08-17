@@ -1,0 +1,40 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: kyverno.policy-validation-not-enforced
+  annotations:
+    audit.k8s-auditor.io/title: "Kyverno policy does not block non-compliant resources"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: kyverno
+    audit.k8s-auditor.io/remediation: >-
+      Set spec.validationFailureAction: Enforce once the policy has been
+      run in Audit mode long enough to confirm it doesn't break legitimate
+      workloads. Kyverno's own docs: validationFailureAction "should block
+      the admission review request (Enforce) or allow (Audit) the
+      admission review request and report the policy failure in a policy
+      report" — and "Defaults to Audit" when the field is omitted
+      entirely, so an unset value is just as non-blocking as an explicit
+      Audit.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      # (Cluster)Policy has shipped v1 and v2beta1 concurrently for a
+      # while — "*" used for consistency with this tool's other
+      # CRD-backed policies, same reasoning as the ArgoCD/Capsule checks.
+      - apiGroups: ["kyverno.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["clusterpolicies", "policies"]
+  validations:
+    # Only meaningful for policies with at least one validate-type rule —
+    # validationFailureAction has no effect on a mutate/generate/
+    # verifyImages-only policy, so those are skipped rather than flagged.
+    - expression: |-
+        !(has(object.spec.rules) && object.spec.rules.exists(r, has(r.validate))) ||
+        (has(object.spec.validationFailureAction) && object.spec.validationFailureAction == "Enforce")
+      message: >-
+        spec.validationFailureAction is missing or set to "Audit" on a
+        policy with at least one validate rule — it only logs violations
+        to a policy report and does not block non-compliant resources.
+        Kyverno defaults to Audit when this field is unset.

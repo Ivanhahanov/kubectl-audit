@@ -1,0 +1,9 @@
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultAuth
+metadata:
+  name: good
+  namespace: vault-system
+spec:
+  method: kubernetes
+  mount: kubernetes
+  allowedNamespaces: ["team-a", "team-b"]

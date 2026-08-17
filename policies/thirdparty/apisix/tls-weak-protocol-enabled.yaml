@@ -1,0 +1,37 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: apisix.tls-weak-protocol-enabled
+  annotations:
+    audit.k8s-auditor.io/title: "APISIX ssl_protocols explicitly allows a deprecated TLS/SSL version"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: apisix
+    audit.k8s-auditor.io/remediation: >-
+      Remove TLSv1, TLSv1.1, and SSLv3 from apisix.ssl.ssl_protocols in
+      config.yaml — keep only TLSv1.2 and TLSv1.3. APISIX's own docs
+      (apisix.apache.org/docs/apisix/ssl-protocol/): the default is
+      "TLSv1.2 TLSv1.3" and "For security reasons, the encryption suite
+      used by default in APISIX does not support TLSv1.1 and lower
+      versions" — supporting them requires deliberately widening both
+      ssl_protocols and the cipher suite away from that secure default.
+  # Word-boundary-safe match: "TLSv1" bare (TLS 1.0) must not match the
+  # "TLSv1.2"/"TLSv1.3" substrings that legitimately appear in the
+  # default value, hence the explicit "TLSv1 followed by a space, quote,
+  # or end of string" pattern rather than a plain contains('TLSv1').
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["configmaps"]
+  validations:
+    - expression: |-
+        !has(object.data) || !('config.yaml' in object.data) ||
+        !(
+          object.data['config.yaml'].contains('TLSv1.1') ||
+          object.data['config.yaml'].contains('SSLv3') ||
+          object.data['config.yaml'].matches(r'TLSv1([ "]|$)')
+        )
+      message: "config.yaml's ssl_protocols includes TLSv1, TLSv1.1, or SSLv3 — a deprecated, insecure TLS/SSL version is accepted."

@@ -1,0 +1,34 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: multitenancy.capsule-tenant-no-limit-range
+  annotations:
+    audit.k8s-auditor.io/title: "Capsule Tenant has no default container resource limits"
+    audit.k8s-auditor.io/severity: low
+    audit.k8s-auditor.io/category: multitenancy
+    audit.k8s-auditor.io/remediation: >-
+      Set spec.limitRanges.items on the Tenant so Capsule provisions a
+      LimitRange in every namespace it creates for this tenant. Without it,
+      individual containers in the tenant's namespaces have no default or
+      maximum CPU/memory constraint (a per-namespace floor complementing
+      workload.resource-limits-required's per-container check).
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["capsule.clastix.io"]
+        # "*" instead of a pinned version — matches the Tenant object
+        # regardless of which Capsule release the cluster runs. Verified
+        # (2026-08, against api/v1beta1/tenant_types.go and
+        # api/v1beta2/tenant_types.go in projectcapsule/capsule):
+        # spec.limitRanges.items has the identical json path in both
+        # shipped versions (v1beta1, v1beta2), so this check is safe across
+        # both — no version-specific gap like capsule-tenant-no-psa-enforcement.
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["tenants"]
+  validations:
+    - expression: |-
+        has(object.spec.limitRanges) && has(object.spec.limitRanges.items) &&
+        size(object.spec.limitRanges.items) > 0
+      message: "Tenant does not set spec.limitRanges.items, so containers in its namespaces have no default/max resource constraints."

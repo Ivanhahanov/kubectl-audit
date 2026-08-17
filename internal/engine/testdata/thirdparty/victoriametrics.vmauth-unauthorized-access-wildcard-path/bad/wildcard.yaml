@@ -1,0 +1,10 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAuth
+metadata:
+  name: bad
+  namespace: monitoring
+spec:
+  unauthorizedUserAccessSpec:
+    url_map:
+      - src_paths: [".*"]
+        url_prefix: "http://backend:8080"

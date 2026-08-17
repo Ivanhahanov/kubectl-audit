@@ -1,0 +1,9 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachineInstance
+metadata:
+  name: bad-vmi
+  namespace: default
+  annotations:
+    hooks.kubevirt.io/hookSidecars: '[{"args": ["--version", "v1"], "image": "my-image:latest"}]'
+spec:
+  volumes: []

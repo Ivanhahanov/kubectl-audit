@@ -1,0 +1,16 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: mutate-only
+spec:
+  rules:
+    - name: add-label
+      match:
+        any:
+          - resources:
+              kinds: ["Pod"]
+      mutate:
+        patchStrategicMerge:
+          metadata:
+            labels:
+              injected: "true"

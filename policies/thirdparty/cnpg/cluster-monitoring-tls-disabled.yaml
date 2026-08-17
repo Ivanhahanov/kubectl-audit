@@ -1,0 +1,35 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: cnpg.cluster-monitoring-tls-disabled
+  annotations:
+    audit.k8s-auditor.io/title: "CloudNativePG metrics exporter serves plaintext HTTP"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: cnpg
+    audit.k8s-auditor.io/remediation: >-
+      Set spec.monitoring.tls.enabled: true. CNPG's own
+      [monitoring docs](https://cloudnative-pg.io/docs/devel/monitoring/):
+      "To enable TLS communication on the metrics port, configure the
+      .spec.monitoring.tls.enabled setting to true. This setup ensures
+      that the metrics exporter uses the same server certificate used by
+      PostgreSQL to secure communication on port 5432." Defaults to
+      false — verified directly against the real CRD schema
+      (postgresql.cnpg.io_clusters.yaml: properties.tls.properties.enabled.default:
+      false) — so the metrics endpoint (Postgres statistics, not
+      credentials) ships in plain text over HTTP by default.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      # postgresql.cnpg.io has shipped only v1 for CloudNativePG's entire
+      # history — "*" used for consistency with this tool's other
+      # CRD-backed policies.
+      - apiGroups: ["postgresql.cnpg.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["clusters"]
+  validations:
+    - expression: |-
+        has(object.spec.monitoring) && has(object.spec.monitoring.tls) &&
+        has(object.spec.monitoring.tls.enabled) && object.spec.monitoring.tls.enabled == true
+      message: "Cluster.spec.monitoring.tls.enabled is not true — the metrics exporter serves Postgres statistics over plain HTTP instead of the same TLS certificate used to secure port 5432."

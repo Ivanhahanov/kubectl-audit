@@ -23,16 +23,30 @@ type EvalOptions struct {
 }
 
 // EvaluateAll runs every compiled policy against every resource and returns
-// the resulting findings.
+// the resulting findings. Uses a (group, resource) index (see
+// buildResourceIndex) rather than scanning every policy for every
+// resource — a resource whose group/kind no bundled policy could ever
+// match (e.g. a Secret against an istio.* policy) skips straight past
+// that policy instead of paying for a full Matches() call.
 func EvaluateAll(policies []*CompiledPolicy, resources []loader.Resource, opts EvalOptions) []findings.Finding {
 	warn := opts.Warn
 	if warn == nil {
 		warn = func(string, ...any) {}
 	}
 
+	idx := buildResourceIndex(policies)
+
 	var out []findings.Finding
 	for _, res := range resources {
 		gvk := res.GVK()
+
+		resourceName, ok := loader.ResourceNameForKind(gvk.Kind)
+		if !ok {
+			// No bundled policy could ever match an unrecognized Kind —
+			// Matches() would return false for all of them anyway (see
+			// its own ResourceNameForKind check).
+			continue
+		}
 
 		var nsLabels map[string]string
 		var nsObj interface{}
@@ -50,7 +64,7 @@ func EvaluateAll(policies []*CompiledPolicy, resources []loader.Resource, opts E
 			NamespaceLabels: nsLabels,
 		}
 
-		for _, p := range policies {
+		for _, p := range idx.candidates(gvk.Group, resourceName) {
 			if !Matches(p.Policy.Spec.MatchConstraints, matchIn) {
 				continue
 			}

@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: apisix
+data:
+  config.yaml: |
+    deployment:
+      admin:
+        admin_key:
+          - name: admin
+            key: my-rotated-secret-value-abc123
+            role: admin

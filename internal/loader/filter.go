@@ -2,15 +2,20 @@ package loader
 
 import "strings"
 
-// DefaultExcludedNamespaces are platform-managed namespaces present on
-// virtually every cluster (kube-system, kube-public, kube-node-lease).
-// Their workloads and RBAC objects are Kubernetes/CNI/CSI internals: the
-// checks that fire against them are usually structurally required (e.g.
-// kube-proxy needs hostNetwork) rather than actionable misconfigurations,
-// and they tend to drown out real findings from user namespaces. Excluded
-// by default; pass --exclude-namespace "" or an explicit -n allowlist to
-// see them anyway.
-var DefaultExcludedNamespaces = []string{"kube-system", "kube-public", "kube-node-lease"}
+// DefaultExcludedNamespaces are namespaces with no meaningful workloads to
+// audit (kube-public holds a public ConfigMap, kube-node-lease only Lease
+// objects) — excluded by default purely because there's nothing there to
+// find, not as a noise-reduction judgment call. kube-system is
+// deliberately NOT in this list: it commonly hosts real, auditable
+// third-party infrastructure (CNI, CSI, ...) alongside core Kubernetes
+// plumbing, and blanket-excluding the whole namespace would hide genuine
+// problems in it, not just the unavoidable ones. The genuinely
+// unavoidable violations from core plumbing (kube-proxy needing
+// hostNetwork, the kubeadm static control-plane pods, ...) are instead
+// handled precisely, per-component, by internal/suppress's built-in
+// exceptions — see builtin-exclusions.yaml. Pass --exclude-namespace ""
+// or an explicit -n allowlist to override even these two.
+var DefaultExcludedNamespaces = []string{"kube-public", "kube-node-lease"}
 
 // FilterExcludedNamespaces drops resources in the given namespaces. A
 // cluster-scoped Namespace object itself is matched by its own name rather

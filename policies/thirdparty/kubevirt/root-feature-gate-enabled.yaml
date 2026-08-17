@@ -1,0 +1,40 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: kubevirt.root-feature-gate-enabled
+  annotations:
+    audit.k8s-auditor.io/title: "KubeVirt's Root feature gate opts VMs out of the non-root virt-launcher default"
+    audit.k8s-auditor.io/severity: critical
+    audit.k8s-auditor.io/category: kubevirt
+    audit.k8s-auditor.io/remediation: >-
+      Remove "Root" from
+      spec.configuration.developerConfiguration.featureGates on the
+      KubeVirt CR. Verified directly against KubeVirt's own source
+      (kubevirt/kubevirt pkg/virt-api/webhooks/mutating-webhook/mutators/vmi-mutator.go):
+      "if !clusterConfig.RootEnabled() { markAsNonroot(newVMI) }" — every
+      VirtualMachineInstance is mutated at admission to run its
+      virt-launcher pod as a non-root user (UID 107) unless the Root
+      feature gate is enabled, in which case that mutation is skipped and
+      virt-launcher runs as root. NonRoot is General Availability
+      (pkg/virt-config/featuregate/inactive.go) — i.e. permanently on and
+      no longer even an opt-in — while Root remains Alpha
+      (pkg/virt-config/featuregate/active.go): this is a deliberate,
+      explicit opt-out of KubeVirt's own secure-by-default posture, not a
+      missing hardening step.
+  # Cluster-wide singleton config object, same shape as
+  # kubevirt.kubevirt-use-emulation-enabled.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["kubevirt.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["kubevirts"]
+  validations:
+    - expression: |-
+        !has(object.spec.configuration) ||
+        !has(object.spec.configuration.developerConfiguration) ||
+        !has(object.spec.configuration.developerConfiguration.featureGates) ||
+        !object.spec.configuration.developerConfiguration.featureGates.exists(g, g == "Root")
+      message: "KubeVirt.spec.configuration.developerConfiguration.featureGates includes \"Root\" — virt-launcher pods run as root instead of KubeVirt's non-root-by-default (UID 107) posture."

@@ -1,0 +1,17 @@
+apiVersion: apisix.apache.org/v2
+kind: ApisixTls
+metadata:
+  name: mtls-example
+  namespace: default
+spec:
+  hosts:
+    - example.com
+  secret:
+    name: example-tls
+    namespace: default
+  client:
+    caSecret:
+      name: example-ca
+      namespace: default
+    skip_mtls_uri_regex:
+      - "/.*"

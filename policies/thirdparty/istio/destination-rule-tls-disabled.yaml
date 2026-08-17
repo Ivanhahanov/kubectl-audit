@@ -1,0 +1,40 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: istio.destination-rule-tls-disabled
+  annotations:
+    audit.k8s-auditor.io/title: "[ALPHA] DestinationRule disables TLS to the upstream"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: istio
+    audit.k8s-auditor.io/remediation: >-
+      Remove spec.trafficPolicy.tls.mode: DISABLE (or set it to ISTIO_MUTUAL
+      /SIMPLE/MUTUAL as appropriate) unless plaintext to this specific
+      upstream is genuinely required. Istio's own API reference
+      (networking/v1alpha3/destination_rule.proto, TLSmode enum): "DISABLE
+      - Do not setup a TLS connection to the upstream endpoint."
+  # Only checks the top-level spec.trafficPolicy.tls.mode default —
+  # trafficPolicy.portLevelSettings[].tls.mode and
+  # subsets[].trafficPolicy(.portLevelSettings[])?.tls.mode can override it
+  # per-port/per-subset, same "evaluated independently, no merged-effective
+  # policy" caveat as this tool's other istio.* checks (see the Scope
+  # section and docs/istio.md).
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      # "*" instead of pinned versions, same reasoning as this tool's
+      # other Istio checks — networking.istio.io's v1/v1beta1/v1alpha3
+      # DestinationRule types are identical across the versions Istio
+      # currently serves.
+      - apiGroups: ["networking.istio.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["destinationrules"]
+  validations:
+    - expression: |-
+        !has(object.spec.trafficPolicy) || !has(object.spec.trafficPolicy.tls) ||
+        !has(object.spec.trafficPolicy.tls.mode) || object.spec.trafficPolicy.tls.mode != "DISABLE"
+      message: >-
+        [ALPHA] DestinationRule sets spec.trafficPolicy.tls.mode to
+        "DISABLE" — Istio will not set up a TLS connection to this
+        upstream by default.

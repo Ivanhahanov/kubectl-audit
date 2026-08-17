@@ -1,0 +1,43 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: kubevirt.containerpath-volume-exposes-sa-token
+  annotations:
+    audit.k8s-auditor.io/title: "VM's containerPath volume exposes the pod's own Kubernetes ServiceAccount token to the guest"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: kubevirt
+    audit.k8s-auditor.io/remediation: >-
+      Do not point a containerPath volume's path at
+      /var/run/secrets/kubernetes.io/serviceaccount — that hands the
+      untrusted guest OS the virt-launcher pod's own Kubernetes API
+      credentials. KubeVirt's own docs
+      (docs/storage/containerpath_volumes.md, "Security considerations"):
+      "VMs gain access to any files within the specified container path
+      — only expose paths containing data intended for VM consumption."
+      The documented, intended use of this feature is exposing a
+      purpose-provisioned external-cloud-identity token (e.g. AWS IRSA at
+      /var/run/secrets/eks.amazonaws.com/... or Azure workload identity
+      at /var/run/secrets/azure/tokens/...) — this check only flags the
+      pod's own default Kubernetes API token path, not containerPath
+      usage in general.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["kubevirt.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["virtualmachines", "virtualmachineinstances"]
+  validations:
+    - expression: |-
+        (!has(object.spec.volumes) || !object.spec.volumes.exists(v,
+          has(v.containerPath) &&
+          v.containerPath.path.startsWith('/var/run/secrets/kubernetes.io/serviceaccount')
+        )) &&
+        (!has(object.spec.template) || !has(object.spec.template.spec) ||
+         !has(object.spec.template.spec.volumes) ||
+         !object.spec.template.spec.volumes.exists(v,
+           has(v.containerPath) &&
+           v.containerPath.path.startsWith('/var/run/secrets/kubernetes.io/serviceaccount')
+         ))
+      message: "This VM has a containerPath volume pointed at /var/run/secrets/kubernetes.io/serviceaccount — it exposes the virt-launcher pod's own Kubernetes API ServiceAccount token to the untrusted guest OS."

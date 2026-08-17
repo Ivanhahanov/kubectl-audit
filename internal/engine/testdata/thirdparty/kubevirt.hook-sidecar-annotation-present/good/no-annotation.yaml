@@ -1,0 +1,12 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: good-vm
+  namespace: default
+spec:
+  template:
+    metadata:
+      annotations:
+        some.other/annotation: "value"
+    spec:
+      volumes: []

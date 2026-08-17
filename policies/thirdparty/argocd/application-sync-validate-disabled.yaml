@@ -1,0 +1,34 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: argocd.application-sync-validate-disabled
+  annotations:
+    audit.k8s-auditor.io/title: "ArgoCD Application disables kubectl schema validation on sync"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: argocd
+    audit.k8s-auditor.io/remediation: >-
+      Remove Validate=false from spec.syncPolicy.syncOptions. ArgoCD's
+      own sync-options docs describe this as skipping kubectl's
+      resource-schema validation (the moral equivalent of `kubectl apply
+      --validate=false`) during sync — an explicit, per-Application
+      opt-out of a built-in safety check that catches malformed or
+      unexpected manifests before they're applied to the cluster.
+      Weaker-sourced than most checks in this repo (a documented
+      safety-mechanism disable, not an explicit "insecure" warning from
+      ArgoCD itself) — same tier as istio.gateway-weak-tls-version.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["argoproj.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["applications"]
+  validations:
+    - expression: |-
+        !has(object.spec.syncPolicy) || !has(object.spec.syncPolicy.syncOptions) ||
+        !object.spec.syncPolicy.syncOptions.exists(o, o == "Validate=false")
+      message: >-
+        This Application's spec.syncPolicy.syncOptions includes
+        "Validate=false" — kubectl's resource-schema validation is
+        skipped during sync.

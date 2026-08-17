@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: apisix
+data:
+  config.yaml: |
+    plugin_attr:
+      prometheus:
+        export_uri: "http://localhost:9091/apisix/prometheus/metrics"
+    etcd:
+      host:
+        - "https://apisix-etcd.default.svc.cluster.local:2379"
+      prefix: /apisix

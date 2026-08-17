@@ -134,18 +134,25 @@ Two things keep a cluster scan from being dominated by duplicate or non-actionab
   keeping only the top-level object (e.g. the Deployment) as the single representative. If the
   owner was excluded by `--include-kind`/`--exclude-kind`, the owned resource is kept instead, so
   the template is never silently lost.
-- **Platform namespace/RBAC exclusion.** `kube-system`, `kube-public`, and `kube-node-lease` are
-  excluded by default (`target.excludeNamespaces` in config), and `Role`/`ClusterRole`/
-  `RoleBinding`/`ClusterRoleBinding` objects with the reserved `system:` name prefix — Kubernetes'
-  own built-in RBAC — are excluded by default too. Their workloads/RBAC are cluster-internal
-  plumbing (kube-proxy needs `hostNetwork`, `system:controller:*` roles need their wildcards) that
-  can't be remediated and mostly just drowns out real findings. Third-party components installed
-  *into* kube-system (e.g. a CSI driver's own, non-`system:`-prefixed ClusterRoleBinding) are
-  **not** filtered — only Kubernetes' own reserved-name objects are.
+- **Empty-namespace exclusion.** `kube-public` and `kube-node-lease` are excluded by default
+  (`target.excludeNamespaces` in config) — they hold nothing worth auditing. `kube-system` is
+  deliberately **not** excluded by default: it commonly hosts real, auditable third-party
+  infrastructure alongside core Kubernetes plumbing, so blanket-excluding it would hide genuine
+  problems along with the unavoidable ones.
+- **Built-in exceptions for core plumbing.** kube-proxy and the kubeadm static control-plane pods
+  get precise, label-matched exceptions for exactly their documented-unavoidable violations
+  (hostNetwork, host-mounted certs/data, ...) instead — see
+  [Third-Party Operators: Built-in exceptions](https://ivanhahanov.github.io/kubectl-audit/third-party-operators/#built-in-exceptions-for-privileged-system-infrastructure).
+  Everything else about them (missing seccomp, running as root, ...) is still flagged normally.
+- **RBAC `system:` prefix exclusion.** `Role`/`ClusterRole`/`RoleBinding`/`ClusterRoleBinding`
+  objects with the reserved `system:` name prefix — Kubernetes' own built-in RBAC — are excluded
+  by default too: cluster-managed, not something an operator can remediate. Third-party
+  components' own RBAC objects (e.g. a CSI driver's non-`system:` ClusterRoleBinding) are **not**
+  filtered by this.
 
   Override with `--exclude-namespace ""` (clears the defaults) or `--exclude-namespace <ns>`
   (repeatable, adds more), `-n/--namespace` (an explicit allowlist bypasses the default excludes
-  entirely), and `--include-system-rbac`.
+  entirely), `--no-builtin-exceptions`, and `--include-system-rbac`.
 
 ## Configuration (`audit.yaml`)
 

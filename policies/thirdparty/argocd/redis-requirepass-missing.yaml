@@ -1,0 +1,55 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: argocd.redis-requirepass-missing
+  annotations:
+    audit.k8s-auditor.io/title: "ArgoCD's Redis cache has no password set"
+    audit.k8s-auditor.io/severity: critical
+    audit.k8s-auditor.io/category: argocd
+    audit.k8s-auditor.io/remediation: >-
+      Add --requirepass $(REDIS_PASSWORD) (sourced from the argocd-redis
+      Secret's auth key) back to the redis container's args on the
+      argocd-redis Deployment. This is CVE-2024-31989 / GHSA-9766-5277-j5hr
+      (github.com/argoproj/argo-cd/security/advisories/GHSA-9766-5277-j5hr):
+      "By default, the Redis database server is not password-protected,
+      allowing an attacker with access to the Redis server to gain
+      read/write access to the data in Redis" — an attacker who reaches
+      an unauthenticated argocd-redis can modify the cached "mfst"
+      (manifest) key to make ArgoCD apply arbitrary resources, or the
+      "app|resources-tree" key to leak resources into the app preview.
+      Fixed in ArgoCD 2.11.1/2.10.10/2.9.15/2.8.19+, which ship a
+      generated password by default (verified against the official
+      manifest, manifests/base/redis/argocd-redis-deployment.yaml: the
+      redis container's args now always include
+      "--requirepass $(REDIS_PASSWORD)", sourced from the argocd-redis
+      Secret's auth key via an init container). This check flags an
+      argocd-redis Deployment where that flag is missing entirely — an
+      unpatched ArgoCD version, or a custom manifest that stripped it
+      back out.
+  # Scoped to the well-known "argocd-redis" Deployment name from the
+  # official (non-HA) install manifest, the same "well-known, name-stable
+  # object" pattern as this tool's argocd-cmd-params-cm/argocd-rbac-cm
+  # checks. ArgoCD's separate HA topology (argocd-redis-ha, a StatefulSet
+  # running Redis Sentinel behind an HAProxy) uses a different manifest
+  # shape entirely and is NOT covered here — known gap, no existing
+  # mitigation for HA-mode installs.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments"]
+  validations:
+    - expression: |-
+        object.metadata.name != "argocd-redis" || !has(object.spec.template) ||
+        !has(object.spec.template.spec.containers) ||
+        object.spec.template.spec.containers.exists(c, c.name == "redis" &&
+          ((has(c.args) ? c.args : []) + (has(c.command) ? c.command : []))
+            .exists(a, a == "--requirepass" || a.startsWith("--requirepass "))
+        )
+      message: >-
+        The argocd-redis Deployment's redis container has no
+        --requirepass flag — this Redis instance accepts unauthenticated
+        connections from anywhere network-reachable (CVE-2024-31989).

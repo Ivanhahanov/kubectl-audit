@@ -1,0 +1,42 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: kubevirt.host-disk-volume
+  annotations:
+    audit.k8s-auditor.io/title: "KubeVirt VM uses a hostDisk volume"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: kubevirt
+    audit.k8s-auditor.io/remediation: >-
+      Replace the hostDisk volume with a PersistentVolumeClaim/DataVolume
+      backed by proper storage-class provisioning instead of a disk image
+      file on a node's local filesystem. KubeVirt's own
+      [user guide](https://kubevirt.io/user-guide/storage/disks_and_volumes/):
+      "A hostDisk volume type provides the ability to create or use a
+      disk image located somewhere on a node. It works similar to a
+      hostPath in Kubernetes" — the same node-filesystem-access concern
+      this tool's workload.no-hostpath-volumes check flags for ordinary
+      Pods, applying here to a KubeVirt-specific field shape that check
+      doesn't cover.
+  # Covers both VirtualMachine (spec.template.spec.volumes[], the object
+  # most users actually create) and bare VirtualMachineInstance
+  # (spec.volumes[] directly) with one expression — verified field
+  # nesting directly against the real Go source
+  # (staging/src/kubevirt.io/api/core/v1/{types,schema}.go):
+  # VirtualMachineInstanceSpec.Volumes []Volume, Volume embeds
+  # VolumeSource inline, VolumeSource.HostDisk *HostDisk (json "hostDisk").
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      # kubevirt.io — "*" for the same reason as kubevirt.kubevirt-use-emulation-enabled.
+      - apiGroups: ["kubevirt.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["virtualmachines", "virtualmachineinstances"]
+  validations:
+    - expression: |-
+        (!has(object.spec.volumes) || !object.spec.volumes.exists(v, has(v.hostDisk))) &&
+        (!has(object.spec.template) || !has(object.spec.template.spec) ||
+         !has(object.spec.template.spec.volumes) ||
+         !object.spec.template.spec.volumes.exists(v, has(v.hostDisk)))
+      message: "This VM has a volume with hostDisk set — it works like a Kubernetes hostPath volume, exposing a disk image file on the node's local filesystem to the VM."

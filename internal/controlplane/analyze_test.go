@@ -97,7 +97,7 @@ func TestClassify(t *testing.T) {
 }
 
 func TestAnalyzeHealthyAPIServerPasses(t *testing.T) {
-	res, err := Analyze([]loader.Resource{apiserverPod("kube-apiserver-node1")}, "cluster:test")
+	res, err := Analyze([]loader.Resource{apiserverPod("kube-apiserver-node1")}, "cluster:test", nil)
 	if err != nil {
 		t.Fatalf("Analyze: %v", err)
 	}
@@ -114,7 +114,7 @@ func TestAnalyzeFlagsAllowAllFails(t *testing.T) {
 		"--authorization-mode=AlwaysAllow",
 		"--enable-admission-plugins=AlwaysAdmit",
 		"--audit-log-maxage=1",
-	)}, "cluster:test")
+	)}, "cluster:test", nil)
 	if err != nil {
 		t.Fatalf("Analyze: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestAnalyzeFlagsAllowAllFails(t *testing.T) {
 }
 
 func TestAnalyzeNoControlPlanePodsObservesNothing(t *testing.T) {
-	res, err := Analyze(nil, "cluster:test")
+	res, err := Analyze(nil, "cluster:test", nil)
 	if err != nil {
 		t.Fatalf("Analyze: %v", err)
 	}
@@ -154,6 +154,37 @@ func TestAnalyzeNoControlPlanePodsObservesNothing(t *testing.T) {
 	}
 	if len(res.Findings) != 0 {
 		t.Errorf("expected no findings when no control-plane pods are present, got %+v", res.Findings)
+	}
+}
+
+func TestAnalyze_ZeroContainerPodWarnsAndSkips(t *testing.T) {
+	pod := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "v1",
+		"kind":       "Pod",
+		"metadata": map[string]any{
+			"name":      "kube-apiserver-broken",
+			"namespace": "kube-system",
+			"labels":    map[string]any{"component": "kube-apiserver", "tier": "control-plane"},
+		},
+		"spec": map[string]any{
+			"containers": []any{},
+		},
+	}}
+
+	var warnings []string
+	res, err := Analyze([]loader.Resource{{Object: pod, Source: "cluster:test"}}, "cluster:test",
+		func(format string, args ...any) { warnings = append(warnings, format) })
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if len(warnings) != 1 {
+		t.Fatalf("expected exactly one warning for a classified Pod with zero containers, got %v", warnings)
+	}
+	if len(res.Observed) != 0 {
+		t.Errorf("expected the component to not be marked observed when it couldn't actually be checked, got %v", res.Observed)
+	}
+	if len(res.Findings) != 0 {
+		t.Errorf("expected no findings from an unchecked Pod, got %+v", res.Findings)
 	}
 }
 
@@ -180,7 +211,7 @@ func TestNamespacePSAEnforcement_LabelMissingFlagged(t *testing.T) {
 		namespaceResource("no-label", nil),
 		namespaceResource("has-label", map[string]string{"pod-security.kubernetes.io/enforce": "baseline"}),
 	}
-	res, err := Analyze(resources, "test")
+	res, err := Analyze(resources, "test", nil)
 	if err != nil {
 		t.Fatalf("Analyze: %v", err)
 	}
@@ -205,7 +236,7 @@ func TestNamespacePSAEnforcement_ClusterWideConfigFileSuppressesFindings(t *test
 		apiserverPod("kube-apiserver-node1", "--admission-control-config-file=/etc/kubernetes/admission/config.yaml"),
 		namespaceResource("no-label", nil),
 	}
-	res, err := Analyze(resources, "test")
+	res, err := Analyze(resources, "test", nil)
 	if err != nil {
 		t.Fatalf("Analyze: %v", err)
 	}

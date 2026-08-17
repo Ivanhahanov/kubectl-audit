@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: airflow-api-server-config
+data:
+  webserver_config.py: |
+    AUTH_TYPE = AUTH_DB

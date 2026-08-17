@@ -1,0 +1,35 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: istio.gateway-weak-tls-version
+  annotations:
+    audit.k8s-auditor.io/title: "[ALPHA] Istio Gateway allows TLS 1.0/1.1"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: istio
+    audit.k8s-auditor.io/remediation: >-
+      Set spec.servers[].tls.minProtocolVersion to TLSV1_2 or TLSV1_3 (or
+      remove it to use Istio's own default, which excludes 1.0/1.1). The
+      TLSV1_0/TLSV1_1 values are real, still-accepted enum members in
+      Istio's own API (networking/v1alpha3/gateway.proto, TLSProtocol
+      enum), but both versions are formally deprecated by IETF RFC 8996
+      ("Deprecating TLS 1.0 and TLS 1.1") — this isn't an Istio-specific
+      warning, it's an external protocol-level standard, cited the same
+      way NIST SP 800-190 backs this tool's ConfigMap-credentials check
+      where no vendor-specific guidance exists.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["networking.istio.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["gateways"]
+  validations:
+    - expression: |-
+        !has(object.spec.servers) || !object.spec.servers.exists(s,
+          has(s.tls) && has(s.tls.minProtocolVersion) &&
+          s.tls.minProtocolVersion in ["TLSV1_0", "TLSV1_1"]
+        )
+      message: >-
+        [ALPHA] Gateway has a server with tls.minProtocolVersion set to
+        TLSV1_0 or TLSV1_1 — both formally deprecated (IETF RFC 8996).

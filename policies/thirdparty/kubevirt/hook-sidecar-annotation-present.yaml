@@ -1,0 +1,38 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: kubevirt.hook-sidecar-annotation-present
+  annotations:
+    audit.k8s-auditor.io/title: "VM injects a hook sidecar into virt-launcher"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: kubevirt
+    audit.k8s-auditor.io/remediation: >-
+      Remove the hooks.kubevirt.io/hookSidecars annotation unless this
+      specific VM genuinely needs to customize its libvirt domain XML via
+      a hook sidecar. KubeVirt's own docs (cmd/sidecars/README.md): "Once
+      enabled, every VM owner may use it to run arbitrary code in the
+      context of virt-launcher which may have unexpected effects." This
+      check flags the actual per-VM usage (the annotation), complementing
+      kubevirt.sidecar-feature-gate-enabled which flags the cluster-wide
+      opt-in. Per KubeVirt's own guidance, a VirtualMachine must set this
+      annotation under spec.template.metadata.annotations (not
+      metadata.annotations directly) for it to take effect on the VMI it
+      creates — both locations are checked here.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["kubevirt.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["virtualmachines", "virtualmachineinstances"]
+  validations:
+    - expression: |-
+        (!has(object.metadata.annotations) ||
+         !('hooks.kubevirt.io/hookSidecars' in object.metadata.annotations) ||
+         object.metadata.annotations['hooks.kubevirt.io/hookSidecars'] == '') &&
+        (!has(object.spec.template) || !has(object.spec.template.metadata) ||
+         !has(object.spec.template.metadata.annotations) ||
+         !('hooks.kubevirt.io/hookSidecars' in object.spec.template.metadata.annotations) ||
+         object.spec.template.metadata.annotations['hooks.kubevirt.io/hookSidecars'] == '')
+      message: "This VM sets the hooks.kubevirt.io/hookSidecars annotation — it injects a hook sidecar that can run arbitrary code in the context of virt-launcher (KubeVirt's own documented risk)."

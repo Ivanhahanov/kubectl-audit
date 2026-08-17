@@ -1,0 +1,34 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: apisix.admin-allow-wide-open
+  annotations:
+    audit.k8s-auditor.io/title: "APISIX Admin API is reachable from any IP address"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: apisix
+    audit.k8s-auditor.io/remediation: >-
+      Scope allow_admin to the specific management-network CIDRs that
+      genuinely need Admin API access, instead of 0.0.0.0/0 (or ::/0). The
+      official raw config
+      (github.com/apache/apisix/blob/master/conf/config.yaml.example):
+      `` allow_admin: # Limit Admin API access by IP addresses. -
+      127.0.0.0/24 # If not set, any IP address is allowed. `` — the
+      official apisix/apisix Helm chart itself defaults this to
+      127.0.0.1/24 (verified against the chart's rendered output), so a
+      0.0.0.0/0 entry is an explicit widening away from that secure
+      default, not something a default install produces. Defense in
+      depth independent of admin_key/admin_key_required: even a strong,
+      rotated key is reachable from anywhere without this.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["configmaps"]
+  validations:
+    - expression: |-
+        !has(object.data) || !('config.yaml' in object.data) ||
+        !(object.data['config.yaml'].contains('0.0.0.0/0') || object.data['config.yaml'].contains('::/0'))
+      message: "config.yaml's allow_admin includes 0.0.0.0/0 (or ::/0) — the Admin API is reachable from any IP address."

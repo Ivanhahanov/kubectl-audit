@@ -1,0 +1,45 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: kyverno.admission-controller-force-failure-policy-ignore
+  annotations:
+    audit.k8s-auditor.io/title: "Kyverno forces all webhooks to fail open"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: kyverno
+    audit.k8s-auditor.io/remediation: >-
+      Remove --forceFailurePolicyIgnore=true (or set
+      config.forceFailurePolicyIgnore.enabled: false in the Helm chart)
+      from the admission-controller Deployment. Kyverno's own
+      installation/customization docs: this flag is "Set to force Failure
+      Policy to Ignore" — overriding every individual policy's own
+      spec.failurePolicy (which defaults to Fail) cluster-wide. If Kyverno
+      itself is ever down or unreachable, every admission request across
+      the cluster is allowed through completely unchecked instead of
+      being blocked.
+  # Pod-level (container args), not a CRD field — this is a Deployment
+  # container flag, checked the same way as any other workload-config
+  # check in this tool, distinguished only by the flag's own distinctive
+  # name (no risk of colliding with an unrelated Deployment's args).
+  # Verified 2026-08 against kyverno/kyverno chart's rendered
+  # admission-controller Deployment: config.forceFailurePolicyIgnore.enabled
+  # renders directly as --forceFailurePolicyIgnore=<bool> on that
+  # container, default false.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments"]
+  validations:
+    - expression: |-
+        !has(object.spec.template) || !has(object.spec.template.spec.containers) ||
+        object.spec.template.spec.containers.all(c,
+          !has(c.args) || !c.args.exists(a, a == "--forceFailurePolicyIgnore=true")
+        )
+      message: >-
+        A container runs with --forceFailurePolicyIgnore=true, forcing
+        every Kyverno-managed admission webhook to fail open
+        (failurePolicy: Ignore) if Kyverno becomes unreachable, regardless
+        of each policy's own failurePolicy setting.

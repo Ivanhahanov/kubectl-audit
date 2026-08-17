@@ -1,0 +1,32 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: vault.connection-skip-tls-verify
+  annotations:
+    audit.k8s-auditor.io/title: "VaultConnection disables TLS certificate verification"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: vault
+    audit.k8s-auditor.io/remediation: >-
+      Remove spec.skipTLSVerify (or set it to false) and configure
+      spec.caCertSecretRef with a trusted CA instead. The Vault Secrets
+      Operator's own threat model documents this explicitly: "Use TLS
+      negotiated by a well-secured certificate authority for all networked
+      communication, especially for Vault and the Kubernetes API."
+      Skipping verification allows a man-in-the-middle to impersonate
+      Vault and intercept or tamper with every secret this connection
+      fetches.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      # secrets.hashicorp.com has shipped only v1beta1 for the Vault
+      # Secrets Operator's entire history (no v1alpha1/v1 seen) — "*" used
+      # for consistency with this tool's other CRD-backed policies.
+      - apiGroups: ["secrets.hashicorp.com"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["vaultconnections"]
+  validations:
+    - expression: |-
+        !has(object.spec.skipTLSVerify) || object.spec.skipTLSVerify == false
+      message: "VaultConnection.spec.skipTLSVerify is true, disabling TLS certificate verification against the Vault server."

@@ -1,0 +1,13 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: good-vm
+  namespace: default
+spec:
+  running: true
+  template:
+    spec:
+      volumes:
+        - name: rootdisk
+          persistentVolumeClaim:
+            claimName: my-vm-pvc

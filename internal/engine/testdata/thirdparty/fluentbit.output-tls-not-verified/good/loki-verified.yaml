@@ -1,0 +1,10 @@
+apiVersion: fluentbit.fluent.io/v1alpha2
+kind: ClusterOutput
+metadata:
+  name: loki-secure
+spec:
+  loki:
+    host: logs.example.com
+    port: 443
+    tls:
+      verify: true

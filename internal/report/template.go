@@ -12,6 +12,7 @@ import (
 	"github.com/ivanhahanov/kubectl-audit/internal/compliance"
 	"github.com/ivanhahanov/kubectl-audit/internal/findings"
 	"github.com/ivanhahanov/kubectl-audit/internal/rbac"
+	"github.com/ivanhahanov/kubectl-audit/internal/thirdparty"
 )
 
 //go:embed templates/default.md.tpl
@@ -104,6 +105,11 @@ type TemplateData struct {
 	// the report's own Target line, repeated on every single finding for
 	// no reason.
 	MultipleSources bool
+	// DetectedComponents is Result.DetectedComponents, unchanged — see its
+	// doc comment. Rendered as its own report section so a reader can see
+	// at a glance what infrastructure this scan recognized and why its
+	// built-in exceptions did or didn't apply.
+	DetectedComponents []thirdparty.Detection
 }
 
 func newTemplateData(r Result) TemplateData {
@@ -161,6 +167,7 @@ func newTemplateData(r Result) TemplateData {
 		ReportView:          view,
 		NamespaceDetailed:   view == "namespace",
 		MultipleSources:     r.MultipleSources,
+		DetectedComponents:  r.DetectedComponents,
 	}
 }
 
@@ -301,6 +308,22 @@ func templateFuncs() template.FuncMap {
 				parts = append(parts, strings.ToUpper(k)+": "+strings.Join(c.CrossRefs[k], ", "))
 			}
 			return strings.Join(parts, "; ")
+		},
+		"detectedVia": func(d thirdparty.Detection) string {
+			plural := func(n int) string {
+				if n == 1 {
+					return "object"
+				}
+				return "objects"
+			}
+			var parts []string
+			if d.Group != "" && d.GroupCount > 0 {
+				parts = append(parts, fmt.Sprintf("CRD group `%s` (%d %s)", d.Group, d.GroupCount, plural(d.GroupCount)))
+			}
+			if d.Labels != nil && d.LabelCount > 0 {
+				parts = append(parts, fmt.Sprintf("label match (%d %s)", d.LabelCount, plural(d.LabelCount)))
+			}
+			return strings.Join(parts, ", ")
 		},
 		"failingControls": func(sc compliance.Scorecard) []compliance.ControlResult {
 			var out []compliance.ControlResult

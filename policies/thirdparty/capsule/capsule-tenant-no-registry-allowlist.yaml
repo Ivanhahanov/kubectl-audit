@@ -1,0 +1,35 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: multitenancy.capsule-tenant-no-registry-allowlist
+  annotations:
+    audit.k8s-auditor.io/title: "Capsule Tenant does not restrict container registries"
+    audit.k8s-auditor.io/severity: low
+    audit.k8s-auditor.io/category: multitenancy
+    audit.k8s-auditor.io/remediation: >-
+      Set spec.containerRegistries.allowed to the specific registries this
+      tenant's workloads actually pull from (Capsule's own best-practices
+      guide gives docker.io/public.ecr.aws/quay.io/mcr.microsoft.com as an
+      example allow-list). Without it, tenant workloads can pull images
+      from any registry, including ones the platform doesn't control or
+      trust.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["capsule.clastix.io"]
+        # "*" instead of a pinned version — matches the Tenant object
+        # regardless of which Capsule release the cluster runs. Verified
+        # (2026-08, against api/v1beta2/tenant_types.go and
+        # pkg/api/allowed_list.go in projectcapsule/capsule): field is
+        # `spec.containerRegistries *api.AllowedListSpec`, whose Exact
+        # field is tagged json:"allowed".
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["tenants"]
+  validations:
+    - expression: |-
+        has(object.spec.containerRegistries) &&
+        has(object.spec.containerRegistries.allowed) &&
+        size(object.spec.containerRegistries.allowed) > 0
+      message: "Tenant does not set spec.containerRegistries.allowed, so its workloads can pull container images from any registry."

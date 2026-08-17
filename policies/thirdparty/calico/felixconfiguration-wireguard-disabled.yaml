@@ -1,0 +1,34 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: calico.felixconfiguration-wireguard-disabled
+  annotations:
+    audit.k8s-auditor.io/title: "Calico WireGuard pod-to-pod encryption is not enabled"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: calico
+    audit.k8s-auditor.io/remediation: >-
+      Set spec.wireguardEnabled: true on the FelixConfiguration (typically
+      named "default") to encrypt in-cluster pod traffic on the wire —
+      Calico's own docs: "Enable WireGuard to secure on-the-wire,
+      in-cluster pod traffic in a Calico cluster." Defaults to false
+      (verified against Felix's own source, config_params.go:
+      WireguardEnabled bool `config:"bool;false"`). A dual-stack cluster
+      should also set wireguardEnabledV6 for IPv6 traffic.
+  # FelixConfiguration is a cluster-wide singleton (conventionally named
+  # "default"), so this check is really "is encryption enabled
+  # cluster-wide," not per-workload — still a single object's field,
+  # fits this engine's single-object CEL model.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["crd.projectcalico.org"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["felixconfigurations"]
+  validations:
+    - expression: |-
+        has(object.spec.wireguardEnabled) && object.spec.wireguardEnabled == true
+      message: >-
+        FelixConfiguration.spec.wireguardEnabled is not set to true —
+        in-cluster pod-to-pod traffic is not encrypted on the wire.

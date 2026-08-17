@@ -1,0 +1,31 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: argocd.application-uses-default-project
+  annotations:
+    audit.k8s-auditor.io/title: "ArgoCD Application uses the default AppProject"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: argocd
+    audit.k8s-auditor.io/remediation: >-
+      Set spec.project to a dedicated AppProject scoped to this
+      Application's actual source repos/destinations/cluster-resources,
+      instead of "default". ArgoCD's own docs: "The `default` project can
+      be modified, but not deleted. The project is useful for initial
+      testing, but it is recommended to create dedicated projects with
+      explicit source, destination, and resource permissions." An
+      Application in the default project inherits whatever that
+      project's AppProject object currently allows — which, out of the
+      box, is the unrestricted wildcard configuration this tool's other
+      argocd.appproject-wildcard-* checks flag.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["argoproj.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["applications"]
+  validations:
+    - expression: |-
+        has(object.spec.project) && object.spec.project != "default"
+      message: "Application.spec.project is unset or \"default\" — it inherits whatever permissions the default AppProject currently grants, rather than a dedicated, scoped project."

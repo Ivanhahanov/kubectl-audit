@@ -1,0 +1,40 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: argocd.cmd-params-cm-server-insecure
+  annotations:
+    audit.k8s-auditor.io/title: "ArgoCD server runs without TLS"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: argocd
+    audit.k8s-auditor.io/remediation: >-
+      Confirm a TLS-terminating ingress/load balancer sits in front of
+      argocd-server before accepting this. ArgoCD's own docs describe
+      server.insecure ("Run server without TLS") as the documented,
+      supported pattern specifically when an external proxy/ingress
+      handles TLS termination (Ambassador, Contour, NGINX, GKE, ...) — but
+      don't independently warn against setting it without one. If nothing
+      terminates TLS in front of this server, all UI/API/git-credential
+      traffic to it is unencrypted on the wire.
+  # No CRD: argocd-cmd-params-cm is ArgoCD's own well-known, name-stable
+  # runtime-params ConfigMap (verified against the official Helm chart's
+  # rendered output — the chart's own configs.params."server.insecure"
+  # value renders here, and into an ARGOCD_SERVER_INSECURE env var on the
+  # argocd-server Deployment). Gated on object name inside the expression
+  # itself, same pattern as argocd.rbac-cm-default-admin-policy.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["configmaps"]
+  validations:
+    - expression: |-
+        object.metadata.name != "argocd-cmd-params-cm" || !has(object.data) ||
+        !('server.insecure' in object.data) || object.data['server.insecure'] != "true"
+      message: >-
+        argocd-cmd-params-cm sets server.insecure: "true" — argocd-server
+        runs without TLS. Safe only if a TLS-terminating proxy/ingress is
+        genuinely in front of it; this tool can't confirm that from this
+        object alone.

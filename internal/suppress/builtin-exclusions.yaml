@@ -1,0 +1,308 @@
+# Built-in exclusion rules for well-known, legitimately privileged
+# infrastructure DaemonSets whose Pod Security Standards baseline/
+# restricted violations are an unavoidable consequence of their documented
+# function, not a misconfiguration.
+#
+# Same YAML shape as a user's own audit.yaml `exclusions:` list (see
+# config.ExclusionRule) — these are just a shipped, curated seed of it, not
+# a separate mechanism. Deliberately narrow on both axes, per the same
+# "don't overclaim, don't hide real problems" principle as everything else
+# this tool suppresses:
+#
+#   - Matched by label, never by namespace. A user can (and does) install
+#     Cilium into kube-system, cilium-system, kube-cilium, or anywhere
+#     else — namespace-based exclusion would either miss it or, worse,
+#     blanket-hide every *other* workload someone happens to also run in
+#     that namespace. Label matching only ever touches the actual
+#     component.
+#   - Scoped to the exact policyIds that component's own upstream Helm
+#     chart is documented (and verified against the chart's real source,
+#     not assumed) to require — never a wildcard. Every other check (RBAC,
+#     resource limits, image tag pinning, ...) still runs at full strength
+#     against these workloads; only the specific, already-known-and-
+#     expected privilege escalation is suppressed.
+#
+# Suppressed findings are never dropped: they still appear in the report's
+# Suppressed Findings section with the reason (including the source URL)
+# below, same as a user-authored exclusions rule. Disable all of them with
+# --no-builtin-exceptions / disableBuiltinExceptions: true in audit.yaml, or
+# disable just one rule by its `id` with disableBuiltinExceptionIds: [id]
+# (e.g. to keep kube-proxy's exception but see everything Cilium-related).
+#
+# Most entries here also have a matching internal/thirdparty/components.yaml
+# Category: System row — that's what makes the report's Detected
+# Components table cross-check "CRD present but no workload matched this
+# label" (Detection.Mismatched) possible; keep the two files' label
+# selectors in sync when editing either. The core-Kubernetes-plumbing
+# entries at the bottom (kube-proxy, control-plane static pods) are the
+# exception: they're not third-party software, so they don't get a
+# components.yaml row or a Detected Components table entry — just a plain
+# exclusion rule, same as any of the above.
+exclusions:
+  # cilium-agent only — not cilium-operator (labels io.cilium/app:
+  # operator, name: cilium-operator), which the official Helm chart does
+  # not run privileged/hostNetwork, and which this rule's label selector
+  # (k8s-app: cilium) does not match, so an unexpectedly-privileged
+  # operator would still be flagged normally.
+  #
+  # Verified 2026-08 against github.com/cilium/cilium's
+  # install/kubernetes/cilium/templates/cilium-agent/daemonset.yaml and
+  # values.yaml (main branch):
+  #   - hostNetwork: true.
+  #   - hostPath volumes: /sys/fs/bpf (BPF filesystem), /var/run/cilium
+  #     (agent runtime state/socket), /lib/modules (kernel module
+  #     loading), /var/run/cilium/cgroupv2 (cgroup v2 access), plus a
+  #     scoped /proc mount for /proc/sys/net and /proc/sys/kernel
+  #     specifically.
+  #   - securityContext: current chart default is NOT privileged: true —
+  #     capabilities.drop: [ALL] then an explicit add-list (CHOWN, KILL,
+  #     NET_ADMIN, NET_RAW, IPC_LOCK, SYS_MODULE, SYS_ADMIN, SYS_RESOURCE,
+  #     DAC_OVERRIDE, FOWNER, SETGID, SETUID, SYSLOG — each justified
+  #     inline in values.yaml's own comments, e.g. NET_ADMIN "used since
+  #     cilium modifies routing tables", SYS_MODULE "used in iptables").
+  #     Older Cilium releases (pre fine-grained-capabilities) used
+  #     privileged: true instead — workload.no-privileged-containers is
+  #     included below to cover both cases.
+  #   - Canonical labels on the same object: k8s-app: cilium,
+  #     app.kubernetes.io/name: cilium-agent, app.kubernetes.io/part-of:
+  #     cilium. Matching on k8s-app alone (the oldest, most stable of the
+  #     three) is intentional — specific enough not to collide with an
+  #     unrelated workload, and more resilient to a values.yaml
+  #     customization dropping one of the newer app.kubernetes.io/*
+  #     labels.
+  - id: cilium-agent
+    policyIds:
+      - workload.no-privileged-containers
+      - workload.no-host-namespaces
+      - workload.no-hostpath-volumes
+      - workload.drop-all-capabilities
+      - pss-analyzer.baseline
+      - pss-analyzer.restricted
+    match:
+      labels:
+        k8s-app: cilium
+    reason: >-
+      Built-in exception: Cilium's agent DaemonSet requires hostNetwork,
+      BPF/cgroup hostPath mounts, and elevated capabilities (NET_ADMIN,
+      SYS_ADMIN, SYS_MODULE, ...) to function as a CNI — documented and
+      verified against the official Helm chart's daemonset.yaml/
+      values.yaml:
+      https://github.com/cilium/cilium/blob/main/install/kubernetes/cilium/templates/cilium-agent/daemonset.yaml
+      . cilium-operator (a separate, unprivileged component) is not
+      covered by this exception.
+
+  # prometheus-node-exporter — the same component used identically to
+  # expose OS-level host metrics (CPU/disk/network) regardless of whether
+  # the metrics backend is Prometheus, VictoriaMetrics, or Thanos
+  # (VictoriaMetrics' own docs recommend scraping this exact component
+  # rather than shipping an equivalent). Not privileged and adds no
+  # capabilities — its baseline/restricted violations come entirely from
+  # host namespace/path access, so workload.no-privileged-containers and
+  # workload.drop-all-capabilities are deliberately NOT in this rule: an
+  # unexpectedly-privileged node-exporter would still be flagged normally.
+  #
+  # Verified 2026-08 against github.com/prometheus-community/helm-charts'
+  # charts/prometheus-node-exporter (current chart, and cross-checked
+  # against an early 4.0.0 tag for stability):
+  #   - hostNetwork: true, hostPID: true (defaults, stable across chart
+  #     history).
+  #   - hostPath volumes, all mounted read-only: /proc, /sys, and (gated
+  #     by a chart flag, on by default) root / as /host/root.
+  #   - securityContext: runAsNonRoot: true, no added capabilities,
+  #     readOnlyRootFilesystem: true — genuinely not privileged.
+  #   - Canonical label: app.kubernetes.io/name: prometheus-node-exporter
+  #     (from the chart's own Chart.yaml name).
+  - id: prometheus-node-exporter
+    policyIds:
+      - workload.no-host-namespaces
+      - workload.no-hostpath-volumes
+      - pss-analyzer.baseline
+      - pss-analyzer.restricted
+    match:
+      labels:
+        app.kubernetes.io/name: prometheus-node-exporter
+    reason: >-
+      Built-in exception: prometheus-node-exporter (the standard OS-level
+      host metrics exporter used identically by Prometheus,
+      VictoriaMetrics, and Thanos) requires hostNetwork, hostPID, and
+      read-only hostPath mounts of /proc, /sys, and / to read node-level
+      metrics — documented and verified against the official Helm
+      chart's daemonset.yaml/values.yaml:
+      https://github.com/prometheus-community/helm-charts/blob/main/charts/prometheus-node-exporter/templates/daemonset.yaml
+      . It runs unprivileged with no added capabilities, so those checks
+      are not suppressed here.
+
+  # Falco — runtime security/threat detection. Its base Helm chart ships
+  # no hostNetwork/hostPID; instead it needs privileged access and an
+  # unusually large set of hostPath mounts to load its kernel driver/eBPF
+  # probe and read host-level process/container-runtime state.
+  #
+  # Verified 2026-08 against
+  # github.com/falcosecurity/charts/blob/master/charts/falco/templates/daemonset.yaml
+  # (chart v9.1.0):
+  #   - securityContext.privileged: true on both the falco container and
+  #     the falco-driver-loader init container (loads the kernel module/
+  #     eBPF probe — this is the actual reason privileged is needed).
+  #   - hostPath volumes: container-runtime sockets (/var/run/docker.sock,
+  #     podman, containerd, crio, k3s-containerd), /proc, /etc, /dev,
+  #     /sys/module, /sys/kernel, /lib/modules, /boot, /usr.
+  #   - hostNetwork/hostPID are NOT set — Falco observes the host via
+  #     mounts, not by joining host namespaces, so
+  #     workload.no-host-namespaces is NOT suppressed here (and wouldn't
+  #     fire anyway for a correctly-configured Falco).
+  #   - No seccompProfile is set and runAsNonRoot is not set (the driver
+  #     loader needs root to load a kernel module) — but seccomp is an
+  #     independent, low-cost setting unrelated to that need, so
+  #     pss-analyzer.restricted and workload.run-as-non-root are
+  #     deliberately NOT suppressed.
+  #   - Canonical label: app.kubernetes.io/name: falco.
+  - id: falco
+    policyIds:
+      - workload.no-privileged-containers
+      - workload.no-hostpath-volumes
+      - workload.drop-all-capabilities
+      - pss-analyzer.baseline
+    match:
+      labels:
+        app.kubernetes.io/name: falco
+    reason: >-
+      Built-in exception: Falco's agent DaemonSet requires privileged
+      access and extensive hostPath mounts (container runtime sockets,
+      /proc, /etc, /dev, /sys/module, /sys/kernel, /lib/modules, /boot) to
+      load its kernel driver/eBPF probe and observe host-level syscalls —
+      documented and verified against the official Helm chart's
+      daemonset.yaml:
+      https://github.com/falcosecurity/charts/blob/master/charts/falco/templates/daemonset.yaml
+      . It doesn't use hostNetwork/hostPID, and doesn't set a seccomp
+      profile or run as non-root, so those checks are not suppressed here.
+
+  # Tetragon — Cilium's eBPF-based security observability/enforcement
+  # agent. Architecturally the same shape as Cilium's own agent (in fact
+  # shares its cilium-run hostPath state directory), verified separately
+  # since it's commonly run standalone (without the full Cilium CNI).
+  #
+  # Verified 2026-08 against
+  # github.com/cilium/tetragon/blob/main/install/kubernetes/tetragon/templates/daemonset.yaml
+  # (chart v1.7.0):
+  #   - hostNetwork: true.
+  #   - securityContext.privileged: true on the tetragon container.
+  #   - hostPath volumes: /sys/fs/bpf (BPF filesystem, Bidirectional mount
+  #     propagation), /proc (mounted as /procRoot), /var/run/cilium and
+  #     /var/run/tetragon (runtime state).
+  #   - tetragon-operator (a separate component: app.kubernetes.io/name:
+  #     tetragon-operator, not tetragon) runs unprivileged with
+  #     capabilities.drop: [ALL] and runAsNonRoot: true — not covered by
+  #     this exception, same reasoning as cilium-operator above.
+  #   - No seccompProfile is set on the agent — an independent, low-cost
+  #     setting unrelated to its eBPF/kernel access, so
+  #     pss-analyzer.restricted is deliberately NOT suppressed.
+  #   - Canonical label: app.kubernetes.io/name: tetragon (the agent
+  #     specifically — not tetragon-operator).
+  - id: tetragon
+    policyIds:
+      - workload.no-privileged-containers
+      - workload.no-host-namespaces
+      - workload.no-hostpath-volumes
+      - workload.drop-all-capabilities
+      - pss-analyzer.baseline
+    match:
+      labels:
+        app.kubernetes.io/name: tetragon
+    reason: >-
+      Built-in exception: Tetragon's agent DaemonSet requires hostNetwork,
+      privileged access, and hostPath mounts (/sys/fs/bpf, /proc, and
+      Cilium's runtime state directories) for its eBPF-based security
+      observability — documented and verified against the official Helm
+      chart's daemonset.yaml:
+      https://github.com/cilium/tetragon/blob/main/install/kubernetes/tetragon/templates/daemonset.yaml
+      . tetragon-operator (a separate, unprivileged, non-root component)
+      is not covered by this exception. It doesn't set a seccomp profile,
+      so pss-analyzer.restricted is not suppressed here.
+
+  # --- Core Kubernetes plumbing (not third-party — no components.yaml row) ---
+  #
+  # kube-proxy — every kubeadm-based cluster (kubeadm itself, kind, k3s,
+  # and most self-managed distros) ships kube-proxy with this exact shape;
+  # it is the standard, first-party default, not a user misconfiguration.
+  #
+  # Verified 2026-08 directly against a live kubeadm-bootstrapped cluster's
+  # actual rendered DaemonSet (kind, which uses kubeadm internally) —
+  # ground truth rather than reading source, since kubeadm generates this
+  # manifest at cluster-bootstrap time rather than shipping it as a
+  # checked-in YAML file:
+  #   - hostNetwork: true.
+  #   - securityContext.privileged: true (needed to manipulate host
+  #     iptables/ipvs/netfilter rules — kube-proxy's entire job).
+  #   - hostPath volumes: /run/xtables.lock (iptables lock file),
+  #     /lib/modules (kernel module loading).
+  #   - serviceAccountName is explicitly set to "kube-proxy" (not the
+  #     default SA), so workload.no-default-serviceaccount is unaffected
+  #     and not suppressed here.
+  #   - No seccompProfile is set and runAsNonRoot is not set — unlike the
+  #     privileged/hostNetwork/hostPath facts above, nothing about
+  #     kube-proxy's job requires this, so pss-analyzer.restricted and
+  #     workload.run-as-non-root are deliberately NOT suppressed: an
+  #     unrelated, low-cost hardening opportunity stays visible.
+  #   - Canonical label: k8s-app: kube-proxy.
+  - id: kube-proxy
+    policyIds:
+      - workload.no-privileged-containers
+      - workload.no-host-namespaces
+      - workload.no-hostpath-volumes
+      - workload.drop-all-capabilities
+      - pss-analyzer.baseline
+    match:
+      labels:
+        k8s-app: kube-proxy
+    reason: >-
+      Built-in exception: kube-proxy requires hostNetwork, privileged
+      access, and hostPath mounts of /run/xtables.lock and /lib/modules to
+      manage the host's iptables/ipvs rules — this is kubeadm's own
+      standard, first-party rendered manifest (kubernetes.io/docs/reference/setup-tools/kubeadm/),
+      verified directly against a live kubeadm-bootstrapped cluster, not a
+      cluster operator's choice. seccomp/non-root hardening is unrelated
+      to this requirement and is not suppressed.
+
+  # Control-plane static pods (kube-apiserver, kube-controller-manager,
+  # kube-scheduler, etcd) — one rule covering all four via their shared
+  # kubeadm label, since all four have the identical unavoidable cause:
+  # kubeadm's static-pod model runs them directly on the host network with
+  # host-mounted certs/data, not via a Deployment/ServiceAccount-based
+  # pattern. Only relevant to a self-managed/kubeadm control plane in the
+  # first place — a managed control plane (EKS/GKE/AKS) never exposes
+  # these as Pods at all (see this scan's Scope section).
+  #
+  # Verified 2026-08 directly against a live kubeadm-bootstrapped cluster's
+  # actual rendered static Pod manifests:
+  #   - hostNetwork: true on all four.
+  #   - hostPath volumes: /etc/kubernetes/pki (certs), plus
+  #     component-specific data/config dirs (e.g. etcd's data-dir).
+  #   - Canonical labels: component: kube-apiserver|kube-controller-manager|
+  #     kube-scheduler|etcd, tier: control-plane on all four — matching on
+  #     tier: control-plane alone intentionally covers all four with one
+  #     rule.
+  #   - No container-level securityContext hardening is set (no
+  #     runAsNonRoot, no capability drop) and no explicit serviceAccountName
+  #     — none of that is required by the static-pod model itself (some
+  #     hardened kubeadm configs do set it), so pss-analyzer.restricted,
+  #     workload.run-as-non-root, workload.drop-all-capabilities, and
+  #     workload.no-default-serviceaccount are deliberately NOT suppressed
+  #     here: they stay visible as genuine, actionable hardening
+  #     opportunities.
+  - id: control-plane-static-pods
+    policyIds:
+      - workload.no-host-namespaces
+      - workload.no-hostpath-volumes
+      - pss-analyzer.baseline
+    match:
+      labels:
+        tier: control-plane
+    reason: >-
+      Built-in exception: kubeadm's static-pod control plane
+      (kube-apiserver/kube-controller-manager/kube-scheduler/etcd) runs
+      directly on the host network with host-mounted certs and data
+      directories by design — this is kubeadm's own standard, first-party
+      rendered manifest (kubernetes.io/docs/reference/setup-tools/kubeadm/),
+      verified directly against a live kubeadm-bootstrapped cluster.
+      Non-root/capability/seccomp hardening is unrelated to this
+      requirement and is not suppressed.

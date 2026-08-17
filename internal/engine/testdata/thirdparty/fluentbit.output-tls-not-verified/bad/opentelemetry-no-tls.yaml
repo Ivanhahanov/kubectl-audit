@@ -1,0 +1,8 @@
+apiVersion: fluentbit.fluent.io/v1alpha2
+kind: ClusterOutput
+metadata:
+  name: opentelemetry-insecure
+spec:
+  opentelemetry:
+    host: logs.example.com
+    port: 443

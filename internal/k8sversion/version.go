@@ -71,9 +71,26 @@ func Parse(gitVersion string) (major, minor int, ok bool) {
 // have an opinion on versions newer than it was written against — that's a
 // different risk, "this tool might be missing something new," not "the
 // cluster is unpatched").
-func CheckSupportWindow(gitVersion, source string) []findings.Finding {
+func CheckSupportWindow(gitVersion, source string, warn func(format string, args ...any)) []findings.Finding {
+	if warn == nil {
+		warn = func(string, ...any) {}
+	}
 	major, minor, ok := Parse(gitVersion)
-	if !ok || major != LatestKnownMajor || minor > LatestKnownMinor {
+	if !ok {
+		// gitVersion == "" is the routine, expected case for a
+		// static-manifest-only scan with no live cluster to detect a
+		// version from — already surfaced separately via the report's own
+		// Scope section, so it stays silent here. A non-empty but
+		// unparseable string is different: something was detected, but in
+		// a shape this check didn't expect, which genuinely couldn't be
+		// told apart from "cluster is within the support window" (also a
+		// nil return, just below) without this warning.
+		if gitVersion != "" {
+			warn("couldn't parse cluster version %q — skipping the support-window check", gitVersion)
+		}
+		return nil
+	}
+	if major != LatestKnownMajor || minor > LatestKnownMinor {
 		return nil
 	}
 	age := LatestKnownMinor - minor

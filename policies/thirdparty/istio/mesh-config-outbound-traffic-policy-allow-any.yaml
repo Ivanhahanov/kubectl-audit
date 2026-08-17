@@ -1,0 +1,45 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: istio.mesh-config-outbound-traffic-policy-allow-any
+  annotations:
+    audit.k8s-auditor.io/title: "[ALPHA] Istio mesh allows egress to any external destination"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: istio
+    audit.k8s-auditor.io/remediation: >-
+      Set meshConfig.outboundTrafficPolicy.mode: REGISTRY_ONLY and declare
+      external destinations explicitly via ServiceEntry. Istio's own API
+      reference (istio.mesh.v1alpha1, OutboundTrafficPolicy): "The default
+      is ALLOW_ANY, which permits traffic to unknown destinations" — "any
+      traffic to unknown destinations will be allowed" — vs. REGISTRY_ONLY,
+      where "unknown outbound traffic will be dropped. Traffic
+      destinations must be explicitly declared into the service registry
+      through ServiceEntry configurations." With the default, any pod in
+      the mesh can reach any external host with no policy enforcement.
+  # No CRD: the "istio" ConfigMap is Istio's own well-known, name-stable
+  # mesh config object (verified against the official istiod Helm chart's
+  # rendered output: templates/configmap.yaml, name "istio",
+  # data["mesh"] — a YAML text blob, not a separate typed field, since
+  # ConfigMap data values are always strings). Gated on object name inside
+  # the expression itself, same pattern as the ArgoCD ConfigMap checks.
+  # Flags both the explicit ALLOW_ANY/ALLOW_ANY_DYNAMIC_DNS values and the
+  # field being absent entirely (ALLOW_ANY is the default) — only an
+  # explicit REGISTRY_ONLY passes.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["configmaps"]
+  validations:
+    - expression: |-
+        object.metadata.name != "istio" || !has(object.data) ||
+        !('mesh' in object.data) ||
+        object.data['mesh'].matches(r'(?s)outboundTrafficPolicy:\s*\n\s*mode:\s*REGISTRY_ONLY')
+      message: >-
+        [ALPHA] The istio ConfigMap's mesh config doesn't set
+        outboundTrafficPolicy.mode to REGISTRY_ONLY (ALLOW_ANY is Istio's
+        default when unset) — any pod in the mesh can reach any external
+        destination without an explicit ServiceEntry.

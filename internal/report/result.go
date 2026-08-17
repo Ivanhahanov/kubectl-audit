@@ -10,6 +10,7 @@ import (
 	"github.com/ivanhahanov/kubectl-audit/internal/compliance"
 	"github.com/ivanhahanov/kubectl-audit/internal/findings"
 	"github.com/ivanhahanov/kubectl-audit/internal/rbac"
+	"github.com/ivanhahanov/kubectl-audit/internal/thirdparty"
 )
 
 // ScopeNote explains one category of check this scan structurally couldn't
@@ -72,6 +73,13 @@ type Result struct {
 	// is true — with a single source it's always identical to the
 	// report's own Target line already shown once at the top.
 	MultipleSources bool
+	// DetectedComponents lists every third-party operator/CNI this tool
+	// knows about (see internal/thirdparty) that was actually observed in
+	// this scan — CRD group presence and/or a known label match. Purely
+	// informational: explains why third-party-CRD checks or built-in PSS
+	// exceptions did or didn't produce anything, instead of leaving that
+	// implicit.
+	DetectedComponents []thirdparty.Detection
 }
 
 // Summary counts findings by severity. Suppressed findings aren't counted.

@@ -1,0 +1,36 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: victoriametrics.vmagent-remotewrite-tls-insecure-skip-verify
+  annotations:
+    audit.k8s-auditor.io/title: "VMAgent remoteWrite skips TLS certificate verification"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: victoriametrics
+    audit.k8s-auditor.io/remediation: >-
+      Remove insecureSkipVerify: true (or set it to false, the default)
+      on this remoteWrite target's tlsConfig. Verified directly against
+      the VictoriaMetrics operator's own Go source
+      (api/operator/v1beta1/vmextra_types.go, TLSConfig.InsecureSkipVerify
+      field comment): "Disable target certificate validation." A remote
+      write destination with certificate verification disabled is
+      vulnerable to a man-in-the-middle attack redirecting or
+      intercepting every metric this VMAgent scrapes and forwards.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["operator.victoriametrics.com"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["vmagents"]
+  validations:
+    - expression: |-
+        !has(object.spec.remoteWrite) ||
+        !object.spec.remoteWrite.exists(rw,
+          has(rw.tlsConfig) && has(rw.tlsConfig.insecureSkipVerify) &&
+          rw.tlsConfig.insecureSkipVerify == true
+        )
+      message: >-
+        This VMAgent has a remoteWrite target with
+        tlsConfig.insecureSkipVerify: true — the remote write
+        destination's TLS certificate is not verified.

@@ -1,0 +1,36 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: argocd.cmd-params-cm-disable-auth
+  annotations:
+    audit.k8s-auditor.io/title: "ArgoCD server disables client authentication"
+    audit.k8s-auditor.io/severity: critical
+    audit.k8s-auditor.io/category: argocd
+    audit.k8s-auditor.io/remediation: >-
+      Remove server.disable.auth (or set it back to "false", the
+      default) from argocd-cmd-params-cm. Verified directly against the
+      official reference
+      (docs/operator-manual/argocd-cmd-params-cm.yaml in argoproj/argo-cd):
+      `` # Disable client authentication / server.disable.auth: "false" ``.
+      Setting this to "true" disables ArgoCD's own authentication
+      entirely — every UI/API/CLI request is treated as authenticated
+      without credentials, the ArgoCD analog of KubeVirt's Root feature
+      gate: an explicit, cluster-wide opt-out of a fundamental security
+      control.
+  # Same object/pattern as argocd.cmd-params-cm-server-insecure — gated
+  # on the ConfigMap's well-known name inside the expression itself.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["configmaps"]
+  validations:
+    - expression: |-
+        object.metadata.name != "argocd-cmd-params-cm" || !has(object.data) ||
+        !('server.disable.auth' in object.data) || object.data['server.disable.auth'] != "true"
+      message: >-
+        argocd-cmd-params-cm sets server.disable.auth: "true" — ArgoCD's
+        own client authentication is disabled entirely.

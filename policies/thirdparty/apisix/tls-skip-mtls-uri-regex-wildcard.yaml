@@ -1,0 +1,32 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: apisix.tls-skip-mtls-uri-regex-wildcard
+  annotations:
+    audit.k8s-auditor.io/title: "ApisixTls skips mutual TLS verification for all URIs"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: apisix
+    audit.k8s-auditor.io/remediation: >-
+      Narrow spec.client.skip_mtls_uri_regex to the specific health-check
+      or public URI paths that genuinely need to bypass mTLS, instead of
+      a match-everything pattern. Verified directly against the
+      apisix-ingress-controller CRD
+      (config/crd/bases/apisix.apache.org_apisixtlses.yaml):
+      skip_mtls_uri_regex "contains RegEx patterns for URIs to skip
+      mutual TLS verification." A wildcard entry here defeats client
+      certificate verification entirely, the same "flag the specific
+      dangerous value, not mere field presence" pattern as
+      victoriametrics.vmauth-unauthorized-access-wildcard-path.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["apisix.apache.org"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["apisixtlses"]
+  validations:
+    - expression: |-
+        !has(object.spec.client) || !has(object.spec.client.skip_mtls_uri_regex) ||
+        !object.spec.client.skip_mtls_uri_regex.exists(p, p in [".*", "/.*", ".+", "^.*$", "^/.*$"])
+      message: "spec.client.skip_mtls_uri_regex contains a match-everything pattern — mutual TLS verification is skipped for every URI, not just specific paths."

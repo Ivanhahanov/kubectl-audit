@@ -1,0 +1,35 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: airflow.hide-sensitive-var-conn-fields-disabled
+  annotations:
+    audit.k8s-auditor.io/title: "Airflow exposes sensitive Variable/Connection fields in the UI and task logs"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: airflow
+    audit.k8s-auditor.io/remediation: >-
+      Remove hide_sensitive_var_conn_fields = False from the [core]
+      section of airflow.cfg (or unset the equivalent Helm value) —
+      Airflow's own configuration reference: "Hide sensitive Variables or
+      Connection extra json keys from UI and task logs when set to
+      True," default True. Setting this False is an explicit opt-out
+      that exposes Connection extra-JSON secrets and sensitive Variables
+      directly in the web UI and task logs (Connection *passwords* are
+      always hidden regardless, per Airflow's own docs — this only
+      controls the extra-JSON keys and Variables).
+  # Same ConfigMap-content pattern as airflow.webserver-expose-config-enabled.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["configmaps"]
+  validations:
+    - expression: |-
+        !has(object.data) || !('airflow.cfg' in object.data) ||
+        !object.data['airflow.cfg'].matches(r'(?i)hide_sensitive_var_conn_fields\s*=\s*false')
+      message: >-
+        airflow.cfg sets hide_sensitive_var_conn_fields = False — sensitive
+        Variables and Connection extra JSON keys are shown in the UI and
+        task logs instead of being masked.

@@ -1,0 +1,33 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: multitenancy.capsule-tenant-no-node-isolation
+  annotations:
+    audit.k8s-auditor.io/title: "Capsule Tenant does not restrict which nodes its workloads can schedule on"
+    audit.k8s-auditor.io/severity: low
+    audit.k8s-auditor.io/category: multitenancy
+    audit.k8s-auditor.io/remediation: >-
+      Set spec.nodeSelector (Capsule's own best-practices guide gives
+      "node-role.kubernetes.io/worker: ''" as an example) so this tenant's
+      workloads are confined to worker nodes instead of being eligible for
+      any node in the cluster, including control-plane nodes. Most
+      clusters already taint control-plane nodes against ordinary
+      workloads by default, so treat this as defense-in-depth on top of
+      that — not proof tenant workloads are actually running there.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      # "*" instead of a pinned version — matches the Tenant object
+      # regardless of which Capsule release the cluster runs. Verified
+      # (2026-08, against api/v1beta2/tenant_types.go in
+      # projectcapsule/capsule): spec.nodeSelector is map[string]string,
+      # json tag "nodeSelector".
+      - apiGroups: ["capsule.clastix.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["tenants"]
+  validations:
+    - expression: |-
+        has(object.spec.nodeSelector) && size(object.spec.nodeSelector) > 0
+      message: "Tenant does not set spec.nodeSelector, so its workloads are eligible to schedule on any node in the cluster, not just worker nodes."

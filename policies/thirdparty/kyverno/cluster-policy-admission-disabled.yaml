@@ -1,0 +1,35 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: kyverno.cluster-policy-admission-disabled
+  annotations:
+    audit.k8s-auditor.io/title: "Kyverno policy is silently disabled at admission time"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: kyverno
+    audit.k8s-auditor.io/remediation: >-
+      Remove spec.admission: false (or set it back to true, the
+      default) unless this policy is intentionally background-scan-only.
+      Verified directly against Kyverno's own source
+      (api/kyverno/v1/spec_types.go): `` // Admission controls if rules
+      are applied during admission. Optional. Default value is "true". ``
+      A policy with admission: false still exists, still shows up as
+      "installed," but is completely inert at admission time — the same
+      "looks active but silently isn't" shape as
+      kubevirt.root-feature-gate-enabled.
+  # ClusterPolicy (cluster-scoped) and Policy (namespaced) share the same
+  # spec shape, same resourceRules as this tool's other Kyverno checks.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["kyverno.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["clusterpolicies", "policies"]
+  validations:
+    - expression: |-
+        !has(object.spec.admission) || object.spec.admission == true
+      message: >-
+        This policy sets spec.admission: false — it is not applied
+        during admission control, regardless of what its rules look
+        like.

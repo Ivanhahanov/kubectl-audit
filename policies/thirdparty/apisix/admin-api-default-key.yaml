@@ -1,0 +1,50 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: apisix.admin-api-default-key
+  annotations:
+    audit.k8s-auditor.io/title: "APISIX Admin API uses a well-known default key"
+    audit.k8s-auditor.io/severity: critical
+    audit.k8s-auditor.io/category: apisix
+    audit.k8s-auditor.io/remediation: >-
+      Set admin.credentials.admin/viewer (or admin.credentials.secretName)
+      to a unique, generated value before deploying — never the chart's
+      own committed default. The official apisix/apisix Helm chart's own
+      inline comment next to this field: "Highly recommended to modify
+      this value to protect APISIX's Admin API. Disabling this
+      configuration item means that the Admin API does not require any
+      authentication."
+  # APISIX has no CRD of its own for this — apisix-ingress-controller's
+  # CRDs (ApisixRoute, ApisixTls, ...) configure routing, not the Admin
+  # API's own credentials. The official apisix/apisix Helm chart renders
+  # admin.credentials into a ConfigMap's data["config.yaml"] key as a
+  # YAML text blob (verified against the chart's rendered output) — a
+  # plain ConfigMap content check, same pattern as
+  # secrets.configmap-no-embedded-credentials and
+  # airflow.webserver-expose-config-enabled. Deliberately narrow: this
+  # only catches the exact literal default keys still committed in the
+  # chart's own values.yaml today, not just "any weak key" (which this
+  # tool can't judge) — a default key is unambiguously wrong regardless
+  # of who's auditing it, and it staying in the chart's source at all is
+  # exactly why this keeps mattering (`helm install` with no override
+  # ships it as-is).
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["configmaps"]
+  validations:
+    - expression: |-
+        !has(object.data) || !('config.yaml' in object.data) ||
+        !(object.data['config.yaml'].contains('edd1c9f034335f136f87ad84b625c8f') ||
+          object.data['config.yaml'].contains('4054f7cf07e344346cd3f287985e76a2'))
+      message: >-
+        config.yaml's admin_key still contains one of the well-known
+        default Admin API keys shipped in the apisix/apisix Helm chart's
+        own values.yaml (admin: edd1c9f034335f136f87ad84b625c8f1, viewer:
+        4054f7cf07e344346cd3f287985e76a2) — these are public and grant
+        full control-plane access (route/upstream/consumer configuration)
+        to anyone who can reach the Admin API port.

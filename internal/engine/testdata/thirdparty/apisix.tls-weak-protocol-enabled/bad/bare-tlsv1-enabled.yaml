@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: apisix
+data:
+  config.yaml: |
+    apisix:
+      ssl:
+        ssl_protocols: "TLSv1 TLSv1.2 TLSv1.3"

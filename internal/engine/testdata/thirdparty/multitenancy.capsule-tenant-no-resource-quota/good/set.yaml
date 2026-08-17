@@ -1,0 +1,12 @@
+apiVersion: capsule.clastix.io/v1beta2
+kind: Tenant
+metadata:
+  name: good
+spec:
+  owners:
+    - name: alice
+      kind: User
+  resourceQuotas:
+    items:
+      - hard:
+          limits.cpu: "10"

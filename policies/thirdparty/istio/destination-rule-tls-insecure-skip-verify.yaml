@@ -1,0 +1,43 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: istio.destination-rule-tls-insecure-skip-verify
+  annotations:
+    audit.k8s-auditor.io/title: "[ALPHA] DestinationRule skips TLS certificate verification to the upstream"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: istio
+    audit.k8s-auditor.io/remediation: >-
+      Remove spec.trafficPolicy.tls.insecureSkipVerify: true. Istio's own
+      API reference (networking/v1alpha3/destination_rule.proto,
+      ClientTLSSettings.insecure_skip_verify): "insecureSkipVerify
+      specifies whether the proxy should skip verifying the CA signature
+      and SAN for the server certificate corresponding to the host. The
+      default value of this field is false." This is a distinct,
+      explicit downgrade from istio.destination-rule-tls-disabled
+      (mode: DISABLE) — TLS is still negotiated, but the peer's identity
+      is no longer verified, making the connection trivially
+      MITM-able.
+  # Only checks the top-level spec.trafficPolicy.tls.insecureSkipVerify —
+  # trafficPolicy.portLevelSettings[].tls and
+  # subsets[].trafficPolicy(.portLevelSettings[])?.tls can override it
+  # per-port/per-subset, same "evaluated independently, no merged-
+  # effective policy" caveat as istio.destination-rule-tls-disabled and
+  # this tool's other istio.* checks (see docs/istio.md's Scope note).
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["networking.istio.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["destinationrules"]
+  validations:
+    - expression: |-
+        !has(object.spec.trafficPolicy) || !has(object.spec.trafficPolicy.tls) ||
+        !has(object.spec.trafficPolicy.tls.insecureSkipVerify) ||
+        object.spec.trafficPolicy.tls.insecureSkipVerify == false
+      message: >-
+        [ALPHA] DestinationRule sets
+        spec.trafficPolicy.tls.insecureSkipVerify to true — Istio will
+        not verify the upstream's TLS certificate CA signature or SAN,
+        making the connection vulnerable to man-in-the-middle attacks.

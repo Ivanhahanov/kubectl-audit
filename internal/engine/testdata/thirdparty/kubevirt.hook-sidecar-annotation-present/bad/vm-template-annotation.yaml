@@ -1,0 +1,12 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: bad-vm
+  namespace: default
+spec:
+  template:
+    metadata:
+      annotations:
+        hooks.kubevirt.io/hookSidecars: '[{"args": ["--version", "v1"], "image": "my-image:latest"}]'
+    spec:
+      volumes: []

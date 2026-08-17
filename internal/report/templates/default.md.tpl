@@ -10,6 +10,9 @@
 ## Table of Contents
 
 - [Scope](#scope)
+{{- if .DetectedComponents }}
+- [Detected Components](#detected-components)
+{{- end }}
 - [Summary](#summary)
 {{- range .Frameworks }}
 - [{{ .Title }} Compliance](#compliance-{{ slug .ID }})
@@ -51,6 +54,23 @@ Checked, but with a lower-confidence caveat worth reading before trusting the re
 
 {{ range .Scope.Caveats }}- **{{ .Title }}** — {{ .Reason }}
 {{ end -}}
+{{- end }}
+{{- if .DetectedComponents }}
+
+<a id="detected-components"></a>
+
+## Detected Components
+
+Well-known third-party operators/CNIs this tool recognized in the scanned resources (see
+`internal/thirdparty`). System components have a matching built-in PSS exception
+(`internal/suppress/builtin-exclusions.yaml`) for their documented, unavoidable privileges;
+Application components get no exception and are checked at full strength.
+
+| Component | Category | Detected via | Helm-managed |
+|---|---|---|---|
+{{- range .DetectedComponents }}
+| {{ .Name }} | {{ .Category }} | {{ detectedVia . }} | {{ if .HelmManaged }}Yes{{ else }}No{{ end }} |
+{{- end }}
 {{- end }}
 
 <a id="summary"></a>

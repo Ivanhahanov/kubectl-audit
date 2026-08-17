@@ -69,6 +69,12 @@ relevant to it (e.g. `--frameworks` only appears on `scan`, not `rbac analyze` o
 Available on `scan` and `rbac analyze`:
 
 - `--config audit.yaml` — load settings from a config file (see [Configuration]({{ '/configuration/' | relative_url }})); CLI flags override it. Global, works on every command.
+- `-v/--verbose` — show debug-level diagnostic detail in addition to warnings (which are always
+  shown): per-optional-CRD resolution outcomes ("CRD group X is not registered on this cluster —
+  skipping"), and similar routine decisions that are silent by default because they'd otherwise be
+  noise on every ordinary scan. Useful for troubleshooting *why* a check or component didn't fire —
+  see [Third-Party Operators]({{ '/third-party-operators/' | relative_url }}) for what those
+  decisions actually gate. Global, works on every command.
 - `--context`, `--kubeconfig` — cluster targeting.
 - `--cluster-name` — human-readable name to use in the report's Target field and every finding's
   Source, instead of the raw kube-context name (which defaults to `current-context` when
@@ -140,17 +146,33 @@ Two things keep a cluster scan from being dominated by duplicate or non-actionab
   keeping only the top-level object as the single representative. If the owner was excluded by
   `--include-kind`/`--exclude-kind`, the owned resource is kept instead, so the template is never
   silently lost.
-- **Platform namespace/RBAC exclusion.** `kube-system`, `kube-public`, and `kube-node-lease` are
-  excluded by default, and `Role`/`ClusterRole`/`RoleBinding`/`ClusterRoleBinding` objects with the
-  reserved `system:` name prefix (Kubernetes' own built-in RBAC) are excluded by default too.
-  Their workloads/RBAC are cluster-internal plumbing (kube-proxy needs `hostNetwork`,
-  `system:controller:*` roles need their wildcards) that can't be remediated and mostly just
-  drowns out real findings. Third-party components installed *into* kube-system (e.g. a CSI
-  driver's own, non-`system:`-prefixed ClusterRoleBinding) are **not** filtered.
+- **Empty-namespace exclusion.** `kube-public` and `kube-node-lease` are excluded by default —
+  they hold nothing worth auditing (a public ConfigMap, Lease objects). `kube-system` is
+  deliberately **not** excluded by default: it commonly hosts real, auditable third-party
+  infrastructure (CNI, CSI drivers, ...) alongside core Kubernetes plumbing, and blanket-excluding
+  the whole namespace would hide genuine problems in it along with the unavoidable ones — this
+  tool used to exclude it too, until testing turned up a real privileged CSI driver sitting
+  silently unflagged in `kube-system` precisely because of that blanket exclusion.
+- **Built-in exceptions for unavoidable core-plumbing violations**, instead of hiding the
+  namespace. kube-proxy (needs `hostNetwork` + `privileged` to manage host iptables/ipvs rules)
+  and the kubeadm static control-plane pods (`kube-apiserver`/`kube-controller-manager`/
+  `kube-scheduler`/`etcd` — need `hostNetwork` + host-mounted certs/data by the static-pod model
+  itself, only relevant on a self-managed/kubeadm cluster) get precise, label-matched exceptions
+  for exactly their documented-unavoidable violations — see
+  [Third-Party Operators: Built-in exceptions]({{ '/third-party-operators/#built-in-exceptions-for-privileged-system-infrastructure' | relative_url }})
+  for the full list and sourcing; everything else about these objects (missing seccomp profile,
+  running as root, the default ServiceAccount, ...) is still flagged normally as a genuine
+  hardening opportunity.
+- **RBAC `system:` prefix exclusion.** `Role`/`ClusterRole`/`RoleBinding`/`ClusterRoleBinding`
+  objects with the reserved `system:` name prefix (Kubernetes' own built-in RBAC,
+  e.g. `system:controller:*`) are excluded by default — cluster-managed, not something an operator
+  can remediate. Third-party components' own RBAC objects (e.g. a CSI driver's non-`system:`
+  ClusterRoleBinding) are **not** filtered by this.
 
   Override with `--exclude-namespace ""` (clears the defaults), `--exclude-namespace <ns>`
   (repeatable, adds more), `-n/--namespace` (an explicit allowlist bypasses the default excludes
-  entirely), and `--include-system-rbac`.
+  entirely), `--no-builtin-exceptions` (disables the core-plumbing and third-party exceptions
+  above), and `--include-system-rbac`.
 
 ## Engine limitations
 

@@ -19,11 +19,13 @@ import (
 	"github.com/ivanhahanov/kubectl-audit/internal/k8supdates"
 	"github.com/ivanhahanov/kubectl-audit/internal/k8sversion"
 	"github.com/ivanhahanov/kubectl-audit/internal/loader"
+	"github.com/ivanhahanov/kubectl-audit/internal/logging"
 	"github.com/ivanhahanov/kubectl-audit/internal/netpol"
 	"github.com/ivanhahanov/kubectl-audit/internal/pss"
 	"github.com/ivanhahanov/kubectl-audit/internal/rbac"
 	"github.com/ivanhahanov/kubectl-audit/internal/report"
 	"github.com/ivanhahanov/kubectl-audit/internal/suppress"
+	"github.com/ivanhahanov/kubectl-audit/internal/thirdparty"
 )
 
 // loadEffectiveConfig merges audit.yaml with the persistent CLI flags.
@@ -64,6 +66,12 @@ func loadEffectiveConfig(cmd *cobra.Command) (*config.AuditConfig, error) {
 	}
 	if flagCheckUpdates {
 		cfg.Target.CheckUpdates = true
+	}
+	if flagNoBuiltinExceptions {
+		cfg.DisableBuiltinExceptions = true
+	}
+	if len(flagDisableBuiltinExceptionIDs) > 0 {
+		cfg.DisableBuiltinExceptionIDs = append(cfg.DisableBuiltinExceptionIDs, flagDisableBuiltinExceptionIDs...)
 	}
 
 	switch {
@@ -119,18 +127,34 @@ func splitCommaList(values []string) []string {
 	return out
 }
 
+// warnf and debugf are the diagnostic call sites every command shares —
+// see internal/logging for the rendering (plain "warning: "/"debug: "
+// single lines, no timestamps/structured fields) and root.go's --verbose
+// flag for the level. A fresh logger per call is deliberate: these run
+// nowhere near a hot path (a handful of times per scan at most), and it
+// avoids initialization-order concerns from a package-level logger var
+// that would need flagVerbose to already be parsed.
 func warnf(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, "warning: "+format+"\n", args...)
+	logging.New(os.Stderr, flagVerbose).Warn(fmt.Sprintf(format, args...))
+}
+
+// debugf is warnf's quieter sibling: only shown with --verbose. Use it
+// for decisions that are routine/expected on most scans (a third-party
+// CRD not being installed, a heuristic simply not matching) where warnf
+// would be noise by default, but that are genuinely useful when
+// troubleshooting why a check didn't fire.
+func debugf(format string, args ...any) {
+	logging.New(os.Stderr, flagVerbose).Debug(fmt.Sprintf(format, args...))
 }
 
 // loadResources loads resources per cfg.Target.Mode from static paths
 // and/or a live cluster, returning the combined (post-filter) set, the
-// unfiltered set (before the default kube-system/kube-public/kube-node-lease
-// exclusion — needed so the control-plane analyzer can still see static pods
-// like kube-apiserver-* there even though they're excluded from ordinary
-// findings by default), a human-readable target label, and the detected
-// cluster's Kubernetes version (e.g. "v1.27.16"; empty for a
-// static-manifest-only scan, or if the version couldn't be fetched).
+// unfiltered set (before the default kube-public/kube-node-lease exclusion
+// — needed so the control-plane analyzer can still see static pods like
+// kube-apiserver-* there even on a -n allowlist that would otherwise
+// exclude them), a human-readable target label, and the detected cluster's
+// Kubernetes version (e.g. "v1.27.16"; empty for a static-manifest-only
+// scan, or if the version couldn't be fetched).
 func loadResources(ctx context.Context, cfg *config.AuditConfig) ([]loader.Resource, []loader.Resource, string, string, error) {
 	var all []loader.Resource
 	var targetParts []string
@@ -173,6 +197,7 @@ func loadResources(ctx context.Context, cfg *config.AuditConfig) ([]loader.Resou
 				ExcludeKinds:  cfg.Target.ExcludeKinds,
 				Source:        src,
 				Warn:          warnf,
+				Debug:         debugf,
 			})
 			if err != nil {
 				return nil, nil, "", "", fmt.Errorf("loading cluster resources: %w", err)
@@ -227,7 +252,7 @@ func namespaceIndex(resources []loader.Resource) map[string]*loader.Resource {
 // incompletely) — instead of a reader having to infer it from a dozen
 // individually-worded NOT_APPLICABLE compliance rows, or worse, mistaking
 // an incomplete-static-scan false positive/negative for a real finding.
-func buildScope(cfg *config.AuditConfig, resources []loader.Resource, k8sVersion string, observed map[string]bool) report.Scope {
+func buildScope(cfg *config.AuditConfig, resources []loader.Resource, k8sVersion string, observed map[string]bool, detected []thirdparty.Detection) report.Scope {
 	var notes []report.ScopeNote
 	var caveats []report.ScopeNote
 
@@ -237,7 +262,14 @@ func buildScope(cfg *config.AuditConfig, resources []loader.Resource, k8sVersion
 	netpolGVKs := netpol.CoverageGVKs()
 	for _, r := range resources {
 		gvk := r.GVK()
-		if gvk.Group == "security.istio.io" {
+		if gvk.Group == "security.istio.io" || gvk.Group == "networking.istio.io" {
+			hasIstio = true
+		}
+		// The istio.mesh-config-outbound-traffic-policy-allow-any check
+		// targets a plain ConfigMap (no CRD group of its own) — caught
+		// here by name so a scan with only that object still gets the
+		// alpha caveat below.
+		if gvk.Group == "" && gvk.Kind == "ConfigMap" && r.Name() == "istio" {
 			hasIstio = true
 		}
 		if gvk.Group == "rbac.authorization.k8s.io" {
@@ -325,12 +357,43 @@ func buildScope(cfg *config.AuditConfig, resources []loader.Resource, k8sVersion
 	if hasIstio {
 		caveats = append(caveats, report.ScopeNote{
 			Title: "Istio checks (alpha — istio.* policies)",
-			Reason: "Each PeerAuthentication/AuthorizationPolicy object is evaluated independently; precedence across mesh/namespace/" +
-				"workload-level objects and merged-effective policy (what istioctl x authz check computes from a live sidecar) isn't " +
-				"computed. In Istio ambient mode (sidecarless), L4 mTLS is enforced by ztunnel, but L7 rules " +
+			Reason: "Each PeerAuthentication/AuthorizationPolicy/DestinationRule/Gateway object is evaluated independently; precedence " +
+				"across mesh/namespace/workload-level objects and merged-effective policy (what istioctl x authz check computes from a " +
+				"live sidecar) isn't computed. In Istio ambient mode (sidecarless), L4 mTLS is enforced by ztunnel, but L7 rules " +
 				"(to.operation.methods/paths/hosts) require a waypoint proxy deployed for the target workload/namespace — without " +
 				"one, an L7 AuthorizationPolicy silently isn't enforced at all. Treat istio.* findings as a starting point for manual " +
 				"review, not a final verdict.",
+		})
+	}
+
+	for _, d := range detected {
+		if !d.Mismatched() {
+			continue
+		}
+		// Two equally plausible explanations, and no way to tell them apart
+		// from the API alone: a non-standard label on an install that's
+		// genuinely still there, or a component that was uninstalled while
+		// its CRDs (and any CRs) were left behind — `helm uninstall` and
+		// most operator-removal docs don't remove CRDs by default, so this
+		// is the common case, not an edge case.
+		reason := fmt.Sprintf(
+			"%s's CRD group (%s) was observed, but no workload matched the label selector this tool looks for to confirm "+
+				"the component itself (not just its CRDs) is actually present — see internal/thirdparty/components.yaml. "+
+				"Either your %s deployment uses non-standard labels, or %s was uninstalled and its CRDs (and any objects "+
+				"using them) were left behind, which is the common case since `helm uninstall` doesn't remove CRDs by "+
+				"default. If any %s-specific findings above reference stale objects, that's why.",
+			d.Name, d.Group, d.Name, d.Name, d.Name)
+		if d.Category == thirdparty.CategorySystem {
+			reason += fmt.Sprintf(
+				" It also means this tool's built-in PSS exception for %s (internal/suppress/builtin-exclusions.yaml) "+
+					"isn't being applied to anything — if it's genuinely still running under different labels, its "+
+					"baseline/restricted findings won't be suppressed as expected; add your own `exclusions` rule in "+
+					"audit.yaml matching its actual labels, or ignore this if that's fine.",
+				d.Name)
+		}
+		caveats = append(caveats, report.ScopeNote{
+			Title:  fmt.Sprintf("%s detected via CRD group only, no matching workload (%s)", d.Name, d.Category),
+			Reason: reason,
 		})
 	}
 
@@ -395,12 +458,12 @@ func runScan(ctx context.Context, cfg *config.AuditConfig) (report.Result, error
 
 	// Uses the unfiltered resource set for the same reason as cpPolicyFindings
 	// above.
-	cpResult, err := controlplane.Analyze(unfiltered, target)
+	cpResult, err := controlplane.Analyze(unfiltered, target, warnf)
 	if err != nil {
 		return report.Result{}, fmt.Errorf("analyzing control-plane configuration: %w", err)
 	}
 
-	versionFindings := k8sversion.CheckSupportWindow(k8sVersion, target)
+	versionFindings := k8sversion.CheckSupportWindow(k8sVersion, target, warnf)
 
 	var updateFindings []findings.Finding
 	if cfg.Target.CheckUpdates {
@@ -427,19 +490,21 @@ func runScan(ctx context.Context, cfg *config.AuditConfig) (report.Result, error
 	all = findings.Dedupe(all)
 	findings.SortBySeverity(all)
 
-	kept, suppressed := suppress.Apply(all, cfg.Exclusions, suppress.BuildLabelIndex(unfiltered))
+	kept, suppressed := suppress.Apply(all, effectiveExclusions(cfg), suppress.BuildLabelIndex(unfiltered))
+	detected := thirdparty.Detect(unfiltered, effectiveComponents(cfg))
 
 	result := report.Result{
-		GeneratedAt:     time.Now(),
-		Target:          target,
-		ClusterVersion:  k8sVersion,
-		Scope:           buildScope(cfg, resources, k8sVersion, cpResult.Observed),
-		PoliciesLoaded:  len(policies),
-		Findings:        kept,
-		Suppressed:      toReportSuppressed(suppressed),
-		RBACModel:       rbacResult.Model,
-		ReportView:      cfg.Output.ReportView,
-		MultipleSources: hasMultipleSources(resources),
+		GeneratedAt:        time.Now(),
+		Target:             target,
+		ClusterVersion:     k8sVersion,
+		Scope:              buildScope(cfg, resources, k8sVersion, cpResult.Observed, detected),
+		PoliciesLoaded:     len(policies),
+		Findings:           kept,
+		Suppressed:         toReportSuppressed(suppressed),
+		DetectedComponents: detected,
+		RBACModel:          rbacResult.Model,
+		ReportView:         cfg.Output.ReportView,
+		MultipleSources:    hasMultipleSources(resources),
 	}
 
 	validPolicyIDs := make(map[string]bool, len(policies))
@@ -504,6 +569,49 @@ func writeOutputs(cfg *config.AuditConfig, result report.Result) error {
 		}
 	}
 	return nil
+}
+
+// effectiveExclusions returns the exclusion rules to actually apply: this
+// tool's built-in exceptions for well-known privileged infrastructure
+// components (see suppress.BuiltinRules), unless disabled wholesale
+// (DisableBuiltinExceptions) or individually by ID
+// (DisableBuiltinExceptionIDs), followed by the user's own
+// audit.yaml/config rules.
+func effectiveExclusions(cfg *config.AuditConfig) []config.ExclusionRule {
+	if cfg.DisableBuiltinExceptions {
+		return cfg.Exclusions
+	}
+	builtin := suppress.BuiltinRules()
+	if len(cfg.DisableBuiltinExceptionIDs) > 0 {
+		disabled := map[string]bool{}
+		for _, id := range cfg.DisableBuiltinExceptionIDs {
+			disabled[id] = true
+		}
+		filtered := make([]config.ExclusionRule, 0, len(builtin))
+		for _, r := range builtin {
+			if disabled[r.ID] {
+				delete(disabled, r.ID)
+				continue
+			}
+			filtered = append(filtered, r)
+		}
+		for id := range disabled {
+			warnf("disableBuiltinExceptionIds: %q does not match any built-in exclusion rule (typo, or the rule was renamed/removed in this version)", id)
+		}
+		builtin = filtered
+	}
+	return append(builtin, cfg.Exclusions...)
+}
+
+// effectiveComponents returns the third-party component inventory to
+// actually detect against: this tool's built-in list (see thirdparty.Known)
+// plus any user-supplied additions (config.ComponentsConfig.Extra) — see
+// docs/third-party-operators.md.
+func effectiveComponents(cfg *config.AuditConfig) []thirdparty.Component {
+	if len(cfg.Components.Extra) == 0 {
+		return thirdparty.Known
+	}
+	return append(append([]thirdparty.Component{}, thirdparty.Known...), cfg.Components.Extra...)
 }
 
 // hasMultipleSources reports whether the loaded resources actually came

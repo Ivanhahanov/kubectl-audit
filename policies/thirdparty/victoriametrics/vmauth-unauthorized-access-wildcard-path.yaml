@@ -1,0 +1,48 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: victoriametrics.vmauth-unauthorized-access-wildcard-path
+  annotations:
+    audit.k8s-auditor.io/title: "VMAuth routes a wildcard path to unauthenticated requests"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: victoriametrics
+    audit.k8s-auditor.io/remediation: >-
+      Scope spec.unauthorizedUserAccessSpec.url_map[].src_paths to the
+      specific paths that genuinely need unauthenticated access (health
+      checks, etc.), or remove unauthorizedUserAccessSpec entirely.
+      VMAuth's own docs
+      (https://docs.victoriametrics.com/victoriametrics/vmauth/):
+      "Requests without an Authorization header are proxied according to
+      the unauthorized_user section" — and this section "takes precedence
+      when processing a route without credentials, even if such a route
+      also exists in the users section." A wildcard src_paths entry here
+      routes every unauthenticated request to whatever backend this rule
+      points at, regardless of any per-user auth configured elsewhere.
+  # url_map/src_paths is deprecated in favor of spec.unauthorizedUserAccessSpec.targetRefs
+  # as of VictoriaMetrics operator v0.67.0 (removal planned v0.69.0, per
+  # the CRD's own +notes annotation) — this check only catches the
+  # older, still-supported url_map form. VMAuth's own docs don't
+  # independently warn against a wildcard src_paths value here; the
+  # finding rests on the documented "no-credential requests always match
+  # this section" mechanics plus the wildcard itself, the same evidentiary
+  # shape already used for the ArgoCD AppProject/Istio AuthorizationPolicy
+  # wildcard checks in this tool.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["operator.victoriametrics.com"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["vmauths"]
+  validations:
+    - expression: |-
+        !has(object.spec.unauthorizedUserAccessSpec) ||
+        !has(object.spec.unauthorizedUserAccessSpec.url_map) ||
+        !object.spec.unauthorizedUserAccessSpec.url_map.exists(m,
+          has(m.src_paths) && m.src_paths.exists(p, p in [".*", "/.*", ".+", "^.*$", "^/.*$"])
+        )
+      message: >-
+        VMAuth.spec.unauthorizedUserAccessSpec.url_map has a src_paths
+        entry matching everything (e.g. ".*") — every unauthenticated
+        request is routed to that rule's backend.
