@@ -1,0 +1,143 @@
+# Default, minimal ClusterRole for kubectl-audit's `scan`/`rbac analyze` in
+# cluster mode. Grants get/list/watch only — this tool never creates,
+# updates, patches, or deletes anything in the cluster it audits — and
+# deliberately excludes Secrets: bind this ClusterRole for every normal
+# scan. Only pair it with a ServiceAccount + ClusterRoleBinding if this tool
+# runs as an in-cluster job/CronJob; a human running it locally via their
+# own kubeconfig just needs these same verbs on their own user/group
+# instead (or cluster-admin/view, if that's already how your org grants
+# read access).
+#
+# CRD groups below (Cilium, Calico, Istio, ArgoCD, Vault Secrets Operator,
+# Fluent Operator, VictoriaMetrics Operator, CloudNativePG, Kyverno, APISIX,
+# Capsule, KubeVirt) are harmless to grant even when that operator isn't
+# installed on this cluster: an RBAC rule for a CRD group/resource that
+# doesn't exist is simply inert, and kubectl-audit itself resolves each
+# group's installed status via API discovery before ever listing it (see
+# internal/loader/cluster.go's optionalResources) rather than erroring.
+#
+# Kept in sync by hand with internal/loader/cluster.go's defaultResources +
+# optionalResources — see internal/loader/cluster_test.go's
+# TestClusterRoleManifestsCoverKnownResources, which fails the build if
+# this file (or clusterrole-with-secrets.yaml) drifts from what the loader
+# actually knows how to fetch.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubectl-audit-readonly
+rules:
+  # Built-in kinds this tool always fetches (internal/loader/cluster.go's
+  # defaultResources) — every cluster serves these at a fixed version, no
+  # discovery/installed-check needed.
+  - apiGroups: [""]
+    resources:
+      - pods
+      - services
+      - namespaces
+      - serviceaccounts
+      - configmaps
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - statefulsets
+      - daemonsets
+      - replicasets
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+      - cronjobs
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources:
+      - roles
+      - clusterroles
+      - rolebindings
+      - clusterrolebindings
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - networkpolicies
+      - ingresses
+    verbs: ["get", "list", "watch"]
+
+  # Optional third-party CRDs — fetched only if the group is actually
+  # registered on this cluster (internal/loader/cluster.go's
+  # optionalResources). Harmless to grant unconditionally; see note above.
+  - apiGroups: ["cilium.io"]
+    resources:
+      - ciliumnetworkpolicies
+      - ciliumclusterwidenetworkpolicies
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["crd.projectcalico.org"]
+    resources:
+      - networkpolicies
+      - globalnetworkpolicies
+      - felixconfigurations
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["capsule.clastix.io"]
+    resources: ["tenants"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["security.istio.io"]
+    resources:
+      - peerauthentications
+      - authorizationpolicies
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.istio.io"]
+    resources:
+      - destinationrules
+      - gateways
+      - sidecars
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["argoproj.io"]
+    resources:
+      - appprojects
+      - applications
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["secrets.hashicorp.com"]
+    resources:
+      - vaultconnections
+      - vaultauths
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["fluentbit.fluent.io"]
+    resources:
+      - outputs
+      - clusteroutputs
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["operator.victoriametrics.com"]
+    resources:
+      - vmsingles
+      - vmclusters
+      - vmauths
+      - vmagents
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["postgresql.cnpg.io"]
+    resources: ["clusters"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["kyverno.io"]
+    resources:
+      - clusterpolicies
+      - policies
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apisix.apache.org"]
+    resources: ["apisixtlses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["kubevirt.io"]
+    resources:
+      - kubevirts
+      - virtualmachines
+      - virtualmachineinstances
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["temporal.io"]
+    resources: ["temporalclusters"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["loki.grafana.com"]
+    resources: ["lokistacks"]
+    verbs: ["get", "list", "watch"]
+
+  # API discovery + version — normally already open to every authenticated
+  # user via the system:discovery/system:basic-user built-in bindings; only
+  # needed explicitly here if this cluster removed those defaults.
+  - nonResourceURLs: ["/api", "/api/*", "/apis", "/apis/*", "/version"]
+    verbs: ["get"]
