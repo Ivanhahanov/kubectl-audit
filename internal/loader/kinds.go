@@ -77,6 +77,15 @@ var kindToResource = map[string]string{
 	"KubeVirt":               "kubevirts",
 	"VirtualMachine":         "virtualmachines",
 	"VirtualMachineInstance": "virtualmachineinstances",
+	// temporal.io/v1beta1 (alexandrevilain/temporal-operator, a community
+	// operator, not Temporal-authored) — see policies/thirdparty/temporal/*.yaml.
+	// Verified Namespaced against the real CRD
+	// (config/crd/bases/temporal.io_temporalclusters.yaml).
+	"TemporalCluster": "temporalclusters",
+	// loki.grafana.com (Grafana Loki Operator, mainly used on OpenShift) —
+	// see policies/thirdparty/loki/*.yaml. Verified Namespaced against the
+	// real CRD (operator/config/crd/bases/loki.grafana.com_lokistacks.yaml).
+	"LokiStack": "lokistacks",
 }
 
 // ResourceNameForKind returns the plural resource name for a known Kind.

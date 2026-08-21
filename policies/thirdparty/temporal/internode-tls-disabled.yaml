@@ -1,0 +1,39 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: temporal.internode-tls-disabled
+  annotations:
+    audit.k8s-auditor.io/title: "Temporal internode traffic is not encrypted with TLS"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: temporal
+    audit.k8s-auditor.io/remediation: >-
+      Set server.config.tls.internode.enabled: true (and issue certificates
+      from a CA every server component trusts) in the official
+      temporalio/helm-charts values.yaml. Verified directly against the
+      chart's own values.yaml: server.config.tls.internode.enabled
+      defaults to false. Temporal's own docs frame mTLS as the documented
+      way to secure server-to-server traffic; the alternative is
+      explicitly framed as a deliberate operator choice ("run unsecured
+      instances inside of a VPC environment"), not the recommended
+      default. Plaintext internode traffic can carry workflow/activity
+      payloads between Temporal's own frontend/history/matching/worker
+      services.
+  # Matches the rendered config_template.yaml text (see
+  # temporal.authorization-not-configured for why no fixed ConfigMap name
+  # is used). toYaml on the merged tls map renders keys alphabetically
+  # (Helm's toYaml -> yaml.Marshal sorts map keys), so "enabled" is always
+  # the first key emitted directly under "internode:" — verified against
+  # the real chart template and values.yaml.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["configmaps"]
+  validations:
+    - expression: |-
+        !has(object.data) || !('config_template.yaml' in object.data) ||
+        !object.data['config_template.yaml'].matches(r'(?s)internode:\s*\n\s*enabled:\s*false')
+      message: "This ConfigMap's config_template.yaml sets global.tls.internode.enabled: false — server-to-server (internode) traffic is not encrypted with TLS."

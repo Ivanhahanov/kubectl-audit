@@ -90,6 +90,16 @@ output:
   #            (every finding listed once per view) — prefer check or
   #            namespace alone once findings run into the hundreds/thousands.
   reportView: check
+  # Collapse a check's repeated per-namespace findings in the Markdown
+  # report: when a check's message is identical for every finding (true of
+  # essentially every built-in VAP/CEL check) and it fires on the same
+  # Kind+Name pair in at least this many distinct namespaces — the common
+  # multi-tenant shape, e.g. Capsule-provisioned tenant namespaces all
+  # deploying the same manifest — those are shown as one row instead of one
+  # bullet per namespace. Purely a Markdown rendering choice:
+  # findings.json/CSV always list every finding individually, so --fail-on
+  # gating and CI tooling see no difference. 0 disables collapsing.
+  namespaceGroupThreshold: 3
 
 compliance:
   # Requirement framework(s) to score against: cis|fstec|nsa|capsule (see

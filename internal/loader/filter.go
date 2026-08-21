@@ -63,3 +63,25 @@ func FilterSystemRBAC(resources []Resource) []Resource {
 	}
 	return out
 }
+
+// FilterSecrets drops Secret objects — the single enforcement point for
+// this tool's default "never evaluate policies against Secret bodies"
+// posture. It's needed even though LoadCluster only fetches Secrets when
+// ClusterOptions.ReadSecretValues is true (see docs/secrets-mode.md):
+// LoadStatic has no such gate and loads whatever Kind a -f manifest
+// contains, so a static-manifest scan pointed at a directory that happens
+// to include real Secret YAML would otherwise expose those bodies to
+// policy evaluation with no opt-in at all. Called whenever
+// !cfg.Target.ReadSecretValues, regardless of which mode(s) loaded the
+// resources.
+func FilterSecrets(resources []Resource) []Resource {
+	out := make([]Resource, 0, len(resources))
+	for _, r := range resources {
+		gvk := r.GVK()
+		if gvk.Group == "" && gvk.Kind == "Secret" {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
+}

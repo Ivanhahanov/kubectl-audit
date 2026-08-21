@@ -114,6 +114,49 @@ spec:
 	}
 }
 
+// TestDedupeByOwnerChainKeepsNonTemplateResourcesOwnedByAController guards
+// against a real bug found live against a real cluster: CNPG's
+// cnpg-controller-manager Deployment owns two Secrets it manages
+// (cnpg-ca-secret, cnpg-webhook-cert) via a controller ownerReference.
+// Those Secrets have real, unique content — no pod/job template is being
+// duplicated — so they must survive dedup even though their owning
+// Deployment was also loaded. Only Pod/ReplicaSet/Job (the kinds that can
+// actually carry a redundant template) should ever be dropped this way.
+func TestDedupeByOwnerChainKeepsNonTemplateResourcesOwnedByAController(t *testing.T) {
+	deployment := mustResource(t, `
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cnpg-controller-manager
+  namespace: cnpg-system
+  uid: dep-uid
+spec:
+  template:
+    spec:
+      containers: []
+`)
+	secret := mustResource(t, `
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cnpg-ca-secret
+  namespace: cnpg-system
+  uid: secret-uid
+  ownerReferences:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: cnpg-controller-manager
+      uid: dep-uid
+      controller: true
+data: {}
+`)
+
+	out := loader.DedupeByOwnerChain([]loader.Resource{deployment, secret})
+	if len(out) != 2 {
+		t.Fatalf("expected both the Deployment and the Secret it owns to survive dedup, got %d: %+v", len(out), out)
+	}
+}
+
 func TestFilterExcludedNamespaces(t *testing.T) {
 	kubeSystemPod := mustResource(t, `
 apiVersion: v1

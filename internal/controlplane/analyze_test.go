@@ -80,6 +80,30 @@ func TestParseFlags(t *testing.T) {
 	}
 }
 
+// TestParseFlags_SpaceSeparatedForm guards a real bug found by an
+// adversarial audit: "--flag value" as two consecutive args-list elements
+// (a real, valid container-arg style some non-kubeadm distros use)
+// previously registered as flag="true" (an ambiguous boolean marker)
+// instead of capturing "value" — producing an ACTIVE, wrong-value false
+// positive on a correctly-configured flag (e.g. "--audit-log-maxage 90"
+// failing a >=30 threshold check because it compared "true" instead of
+// "90"), not just the documented "silently not parsed" miss.
+func TestParseFlags_SpaceSeparatedForm(t *testing.T) {
+	f := parseFlags([]string{"kube-apiserver", "--audit-log-maxage", "90", "--anonymous-auth", "false", "--profiling"}, nil)
+	if !f.atLeast("audit-log-maxage", 30) {
+		t.Errorf("expected audit-log-maxage (space-separated form) to parse as 90, got %v", f["audit-log-maxage"])
+	}
+	if !f.equals("anonymous-auth", "false") {
+		t.Errorf("expected anonymous-auth (space-separated form) to parse as \"false\", got %v", f["anonymous-auth"])
+	}
+	// A genuine bare boolean flag (no following value at all, or followed
+	// by another flag) must still default to "true" — this is real and
+	// common for actual boolean apiserver flags passed with no "=value".
+	if !f.equals("profiling", "true") {
+		t.Errorf("expected a trailing bare flag with nothing after it to still default to \"true\", got %v", f["profiling"])
+	}
+}
+
 func TestClassify(t *testing.T) {
 	r := apiserverPod("kube-apiserver-node1")
 	comp, ok := classify(r)

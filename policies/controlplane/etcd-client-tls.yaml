@@ -17,10 +17,9 @@ spec:
         apiVersions: ["v1"]
         operations: ["CREATE", "UPDATE"]
         resources: ["pods"]
-    objectSelector:
-      matchLabels:
-        component: etcd
   validations:
     - expression: |-
-        object.spec.containers.exists(c, ((has(c.command) ? c.command : []) + (has(c.args) ? c.args : [])).exists(a, a.startsWith('--cert-file=')) && ((has(c.command) ? c.command : []) + (has(c.args) ? c.args : [])).exists(a, a.startsWith('--key-file=')))
+        !((has(object.metadata.labels) && 'component' in object.metadata.labels && object.metadata.labels['component'] == 'etcd') || (object.metadata.namespace == 'kube-system' && object.metadata.name.startsWith('etcd'))) || (
+          object.spec.containers.exists(c, ((has(c.command) ? c.command : []) + (has(c.args) ? c.args : [])).exists(a, a.startsWith('--cert-file=')) && ((has(c.command) ? c.command : []) + (has(c.args) ? c.args : [])).exists(a, a.startsWith('--key-file=')))
+        )
       message: "[indirect signal — inferred from the etcd static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access] --cert-file and/or --key-file is not set."

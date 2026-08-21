@@ -71,13 +71,203 @@ spec:
           memory: "128Mi"
 `
 
+// TestSeccompCheckCatchesContainerLevelOverride guards a real false
+// negative found by an adversarial audit: a secure pod-level
+// seccompProfile: RuntimeDefault previously masked an explicit,
+// more-dangerous container-level "Unconfined" override, because the old
+// expression was (pod-ok) || (all-containers-ok) — the first disjunct
+// short-circuited true regardless of what an individual container set.
+// Cross-confirmed against the real k8s.io/pod-security-admission library
+// (internal/pss), which correctly caught this same case.
+func TestSeccompCheckCatchesContainerLevelOverride(t *testing.T) {
+	policies, err := engine.LoadBuiltin()
+	if err != nil {
+		t.Fatalf("LoadBuiltin: %v", err)
+	}
+
+	overridden := mustResource(t, `
+apiVersion: v1
+kind: Pod
+metadata:
+  name: p
+  namespace: default
+spec:
+  securityContext:
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: c
+      image: nginx:1.25.3
+      securityContext:
+        seccompProfile:
+          type: Unconfined
+`)
+	results := engine.EvaluateAll(policies, []loader.Resource{overridden}, engine.EvalOptions{})
+	if len(findingsForPolicy(results, "workload.seccomp-profile-required")) == 0 {
+		t.Error("expected workload.seccomp-profile-required to fire when a container explicitly overrides a secure pod-level seccompProfile with Unconfined")
+	}
+
+	// Inheritance (no container-level override at all) must still pass —
+	// this is the case the check exists to recognize as safe.
+	inherited := mustResource(t, `
+apiVersion: v1
+kind: Pod
+metadata:
+  name: p
+  namespace: default
+spec:
+  securityContext:
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: c
+      image: nginx:1.25.3
+`)
+	inheritedResults := engine.EvaluateAll(policies, []loader.Resource{inherited}, engine.EvalOptions{})
+	if len(findingsForPolicy(inheritedResults, "workload.seccomp-profile-required")) != 0 {
+		t.Error("expected no finding when a container correctly inherits a secure pod-level seccompProfile")
+	}
+}
+
+// TestRunAsNonRootCheckCatchesContainerLevelOverride guards the same bug
+// shape, found in the same audit, in workload.run-as-non-root: a secure
+// pod-level runAsNonRoot: true previously masked an explicit
+// container-level runAsNonRoot: false (an explicit grant of root back).
+func TestRunAsNonRootCheckCatchesContainerLevelOverride(t *testing.T) {
+	policies, err := engine.LoadBuiltin()
+	if err != nil {
+		t.Fatalf("LoadBuiltin: %v", err)
+	}
+
+	overridden := mustResource(t, `
+apiVersion: v1
+kind: Pod
+metadata:
+  name: p
+  namespace: default
+spec:
+  securityContext:
+    runAsNonRoot: true
+  containers:
+    - name: c
+      image: nginx:1.25.3
+      securityContext:
+        runAsNonRoot: false
+        runAsUser: 0
+`)
+	results := engine.EvaluateAll(policies, []loader.Resource{overridden}, engine.EvalOptions{})
+	if len(findingsForPolicy(results, "workload.run-as-non-root")) == 0 {
+		t.Error("expected workload.run-as-non-root to fire when a container explicitly overrides a secure pod-level runAsNonRoot with false")
+	}
+
+	inherited := mustResource(t, `
+apiVersion: v1
+kind: Pod
+metadata:
+  name: p
+  namespace: default
+spec:
+  securityContext:
+    runAsNonRoot: true
+  containers:
+    - name: c
+      image: nginx:1.25.3
+`)
+	inheritedResults := engine.EvaluateAll(policies, []loader.Resource{inherited}, engine.EvalOptions{})
+	if len(findingsForPolicy(inheritedResults, "workload.run-as-non-root")) != 0 {
+		t.Error("expected no finding when a container correctly inherits a secure pod-level runAsNonRoot")
+	}
+}
+
+func TestKnownWeakPlaceholderSecretValueDetected(t *testing.T) {
+	policies, err := engine.LoadBuiltin()
+	if err != nil {
+		t.Fatalf("LoadBuiltin: %v", err)
+	}
+
+	weak := mustResource(t, `
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-credentials
+  namespace: default
+data:
+  password: cGFzc3dvcmQ=
+`)
+	strong := mustResource(t, `
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-credentials
+  namespace: default
+data:
+  password: WjlrTHFSNXZUOFBtSDNuWHlBMmNFN2dCNGZOUXJXbUs=
+`)
+	tlsTyped := mustResource(t, `
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-tls
+  namespace: default
+type: kubernetes.io/tls
+data:
+  tls.crt: cGFzc3dvcmQ=
+  tls.key: cGFzc3dvcmQ=
+`)
+
+	bad := engine.EvaluateAll(policies, []loader.Resource{weak}, engine.EvalOptions{})
+	if len(findingsForPolicy(bad, "secrets.known-weak-placeholder-value")) == 0 {
+		t.Errorf("expected secrets.known-weak-placeholder-value to fire on a Secret whose value is literally \"password\"")
+	}
+
+	good := engine.EvaluateAll(policies, []loader.Resource{strong}, engine.EvalOptions{})
+	if len(findingsForPolicy(good, "secrets.known-weak-placeholder-value")) != 0 {
+		t.Errorf("expected no finding on a Secret with a real random-looking value")
+	}
+
+	typedSecret := engine.EvaluateAll(policies, []loader.Resource{tlsTyped}, engine.EvalOptions{})
+	if len(findingsForPolicy(typedSecret, "secrets.known-weak-placeholder-value")) != 0 {
+		t.Errorf("expected no finding on a kubernetes.io/tls-typed Secret even though its data values happen to match the weak-value list — type: Opaque is required")
+	}
+
+	stringDataWeak := mustResource(t, `
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-credentials
+  namespace: default
+stringData:
+  password: password
+`)
+	stringDataResult := engine.EvaluateAll(policies, []loader.Resource{stringDataWeak}, engine.EvalOptions{})
+	if len(findingsForPolicy(stringDataResult, "secrets.known-weak-placeholder-value")) == 0 {
+		t.Errorf("expected secrets.known-weak-placeholder-value to fire on a stringData-authored Secret whose value is literally \"password\"")
+	}
+
+	basicAuthWeak := mustResource(t, `
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-basic-auth
+  namespace: default
+type: kubernetes.io/basic-auth
+data:
+  username: YWRtaW4=
+  password: cGFzc3dvcmQ=
+`)
+	basicAuthResult := engine.EvaluateAll(policies, []loader.Resource{basicAuthWeak}, engine.EvalOptions{})
+	if len(findingsForPolicy(basicAuthResult, "secrets.known-weak-placeholder-value")) == 0 {
+		t.Errorf("expected secrets.known-weak-placeholder-value to fire on a kubernetes.io/basic-auth Secret's weak password field")
+	}
+}
+
 func TestBuiltinPoliciesLoadAndCompile(t *testing.T) {
 	policies, err := engine.LoadBuiltin()
 	if err != nil {
 		t.Fatalf("LoadBuiltin: %v", err)
 	}
-	if len(policies) != 113 {
-		t.Fatalf("expected 113 built-in policies, got %d", len(policies))
+	if len(policies) != 126 {
+		t.Fatalf("expected 126 built-in policies, got %d", len(policies))
 	}
 }
 

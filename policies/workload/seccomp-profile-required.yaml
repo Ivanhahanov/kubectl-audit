@@ -11,6 +11,17 @@ metadata:
       Localhost with a vetted profile) at the pod level or on every
       container. Unconfined containers have no syscall filtering.
     audit.k8s-auditor.io/cis: "5.6.2"
+  # Per-container evaluation, not "pod-level-ok OR every-container-ok": a
+  # container's own securityContext.seccompProfile always overrides the
+  # pod-level default for that one container (real Kubernetes semantics —
+  # this is the same override relationship workload.run-as-non-root.yaml
+  # models). The previous version of this check used a top-level
+  # (pod-ok) || (all-containers-ok) disjunction, which let a secure
+  # pod-level RuntimeDefault mask an explicit, more dangerous
+  # container-level "Unconfined" override — a real false negative found by
+  # an adversarial audit and cross-confirmed against the real
+  # k8s.io/pod-security-admission library (via internal/pss), which
+  # correctly caught the same case this CEL check was missing.
 spec:
   failurePolicy: Fail
   matchConstraints:
@@ -29,15 +40,16 @@ spec:
         resources: ["jobs", "cronjobs"]
   validations:
     - expression: |-
-        (
-          (has(object.spec.securityContext) && has(object.spec.securityContext.seccompProfile) && has(object.spec.securityContext.seccompProfile.type) && object.spec.securityContext.seccompProfile.type in ["RuntimeDefault", "Localhost"]) ||
-          (has(object.spec.template) && has(object.spec.template.spec) && has(object.spec.template.spec.securityContext) && has(object.spec.template.spec.securityContext.seccompProfile) && has(object.spec.template.spec.securityContext.seccompProfile.type) && object.spec.template.spec.securityContext.seccompProfile.type in ["RuntimeDefault", "Localhost"]) ||
-          (has(object.spec.jobTemplate) && has(object.spec.jobTemplate.spec) && has(object.spec.jobTemplate.spec.template) && has(object.spec.jobTemplate.spec.template.spec) && has(object.spec.jobTemplate.spec.template.spec.securityContext) && has(object.spec.jobTemplate.spec.template.spec.securityContext.seccompProfile) && has(object.spec.jobTemplate.spec.template.spec.securityContext.seccompProfile.type) && object.spec.jobTemplate.spec.template.spec.securityContext.seccompProfile.type in ["RuntimeDefault", "Localhost"])
-        ) || (has(object.spec.containers) ? object.spec.containers
+        (has(object.spec.containers) ? object.spec.containers
           : (has(object.spec.template) && has(object.spec.template.spec) && has(object.spec.template.spec.containers)) ? object.spec.template.spec.containers
           : (has(object.spec.jobTemplate) && has(object.spec.jobTemplate.spec) && has(object.spec.jobTemplate.spec.template) && has(object.spec.jobTemplate.spec.template.spec) && has(object.spec.jobTemplate.spec.template.spec.containers)) ? object.spec.jobTemplate.spec.template.spec.containers
           : []).all(c,
-            has(c.securityContext) && has(c.securityContext.seccompProfile) && has(c.securityContext.seccompProfile.type) &&
-            c.securityContext.seccompProfile.type in ["RuntimeDefault", "Localhost"]
+            (has(c.securityContext) && has(c.securityContext.seccompProfile) && has(c.securityContext.seccompProfile.type))
+              ? c.securityContext.seccompProfile.type in ["RuntimeDefault", "Localhost"]
+              : (
+                  (has(object.spec.securityContext) && has(object.spec.securityContext.seccompProfile) && has(object.spec.securityContext.seccompProfile.type) && object.spec.securityContext.seccompProfile.type in ["RuntimeDefault", "Localhost"]) ||
+                  (has(object.spec.template) && has(object.spec.template.spec) && has(object.spec.template.spec.securityContext) && has(object.spec.template.spec.securityContext.seccompProfile) && has(object.spec.template.spec.securityContext.seccompProfile.type) && object.spec.template.spec.securityContext.seccompProfile.type in ["RuntimeDefault", "Localhost"]) ||
+                  (has(object.spec.jobTemplate) && has(object.spec.jobTemplate.spec) && has(object.spec.jobTemplate.spec.template) && has(object.spec.jobTemplate.spec.template.spec) && has(object.spec.jobTemplate.spec.template.spec.securityContext) && has(object.spec.jobTemplate.spec.template.spec.securityContext.seccompProfile) && has(object.spec.jobTemplate.spec.template.spec.securityContext.seccompProfile.type) && object.spec.jobTemplate.spec.template.spec.securityContext.seccompProfile.type in ["RuntimeDefault", "Localhost"])
+                )
           )
-      message: "No RuntimeDefault/Localhost seccomp profile is set at the pod level or on every container."
+      message: "No RuntimeDefault/Localhost seccomp profile applies to every container — either nothing is set at all, or a container explicitly overrides a secure pod-level default with something else (e.g. Unconfined)."

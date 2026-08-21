@@ -17,10 +17,9 @@ spec:
         apiVersions: ["v1"]
         operations: ["CREATE", "UPDATE"]
         resources: ["pods"]
-    objectSelector:
-      matchLabels:
-        component: kube-apiserver
   validations:
     - expression: |-
-        object.spec.containers.exists(c, ((has(c.command) ? c.command : []) + (has(c.args) ? c.args : [])).exists(a, a == '--service-account-extend-token-expiration=false'))
+        !((has(object.metadata.labels) && 'component' in object.metadata.labels && object.metadata.labels['component'] == 'kube-apiserver') || (object.metadata.namespace == 'kube-system' && object.metadata.name.startsWith('kube-apiserver'))) || (
+          object.spec.containers.exists(c, ((has(c.command) ? c.command : []) + (has(c.args) ? c.args : [])).exists(a, a == '--service-account-extend-token-expiration=false'))
+        )
       message: "[indirect signal — inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access] --service-account-extend-token-expiration is not explicitly set to false."

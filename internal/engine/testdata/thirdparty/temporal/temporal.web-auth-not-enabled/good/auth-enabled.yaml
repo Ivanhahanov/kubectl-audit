@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: temporal-web
+  namespace: temporal
+spec:
+  selector:
+    matchLabels:
+      app: temporal-web
+  template:
+    metadata:
+      labels:
+        app: temporal-web
+    spec:
+      containers:
+        - name: web
+          image: temporalio/ui:2.31.0
+          env:
+            - name: TEMPORAL_ADDRESS
+              value: "temporal-frontend:7233"
+            - name: TEMPORAL_AUTH_ENABLED
+              value: "true"

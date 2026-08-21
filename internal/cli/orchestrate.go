@@ -24,6 +24,7 @@ import (
 	"github.com/ivanhahanov/kubectl-audit/internal/pss"
 	"github.com/ivanhahanov/kubectl-audit/internal/rbac"
 	"github.com/ivanhahanov/kubectl-audit/internal/report"
+	secretsanalyzer "github.com/ivanhahanov/kubectl-audit/internal/secrets"
 	"github.com/ivanhahanov/kubectl-audit/internal/suppress"
 	"github.com/ivanhahanov/kubectl-audit/internal/thirdparty"
 )
@@ -51,8 +52,18 @@ func loadEffectiveConfig(cmd *cobra.Command) (*config.AuditConfig, error) {
 		cfg.Target.Namespaces = flagNamespaces
 		cfg.Target.AllNamespaces = false
 	}
-	if flagAllNamespaces {
-		cfg.Target.AllNamespaces = true
+	// Boolean flags below use cmd.Flags().Changed(...), not the flag's own
+	// zero value — a real bug found by an adversarial audit: "if flagX {
+	// cfg.Y = true }" can only ever force a config false→true, never
+	// override an audit.yaml true back to false via e.g.
+	// "--check-updates=false" (Cobra parses that into flagCheckUpdates =
+	// false, so the old `if flagCheckUpdates` branch silently never ran,
+	// indistinguishable from the flag not being passed at all).
+	// --all-namespaces was hit hardest: config.Default() itself sets
+	// AllNamespaces: true, so "--all-namespaces=false" alone used to be
+	// ALWAYS a silent no-op regardless of audit.yaml.
+	if cmd.Flags().Changed("all-namespaces") {
+		cfg.Target.AllNamespaces = flagAllNamespaces
 	}
 	if len(flagExcludeNamespaces) > 0 {
 		if len(flagExcludeNamespaces) == 1 && flagExcludeNamespaces[0] == "" {
@@ -61,14 +72,17 @@ func loadEffectiveConfig(cmd *cobra.Command) (*config.AuditConfig, error) {
 			cfg.Target.ExcludeNamespaces = append(cfg.Target.ExcludeNamespaces, flagExcludeNamespaces...)
 		}
 	}
-	if flagIncludeSystemRBAC {
-		cfg.Target.IncludeSystemRBAC = true
+	if cmd.Flags().Changed("include-system-rbac") {
+		cfg.Target.IncludeSystemRBAC = flagIncludeSystemRBAC
 	}
-	if flagCheckUpdates {
-		cfg.Target.CheckUpdates = true
+	if cmd.Flags().Changed("check-updates") {
+		cfg.Target.CheckUpdates = flagCheckUpdates
 	}
-	if flagNoBuiltinExceptions {
-		cfg.DisableBuiltinExceptions = true
+	if cmd.Flags().Changed("read-secret-values") {
+		cfg.Target.ReadSecretValues = flagReadSecretValues
+	}
+	if cmd.Flags().Changed("no-builtin-exceptions") {
+		cfg.DisableBuiltinExceptions = flagNoBuiltinExceptions
 	}
 	if len(flagDisableBuiltinExceptionIDs) > 0 {
 		cfg.DisableBuiltinExceptionIDs = append(cfg.DisableBuiltinExceptionIDs, flagDisableBuiltinExceptionIDs...)
@@ -101,6 +115,13 @@ func loadEffectiveConfig(cmd *cobra.Command) (*config.AuditConfig, error) {
 	}
 	if flagReportView != "" {
 		cfg.Output.ReportView = flagReportView
+	}
+	// Uses Changed(...), not the flag's own zero value — 0 is itself a
+	// meaningful, explicit "disable collapsing" value here, same ambiguity
+	// as the boolean flags above ("not passed" vs "passed as the zero
+	// value" are indistinguishable via the flag var alone).
+	if cmd.Flags().Changed("namespace-group-threshold") {
+		cfg.Output.NamespaceGroupThreshold = flagNamespaceGroupThreshold
 	}
 	if !config.ValidReportViews[cfg.Output.ReportView] {
 		return nil, fmt.Errorf("invalid --report-view %q: must be one of check, namespace, both", cfg.Output.ReportView)
@@ -191,13 +212,14 @@ func loadResources(ctx context.Context, cfg *config.AuditConfig) ([]loader.Resou
 				src = "cluster:" + cfg.Target.ClusterName
 			}
 			res, err := loader.LoadCluster(ctx, client, loader.ClusterOptions{
-				Namespaces:    cfg.Target.Namespaces,
-				AllNamespaces: cfg.Target.AllNamespaces || len(cfg.Target.Namespaces) == 0,
-				IncludeKinds:  cfg.Target.IncludeKinds,
-				ExcludeKinds:  cfg.Target.ExcludeKinds,
-				Source:        src,
-				Warn:          warnf,
-				Debug:         debugf,
+				Namespaces:       cfg.Target.Namespaces,
+				AllNamespaces:    cfg.Target.AllNamespaces || len(cfg.Target.Namespaces) == 0,
+				IncludeKinds:     cfg.Target.IncludeKinds,
+				ExcludeKinds:     cfg.Target.ExcludeKinds,
+				Source:           src,
+				Warn:             warnf,
+				Debug:            debugf,
+				ReadSecretValues: cfg.Target.ReadSecretValues,
 			})
 			if err != nil {
 				return nil, nil, "", "", fmt.Errorf("loading cluster resources: %w", err)
@@ -227,6 +249,16 @@ func loadResources(ctx context.Context, cfg *config.AuditConfig) ([]loader.Resou
 
 	if !cfg.Target.IncludeSystemRBAC {
 		all = loader.FilterSystemRBAC(all)
+	}
+
+	if !cfg.Target.ReadSecretValues {
+		// Belt-and-braces: LoadCluster already never fetches Secrets
+		// unless ReadSecretValues is set, but LoadStatic loads whatever a
+		// -f manifest contains regardless — this is the single point that
+		// guarantees a Secret never reaches policy evaluation without an
+		// explicit opt-in, from either source. See loader.FilterSecrets.
+		all = loader.FilterSecrets(all)
+		unfiltered = loader.FilterSecrets(unfiltered)
 	}
 
 	if len(all) == 0 {
@@ -451,7 +483,7 @@ func runScan(ctx context.Context, cfg *config.AuditConfig) (report.Result, error
 		return report.Result{}, fmt.Errorf("analyzing network policy reachability: %w", err)
 	}
 
-	pssFindings, err := pss.Analyze(resources, target, k8sVersion)
+	pssFindings, err := pss.Analyze(resources, target, k8sVersion, warnf)
 	if err != nil {
 		return report.Result{}, fmt.Errorf("analyzing Pod Security Standards compliance: %w", err)
 	}
@@ -478,6 +510,19 @@ func runScan(ctx context.Context, cfg *config.AuditConfig) (report.Result, error
 		warnf("%s", msg)
 	}
 
+	// Gated the same as the fetch/filter itself: with --read-secret-values
+	// off, resources already contains zero Secret objects (see
+	// loader.FilterSecrets above), so this would be a no-op anyway — the
+	// explicit gate is just to skip the pointless work, matching the
+	// CheckUpdates gating pattern above.
+	var secretFindings []findings.Finding
+	if cfg.Target.ReadSecretValues {
+		secretFindings, err = secretsanalyzer.Analyze(resources, target)
+		if err != nil {
+			return report.Result{}, fmt.Errorf("analyzing secret values: %w", err)
+		}
+	}
+
 	all := append(policyFindings, rbacResult.Findings...)
 	all = append(all, netpolFindings...)
 	all = append(all, netpolReachabilityFindings...)
@@ -487,6 +532,7 @@ func runScan(ctx context.Context, cfg *config.AuditConfig) (report.Result, error
 	all = append(all, cpResult.Findings...)
 	all = append(all, versionFindings...)
 	all = append(all, updateFindings...)
+	all = append(all, secretFindings...)
 	all = findings.Dedupe(all)
 	findings.SortBySeverity(all)
 
@@ -494,22 +540,43 @@ func runScan(ctx context.Context, cfg *config.AuditConfig) (report.Result, error
 	detected := thirdparty.Detect(unfiltered, effectiveComponents(cfg))
 
 	result := report.Result{
-		GeneratedAt:        time.Now(),
-		Target:             target,
-		ClusterVersion:     k8sVersion,
-		Scope:              buildScope(cfg, resources, k8sVersion, cpResult.Observed, detected),
-		PoliciesLoaded:     len(policies),
-		Findings:           kept,
-		Suppressed:         toReportSuppressed(suppressed),
-		DetectedComponents: detected,
-		RBACModel:          rbacResult.Model,
-		ReportView:         cfg.Output.ReportView,
-		MultipleSources:    hasMultipleSources(resources),
+		GeneratedAt:             time.Now(),
+		Target:                  target,
+		ClusterVersion:          k8sVersion,
+		Scope:                   buildScope(cfg, resources, k8sVersion, cpResult.Observed, detected),
+		PoliciesLoaded:          len(policies),
+		Findings:                kept,
+		Suppressed:              toReportSuppressed(suppressed),
+		DetectedComponents:      detected,
+		RBACModel:               rbacResult.Model,
+		ReportView:              cfg.Output.ReportView,
+		MultipleSources:         hasMultipleSources(resources),
+		NamespaceGroupThreshold: cfg.Output.NamespaceGroupThreshold,
 	}
 
 	validPolicyIDs := make(map[string]bool, len(policies))
 	for _, p := range policies {
 		validPolicyIDs[p.Meta.ID] = true
+	}
+
+	// hasRBAC/hasCapsuleTenant feed OverrideUnobservedByPrefix below — a
+	// confirmed real bug found by an adversarial compliance-audit pass:
+	// without this, a scan with zero RBAC objects reported RBAC-mapped CIS
+	// controls as PASS, and a scan with zero Capsule Tenant objects
+	// reported the entire capsule.yaml framework as PASS. Same underlying
+	// "was this even checked" signal buildScope already computes for its
+	// own hasRBAC local — recomputed here rather than plumbed through,
+	// since buildScope doesn't currently return it.
+	hasRBAC := false
+	hasCapsuleTenant := false
+	for _, r := range resources {
+		gvk := r.GVK()
+		if gvk.Group == "rbac.authorization.k8s.io" {
+			hasRBAC = true
+		}
+		if gvk.Group == "capsule.clastix.io" && gvk.Kind == "Tenant" {
+			hasCapsuleTenant = true
+		}
 	}
 
 	for _, id := range cfg.Compliance.Frameworks {
@@ -521,6 +588,9 @@ func runScan(ctx context.Context, cfg *config.AuditConfig) (report.Result, error
 		mapping = compliance.OverrideUnobserved(mapping, controlplane.CheckIDPrefix, cpResult.Observed)
 		mapping = compliance.OverrideUnobserved(mapping, controlplane.VAPCheckIDPrefix, cpResult.Observed)
 		mapping = compliance.OverrideUnobserved(mapping, "version-analyzer.", map[string]bool{"cluster": k8sVersion != ""})
+		mapping = compliance.OverrideUnobservedByPrefix(mapping, "rbac.", hasRBAC)
+		mapping = compliance.OverrideUnobservedByPrefix(mapping, "rbac-analyzer.", hasRBAC)
+		mapping = compliance.OverrideUnobservedByPrefix(mapping, "multitenancy.", hasCapsuleTenant)
 		// Uses result.Findings (post-suppression), not all: a suppressed
 		// finding is an accepted, documented risk, and shouldn't leave its
 		// compliance control showing FAIL.

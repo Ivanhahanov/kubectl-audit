@@ -70,26 +70,36 @@ func TestEvaluateAll_IndexMatchesNaiveScan(t *testing.T) {
 	// (group, kind) pairs, not synthetic ones.
 	var resources []loader.Resource
 	const root = "testdata/thirdparty"
-	policyDirs, err := os.ReadDir(root)
+	vendorDirs, err := os.ReadDir(root)
 	if err != nil {
 		t.Fatalf("reading %s: %v", root, err)
 	}
-	for _, pd := range policyDirs {
-		if !pd.IsDir() {
+	for _, vd := range vendorDirs {
+		if !vd.IsDir() {
 			continue
 		}
-		for _, kind := range []string{"bad", "good"} {
-			dir := filepath.Join(root, pd.Name(), kind)
-			entries, err := os.ReadDir(dir)
-			if err != nil {
+		vendorRoot := filepath.Join(root, vd.Name())
+		policyDirs, err := os.ReadDir(vendorRoot)
+		if err != nil {
+			t.Fatalf("reading %s: %v", vendorRoot, err)
+		}
+		for _, pd := range policyDirs {
+			if !pd.IsDir() {
 				continue
 			}
-			for _, e := range entries {
-				data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+			for _, kind := range []string{"bad", "good"} {
+				dir := filepath.Join(vendorRoot, pd.Name(), kind)
+				entries, err := os.ReadDir(dir)
 				if err != nil {
-					t.Fatalf("reading %s: %v", e.Name(), err)
+					continue
 				}
-				resources = append(resources, resourceFromYAML(t, string(data)))
+				for _, e := range entries {
+					data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+					if err != nil {
+						t.Fatalf("reading %s: %v", e.Name(), err)
+					}
+					resources = append(resources, resourceFromYAML(t, string(data)))
+				}
 			}
 		}
 	}

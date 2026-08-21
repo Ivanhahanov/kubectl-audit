@@ -18,10 +18,30 @@
 // this reflects what a flag is *set to* in the Pod spec, not whether the
 // setting is actually effective (a process restart with different args, a
 // distro-specific default, or drift between the manifest and the running
-// process could all make this wrong). It also only recognizes the
-// "--flag=value" argument form kubeadm always uses; the rarer
-// space-separated "--flag value" form used by a handful of non-kubeadm
-// distros is not parsed.
+// process could all make this wrong). parseFlags recognizes both the
+// "--flag=value" form kubeadm always uses and the rarer space-separated
+// "--flag value" form (two consecutive args-list elements) some non-kubeadm
+// distros use — a prior version of this doc comment claimed the latter
+// "is not parsed", implying a silent miss, but the real prior behavior was
+// worse: it registered as flag="true" (an ambiguous boolean marker) and
+// could produce an active, wrong-value false positive on a correctly
+// configured flag (found and fixed after an adversarial audit).
+//
+// The simpler sibling checks in policies/controlplane/*.yaml (CEL,
+// VAPCheckIDPrefix) do NOT share this space-separated-form handling: their
+// base CEL environment (internal/engine's newBaseEnv, deliberately kept
+// close to what a real Kubernetes ValidatingAdmissionPolicy CEL environment
+// offers, so these stay usable as real enforceable policies) has no
+// index-based list access or lookahead, only per-element macros
+// (exists/all/map/filter) — there's no way to express "the element right
+// after this one" without it. This is a real, permanent scope limitation of
+// the CEL checks, not an oversight: it's why every numeric-threshold,
+// CSV-membership, or cross-flag check (audit-log-maxage, admission-plugins,
+// authorization-mode, ...) lives here in Go instead, and the CEL policies
+// are deliberately limited to simple "--flag=value" presence/exact-match
+// checks, where a missed space-separated form is a false negative on an
+// already-lower-consequence check rather than the wrong-value false
+// positive the Go side could previously produce.
 package controlplane
 
 import (
@@ -112,16 +132,37 @@ func parseFlags(command, args []string) flags {
 	items := make([]string, 0, len(command)+len(args))
 	items = append(items, command...)
 	items = append(items, args...)
-	for _, item := range items {
+	for i := 0; i < len(items); i++ {
+		item := items[i]
 		if !strings.HasPrefix(item, "--") {
 			continue
 		}
 		item = strings.TrimPrefix(item, "--")
-		name, value := item, "true"
 		if idx := strings.IndexByte(item, '='); idx >= 0 {
-			name, value = item[:idx], item[idx+1:]
+			out[item[:idx]] = append(out[item[:idx]], item[idx+1:])
+			continue
 		}
-		out[name] = append(out[name], value)
+		// No "=" on this element: either a bare boolean flag
+		// (--profiling, a real, valid container-arg style with no
+		// explicit value) or the space-separated form (--flag value, as
+		// two list elements — also real and valid: a YAML args: list can
+		// legally write either style, and static pods in the wild use
+		// both). Distinguishing them: if the NEXT element exists and
+		// isn't itself another flag, it's this flag's value — consume it
+		// rather than defaulting to "true", which previously produced
+		// active, wrong-value false positives (e.g. "--audit-log-maxage
+		// 90" registering as audit-log-maxage="true", then failing a
+		// >=30 threshold check with a nonsensical "audit-log-maxage=true
+		// is below 30" message on an actually-correctly-configured
+		// cluster) rather than the documented "not parsed" silent-miss
+		// this package's own doc comment claims. Found by an adversarial
+		// audit, confirmed via a real scan.
+		if i+1 < len(items) && !strings.HasPrefix(items[i+1], "--") {
+			out[item] = append(out[item], items[i+1])
+			i++
+			continue
+		}
+		out[item] = append(out[item], "true")
 	}
 	return out
 }

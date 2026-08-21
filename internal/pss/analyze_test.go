@@ -1,6 +1,7 @@
 package pss
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -81,7 +82,7 @@ func fullyRestrictedCompliantPod(name string) loader.Resource {
 }
 
 func TestAnalyzeBaselineViolationDetected(t *testing.T) {
-	out, err := Analyze([]loader.Resource{privilegedPod("bad")}, "test", "")
+	out, err := Analyze([]loader.Resource{privilegedPod("bad")}, "test", "", nil)
 	if err != nil {
 		t.Fatalf("Analyze: %v", err)
 	}
@@ -94,7 +95,7 @@ func TestAnalyzeBaselineViolationDetected(t *testing.T) {
 }
 
 func TestAnalyzeRestrictedOnlyViolationDetected(t *testing.T) {
-	out, err := Analyze([]loader.Resource{restrictedViolatingPod("mid")}, "test", "")
+	out, err := Analyze([]loader.Resource{restrictedViolatingPod("mid")}, "test", "", nil)
 	if err != nil {
 		t.Fatalf("Analyze: %v", err)
 	}
@@ -104,7 +105,7 @@ func TestAnalyzeRestrictedOnlyViolationDetected(t *testing.T) {
 }
 
 func TestAnalyzeFullyCompliantPodProducesNoFindings(t *testing.T) {
-	out, err := Analyze([]loader.Resource{fullyRestrictedCompliantPod("good")}, "test", "")
+	out, err := Analyze([]loader.Resource{fullyRestrictedCompliantPod("good")}, "test", "", nil)
 	if err != nil {
 		t.Fatalf("Analyze: %v", err)
 	}
@@ -136,7 +137,7 @@ func TestAnalyzeDeploymentPodTemplate(t *testing.T) {
 			},
 		},
 	})
-	out, err := Analyze([]loader.Resource{dep}, "test", "")
+	out, err := Analyze([]loader.Resource{dep}, "test", "", nil)
 	if err != nil {
 		t.Fatalf("Analyze: %v", err)
 	}
@@ -153,11 +154,11 @@ func TestAnalyzeDeploymentPodTemplate(t *testing.T) {
 // wouldn't have fired against that cluster's real enforcement at the time.
 func TestAnalyzeOldClusterVersionAppliesOlderRules(t *testing.T) {
 	pod := restrictedViolatingPod("old")
-	latest, err := Analyze([]loader.Resource{pod}, "test", "")
+	latest, err := Analyze([]loader.Resource{pod}, "test", "", nil)
 	if err != nil {
 		t.Fatalf("Analyze: %v", err)
 	}
-	old, err := Analyze([]loader.Resource{pod}, "test", "v1.20.0")
+	old, err := Analyze([]loader.Resource{pod}, "test", "v1.20.0", nil)
 	if err != nil {
 		t.Fatalf("Analyze: %v", err)
 	}
@@ -169,13 +170,54 @@ func TestAnalyzeOldClusterVersionAppliesOlderRules(t *testing.T) {
 	}
 }
 
+// TestAnalyzeConversionFailureWarns guards a real gap found by an
+// adversarial audit: a resource that's a recognized pod-template-bearing
+// kind but fails to convert (e.g. runAsUser written as a YAML string
+// instead of an integer, a real mistake hand-written manifests can make)
+// was silently skipped with zero diagnostic signal anywhere, even in -v
+// mode — meaning PSS quietly checked nothing for that workload with no way
+// to notice. It must now surface via the warn callback.
+func TestAnalyzeConversionFailureWarns(t *testing.T) {
+	bad := mustResource(t, map[string]any{
+		"apiVersion": "v1",
+		"kind":       "Pod",
+		"metadata":   map[string]any{"name": "bad-type", "namespace": "default"},
+		"spec": map[string]any{
+			"securityContext": map[string]any{
+				// runAsUser must be an integer; a string here fails
+				// unstructured->typed conversion.
+				"runAsUser": "1000",
+			},
+			"containers": []any{
+				map[string]any{"name": "c", "image": "nginx"},
+			},
+		},
+	})
+	var warnings []string
+	out, err := Analyze([]loader.Resource{bad}, "test", "", func(format string, args ...any) {
+		warnings = append(warnings, fmt.Sprintf(format, args...))
+	})
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if len(out) != 0 {
+		t.Errorf("expected no findings for an unconvertible resource, got %+v", out)
+	}
+	if len(warnings) != 1 {
+		t.Fatalf("expected exactly one warning about the conversion failure, got %v", warnings)
+	}
+	if !strings.Contains(warnings[0], "bad-type") {
+		t.Errorf("expected the warning to name the resource, got %q", warnings[0])
+	}
+}
+
 func TestAnalyzeUnrelatedResourceIgnored(t *testing.T) {
 	svc := mustResource(t, map[string]any{
 		"apiVersion": "v1",
 		"kind":       "Service",
 		"metadata":   map[string]any{"name": "s", "namespace": "default"},
 	})
-	out, err := Analyze([]loader.Resource{svc}, "test", "")
+	out, err := Analyze([]loader.Resource{svc}, "test", "", nil)
 	if err != nil {
 		t.Fatalf("Analyze: %v", err)
 	}

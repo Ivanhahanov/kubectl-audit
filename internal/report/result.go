@@ -80,6 +80,12 @@ type Result struct {
 	// exceptions did or didn't produce anything, instead of leaving that
 	// implicit.
 	DetectedComponents []thirdparty.Detection
+	// NamespaceGroupThreshold controls collapsing repeated Kind/Name
+	// findings across namespaces in the Markdown report — see
+	// config.OutputConfig.NamespaceGroupThreshold for the full rationale.
+	// 0 (the zero value, so callers that don't set it get today's
+	// behavior) disables collapsing.
+	NamespaceGroupThreshold int
 }
 
 // Summary counts findings by severity. Suppressed findings aren't counted.

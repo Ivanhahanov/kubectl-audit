@@ -1,0 +1,37 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: superset.talisman-disabled
+  annotations:
+    audit.k8s-auditor.io/title: "Superset disables Talisman security headers (CSP, HSTS, ...)"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: superset
+    audit.k8s-auditor.io/remediation: >-
+      Remove TALISMAN_ENABLED=false (or set it back to true, the default)
+      from the Superset container's environment. Verified directly
+      against Superset's own source (superset/config.py): TALISMAN_ENABLED
+      = utils.cast_to_boolean(os.environ.get("TALISMAN_ENABLED", True)) —
+      a direct env-var override, defaulting to true. Talisman is Superset's
+      Flask-Talisman middleware, responsible for security response headers
+      (Content-Security-Policy, HSTS, X-Frame-Options, and similar).
+      Weaker-sourced than most checks in this repo (no separate "insecure"
+      warning beyond the mechanism's own purpose — same tier as
+      istio.gateway-weak-tls-version).
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments"]
+  validations:
+    - expression: |-
+        !has(object.spec.template) || !has(object.spec.template.spec.containers) ||
+        object.spec.template.spec.containers.all(c,
+          !has(c.env) || !c.env.exists(e,
+            e.name == 'TALISMAN_ENABLED' && has(e.value) &&
+            e.value.matches(r'(?i)^(false|0)$')
+          )
+        )
+      message: "A container sets TALISMAN_ENABLED to a falsy value — Superset's Flask-Talisman security-header middleware (CSP, HSTS, X-Frame-Options, ...) is disabled."

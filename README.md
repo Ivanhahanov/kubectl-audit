@@ -102,8 +102,8 @@ relevant to it. Key flags available on `scan` and `rbac analyze`:
 - `--mode cluster|static|both` — defaults to `both`, or `static` automatically if `-f` is given
   without an explicit `--mode`.
 - `-n/--namespace` (repeatable), `-A/--all-namespaces` — namespace scoping in cluster mode.
-- `--exclude-namespace` (repeatable) — see [Noise reduction](#noise-reduction-owner-chains--platform-namespaces) below.
-- `--include-system-rbac` — see [Noise reduction](#noise-reduction-owner-chains--platform-namespaces) below.
+- `--exclude-namespace` (repeatable) — see [Noise reduction](#noise-reduction-owner-chains-platform-namespaces--repeated-tenant-namespaces) below.
+- `--include-system-rbac` — see [Noise reduction](#noise-reduction-owner-chains-platform-namespaces--repeated-tenant-namespaces) below.
 - `--output-json`, `--output-md` — output paths. Defaults differ per command so `scan` and
   `rbac analyze` don't collide when pointed at the same directory.
 - `--output-csv` — write findings as CSV, one row per finding; not written by default.
@@ -112,6 +112,8 @@ relevant to it. Key flags available on `scan` and `rbac analyze`:
 - `--report-view check|namespace|both` — how the Findings section(s) are structured (default
   `check`, grouped by check/policy ID). `both` lists every finding twice (once per view) — use
   `check` or `namespace` alone once findings run into the hundreds/thousands.
+- `--namespace-group-threshold <n>` — collapse repeated per-namespace findings in the Markdown
+  report (default `3`; `0` disables). See [Noise reduction](#noise-reduction-owner-chains-platform-namespaces--repeated-tenant-namespaces) below.
 - `--fail-on none|low|medium|high|critical` — CI exit-code gate (default `high`).
 
 `scan`-only:
@@ -123,9 +125,9 @@ relevant to it. Key flags available on `scan` and `rbac analyze`:
 - `--check-updates` — live EOL/patch-currency check against endoflife.date (the only network call
   this tool ever makes beyond the target cluster; off by default).
 
-## Noise reduction: owner chains & platform namespaces
+## Noise reduction: owner chains, platform namespaces & repeated tenant namespaces
 
-Two things keep a cluster scan from being dominated by duplicate or non-actionable findings:
+Three things keep a cluster scan from being dominated by duplicate or non-actionable findings:
 
 - **Owner-chain dedup.** A Deployment, its ReplicaSet, and its Pods (likewise a DaemonSet/
   StatefulSet and its Pods, or a CronJob/Job and its Pods) all carry the *same* container spec.
@@ -153,6 +155,17 @@ Two things keep a cluster scan from being dominated by duplicate or non-actionab
   Override with `--exclude-namespace ""` (clears the defaults) or `--exclude-namespace <ns>`
   (repeatable, adds more), `-n/--namespace` (an explicit allowlist bypasses the default excludes
   entirely), `--no-builtin-exceptions`, and `--include-system-rbac`.
+- **Repeated-tenant-namespace collapsing.** Multi-tenant clusters commonly provision one namespace
+  per tenant/customer/environment (e.g. Capsule tenants, or any other "one namespace per X"
+  convention) and deploy the *same* manifest into each — so the same misconfiguration gets flagged
+  once per namespace and can drown out everything else once there are dozens of them. In the
+  Markdown report, when a check's message is identical for every finding (true of essentially every
+  built-in VAP/CEL check) and it fires on the same Kind+Name pair in at least `N` distinct
+  namespaces, those are shown as one row ("`Deployment/app` — repeated identically in `N`
+  namespaces: ...") instead of one bullet per namespace. This is purely a Markdown rendering choice:
+  `findings.json`/CSV always list every finding individually, so `--fail-on` gating and CI tooling
+  see no difference. On by default (`N = 3`); tune or disable with `--namespace-group-threshold`
+  (`0` disables it) or `output.namespaceGroupThreshold` in `audit.yaml`.
 
 ## Configuration (`audit.yaml`)
 

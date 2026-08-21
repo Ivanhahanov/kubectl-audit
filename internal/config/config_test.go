@@ -19,6 +19,17 @@ func writeConfig(t *testing.T, yaml string) string {
 	return path
 }
 
+// TestDefault_NamespaceGroupThresholdIsOnByDefault guards that the
+// multi-tenant report-noise-reduction feature (collapsing a check's
+// repeated Kind/Name findings across many namespaces — see
+// OutputConfig.NamespaceGroupThreshold) is actually enabled out of the
+// box, not opt-in.
+func TestDefault_NamespaceGroupThresholdIsOnByDefault(t *testing.T) {
+	if got := config.Default().Output.NamespaceGroupThreshold; got <= 0 {
+		t.Errorf("expected a positive default NamespaceGroupThreshold (collapsing on by default), got %d", got)
+	}
+}
+
 func TestLoad_ExclusionRequiresReason(t *testing.T) {
 	path := writeConfig(t, `
 exclusions:

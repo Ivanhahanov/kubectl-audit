@@ -11,6 +11,16 @@ metadata:
       container, so the container is refused if its image would otherwise
       run as UID 0.
     audit.k8s-auditor.io/cis: "5.2.7"
+  # Per-container evaluation, not "pod-level-ok OR every-container-ok": a
+  # container's own securityContext.runAsNonRoot always overrides the
+  # pod-level default for that one container (real Kubernetes semantics).
+  # The previous version of this check used a top-level
+  # (pod-ok) || (all-containers-ok) disjunction, which let a secure
+  # pod-level runAsNonRoot: true mask an explicit, more dangerous
+  # container-level runAsNonRoot: false (potentially paired with
+  # runAsUser: 0 — an explicit grant of root back) — a real false negative
+  # found by an adversarial audit, same bug shape and same fix as
+  # workload.seccomp-profile-required.yaml.
 spec:
   failurePolicy: Fail
   matchConstraints:
@@ -29,12 +39,16 @@ spec:
         resources: ["jobs", "cronjobs"]
   validations:
     - expression: |-
-        (
-          (has(object.spec.securityContext) && has(object.spec.securityContext.runAsNonRoot) && object.spec.securityContext.runAsNonRoot == true) ||
-          (has(object.spec.template) && has(object.spec.template.spec) && has(object.spec.template.spec.securityContext) && has(object.spec.template.spec.securityContext.runAsNonRoot) && object.spec.template.spec.securityContext.runAsNonRoot == true) ||
-          (has(object.spec.jobTemplate) && has(object.spec.jobTemplate.spec) && has(object.spec.jobTemplate.spec.template) && has(object.spec.jobTemplate.spec.template.spec) && has(object.spec.jobTemplate.spec.template.spec.securityContext) && has(object.spec.jobTemplate.spec.template.spec.securityContext.runAsNonRoot) && object.spec.jobTemplate.spec.template.spec.securityContext.runAsNonRoot == true)
-        ) || (has(object.spec.containers) ? object.spec.containers
+        (has(object.spec.containers) ? object.spec.containers
           : (has(object.spec.template) && has(object.spec.template.spec) && has(object.spec.template.spec.containers)) ? object.spec.template.spec.containers
           : (has(object.spec.jobTemplate) && has(object.spec.jobTemplate.spec) && has(object.spec.jobTemplate.spec.template) && has(object.spec.jobTemplate.spec.template.spec) && has(object.spec.jobTemplate.spec.template.spec.containers)) ? object.spec.jobTemplate.spec.template.spec.containers
-          : []).all(c, has(c.securityContext) && has(c.securityContext.runAsNonRoot) && c.securityContext.runAsNonRoot == true)
-      message: "Neither the pod nor every container sets securityContext.runAsNonRoot: true; the container may run as UID 0."
+          : []).all(c,
+            has(c.securityContext) && has(c.securityContext.runAsNonRoot)
+              ? c.securityContext.runAsNonRoot == true
+              : (
+                  (has(object.spec.securityContext) && has(object.spec.securityContext.runAsNonRoot) && object.spec.securityContext.runAsNonRoot == true) ||
+                  (has(object.spec.template) && has(object.spec.template.spec) && has(object.spec.template.spec.securityContext) && has(object.spec.template.spec.securityContext.runAsNonRoot) && object.spec.template.spec.securityContext.runAsNonRoot == true) ||
+                  (has(object.spec.jobTemplate) && has(object.spec.jobTemplate.spec) && has(object.spec.jobTemplate.spec.template) && has(object.spec.jobTemplate.spec.template.spec) && has(object.spec.jobTemplate.spec.template.spec.securityContext) && has(object.spec.jobTemplate.spec.template.spec.securityContext.runAsNonRoot) && object.spec.jobTemplate.spec.template.spec.securityContext.runAsNonRoot == true)
+                )
+          )
+      message: "Neither the pod nor every container sets securityContext.runAsNonRoot: true — either nothing is set at all, or a container explicitly overrides a secure pod-level default back to false; the container may run as UID 0."

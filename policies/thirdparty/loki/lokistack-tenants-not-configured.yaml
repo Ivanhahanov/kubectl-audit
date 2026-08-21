@@ -1,0 +1,34 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: loki.lokistack-tenants-not-configured
+  annotations:
+    audit.k8s-auditor.io/title: "LokiStack has no tenants configured — the auth/authz gateway has nothing to enforce"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: loki
+    audit.k8s-auditor.io/remediation: >-
+      Set spec.tenants on this LokiStack (mode: static or dynamic with a
+      real authentication/authorization configuration, or openshift-logging
+      on OpenShift). Verified directly against the Loki Operator's own Go
+      source (operator/api/loki/v1/lokistack_types.go, Tenants field
+      comment): "Tenants defines the per-tenant authentication and
+      authorization spec for the lokistack-gateway component." This field
+      is the operator's entire configuration point for its authenticating
+      gateway in front of Loki; the operator's exact behavior with no
+      gateway/gate deployed at all when this is unset hasn't been
+      independently confirmed against a live cluster, hence Medium rather
+      than a higher severity — treat this as "the auth/authz boundary is
+      not configured," not a confirmed "requests are unauthenticated"
+      claim.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["loki.grafana.com"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["lokistacks"]
+  validations:
+    - expression: |-
+        has(object.spec.tenants)
+      message: "This LokiStack has no spec.tenants — the lokistack-gateway component's per-tenant authentication/authorization is not configured."

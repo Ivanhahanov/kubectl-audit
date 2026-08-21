@@ -1,0 +1,39 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: temporal.web-auth-not-enabled
+  annotations:
+    audit.k8s-auditor.io/title: "Temporal Web UI runs without authentication enabled"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: temporal
+    audit.k8s-auditor.io/remediation: >-
+      Set TEMPORAL_AUTH_ENABLED=true (and configure the matching SSO
+      provider env vars) on the Web UI container. Temporal's own security
+      docs on Web UI SSO integration state that enabling it "requires...
+      you must set TEMPORAL_AUTH_ENABLED=true" — meaning authentication is
+      disabled by default and requires active configuration. Verified
+      against the official temporalio/helm-charts web-deployment.yaml: the
+      web container only sets TEMPORAL_ADDRESS by default, no
+      auth-related env var, unless a user adds one via
+      web.additionalEnv.
+  # Broad match (any apps/v1 Deployment) + narrow condition (the exact
+  # temporalio/ui image prefix), same "broad match, narrow CEL condition"
+  # pattern as kyverno.admission-controller-force-failure-policy-ignore —
+  # verified this can't false-positive on an unrelated Deployment since
+  # the condition requires this specific image name.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments"]
+  validations:
+    - expression: |-
+        !has(object.spec.template) || !has(object.spec.template.spec.containers) ||
+        object.spec.template.spec.containers.all(c,
+          !has(c.image) || !c.image.startsWith('temporalio/ui') ||
+          (has(c.env) && c.env.exists(e, e.name == 'TEMPORAL_AUTH_ENABLED' && has(e.value) && e.value == 'true'))
+        )
+      message: "This Deployment's temporalio/ui container has no TEMPORAL_AUTH_ENABLED=true env var — the Temporal Web UI runs without authentication enabled."

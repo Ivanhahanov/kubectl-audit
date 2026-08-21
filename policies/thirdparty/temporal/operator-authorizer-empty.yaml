@@ -1,0 +1,34 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: temporal.operator-authorizer-empty
+  annotations:
+    audit.k8s-auditor.io/title: "TemporalCluster has no authorizer configured — every API request is allowed"
+    audit.k8s-auditor.io/severity: critical
+    audit.k8s-auditor.io/category: temporal
+    audit.k8s-auditor.io/remediation: >-
+      Set spec.authorization.authorizer to "default" (or a real custom
+      authorizer) on this TemporalCluster. Verified directly against the
+      temporal-operator's own CRD schema
+      (config/crd/bases/temporal.io_temporalclusters.yaml,
+      spec.authorization.authorizer field description): "Authorizer
+      defines the authorization mechanism to be used. It can be left as an
+      empty string to use a no-operation authorizer (noopAuthorizer), or
+      set to \"default\" to use the temporal's default authorizer
+      (defaultAuthorizer)." Same underlying risk as
+      temporal.authorization-not-configured, for clusters managed by the
+      alexandrevilain/temporal-operator CRD instead of the raw Helm chart.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["temporal.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["temporalclusters"]
+  validations:
+    - expression: |-
+        !has(object.spec.authorization) ||
+        !has(object.spec.authorization.authorizer) ||
+        object.spec.authorization.authorizer != ""
+      message: "TemporalCluster.spec.authorization.authorizer is unset or empty — Temporal falls back to the no-operation authorizer, which allows every API request with no access control."

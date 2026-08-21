@@ -101,6 +101,8 @@ Available on `scan` and `rbac analyze`:
   `both` renders the check-grouped view plus a compact by-namespace index. On a large cluster
   `both` roughly doubles the number of finding lines in the report (every finding listed once per
   view); pick `check` or `namespace` alone once the finding count gets into the hundreds/thousands.
+- `--namespace-group-threshold <n>` — collapse a check's repeated per-namespace findings in the
+  Markdown report (default `3`; `0` disables); see [Noise reduction](#noise-reduction) below.
 - `--fail-on none|low|medium|high|critical` — CI exit-code gate (default `high`).
 
 `scan`-only:
@@ -111,6 +113,10 @@ Available on `scan` and `rbac analyze`:
   see [Compliance Frameworks]({{ '/compliance/' | relative_url }}).
 - `--check-updates` — live EOL/patch-currency check against endoflife.date; see
   [Compliance Frameworks]({{ '/compliance/' | relative_url }}).
+- `--read-secret-values` — off by default; lets a small number of checks read Secret values to
+  detect authentication left at its documented default/disabled state. Needs a different,
+  Secrets-granting ClusterRole — see [Secrets Mode]({{ '/secrets-mode/' | relative_url }}) and
+  [Required Permissions]({{ '/permissions/' | relative_url }}).
 
 Note: `-n/--namespace` scopes *workload* resources (Pods, Deployments, ...) to the given
 namespace(s). RBAC objects (Role/ClusterRole/\*Binding/ServiceAccount) are still loaded
@@ -137,7 +143,7 @@ listing anything.
 
 ## Noise reduction
 
-Two things keep a cluster scan from being dominated by duplicate or non-actionable findings:
+Three things keep a cluster scan from being dominated by duplicate or non-actionable findings:
 
 - **Owner-chain dedup.** A Deployment, its ReplicaSet, and its Pods (likewise a DaemonSet/
   StatefulSet and its Pods, or a CronJob/Job and its Pods) all carry the *same* container spec.
@@ -173,6 +179,24 @@ Two things keep a cluster scan from being dominated by duplicate or non-actionab
   (repeatable, adds more), `-n/--namespace` (an explicit allowlist bypasses the default excludes
   entirely), `--no-builtin-exceptions` (disables the core-plumbing and third-party exceptions
   above), and `--include-system-rbac`.
+- **Repeated-tenant-namespace collapsing.** Multi-tenant clusters commonly provision one namespace
+  per tenant/customer/environment — Capsule-provisioned tenants are the canonical example, but this
+  applies to any "one namespace per X" convention — and deploy the *same* manifest into each, so
+  the same misconfiguration is flagged once per namespace. With dozens or hundreds of such
+  namespaces, this can drown out everything else in the report. In the Markdown report, whenever a
+  check's message is identical for every finding (true of essentially every built-in VAP/CEL check
+  — native analyzers like RBAC/PSS/control-plane, which build a per-resource message, are never
+  affected) and it fires on the same Kind+Name pair in at least `N` distinct namespaces, those
+  findings are shown as one row — "`Deployment/app` — repeated identically in `N` namespaces:
+  `tenant-a, tenant-b, ...`" — instead of one bullet per namespace.
+
+  This is purely a Markdown rendering choice: `findings.json` and CSV output always list every
+  finding individually with its own namespace, so `--fail-on` gating, suppression accounting, and
+  any CI tooling consuming JSON see no difference at all.
+
+  On by default (`N = 3`). Tune with `--namespace-group-threshold <n>` or
+  `output.namespaceGroupThreshold` in `audit.yaml`; set `0` to always list every namespace
+  individually.
 
 ## Engine limitations
 

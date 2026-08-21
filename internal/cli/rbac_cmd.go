@@ -60,14 +60,15 @@ func newRBACAnalyzeCmd() *cobra.Command {
 			detected := thirdparty.Detect(unfiltered, effectiveComponents(cfg))
 
 			result := report.Result{
-				GeneratedAt:        time.Now(),
-				Target:             target,
-				Findings:           kept,
-				Suppressed:         toReportSuppressed(suppressed),
-				RBACModel:          rbacResult.Model,
-				ReportView:         cfg.Output.ReportView,
-				MultipleSources:    hasMultipleSources(resources),
-				DetectedComponents: detected,
+				GeneratedAt:             time.Now(),
+				Target:                  target,
+				Findings:                kept,
+				Suppressed:              toReportSuppressed(suppressed),
+				RBACModel:               rbacResult.Model,
+				ReportView:              cfg.Output.ReportView,
+				MultipleSources:         hasMultipleSources(resources),
+				DetectedComponents:      detected,
+				NamespaceGroupThreshold: cfg.Output.NamespaceGroupThreshold,
 			}
 
 			if err := writeOutputs(cfg, result); err != nil {

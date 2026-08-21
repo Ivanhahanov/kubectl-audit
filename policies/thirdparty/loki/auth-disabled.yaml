@@ -1,0 +1,47 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: loki.auth-disabled
+  annotations:
+    audit.k8s-auditor.io/title: "Loki explicitly disables its own tenant-ID authentication"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: loki
+    audit.k8s-auditor.io/remediation: >-
+      Remove auth_enabled: false (or set it back to true, the default) in
+      the rendered config.yaml. Loki's own config reference: "Enables
+      authentication through the X-Scope-OrgID header, which must be
+      present if true. If false, the OrgID will always be set to 'fake'."
+      Verified against the official grafana/loki Helm chart's own
+      values.yaml: auth_enabled: true is the chart's own default,
+      templated directly into the rendered ConfigMap — so false only
+      appears when an operator explicitly overrode the chart's own secure
+      default. Caveat even when true: Loki's own authentication docs state
+      "Grafana Loki does not come with any included authentication
+      layer. You must run an authenticating reverse proxy in front of your
+      services" — auth_enabled only enforces X-Scope-OrgID-based tenant
+      separation between callers who are already past that proxy; it is
+      not authentication on its own.
+  # config.yaml is the rendered ConfigMap key name — verified directly
+  # against production/helm/loki/templates/config.yaml (both grafana/loki
+  # and grafana/loki-distributed render the same key). A previous version
+  # of this check used "loki.yaml", which never matches any real chart
+  # output — always a no-op finding — caught by an adversarial
+  # sourcing-accuracy re-verification pass. Known remaining gap, not fixed
+  # here: the chart also supports configStorageType: Secret, which
+  # base64-encodes this same content into a Secret instead of a plaintext
+  # ConfigMap — this check's plain .matches() can't see through that
+  # encoding, the same class of limitation documented in
+  # docs/secrets-mode.md for why CEL checks never decode base64.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["configmaps"]
+  validations:
+    - expression: |-
+        !has(object.data) || !('config.yaml' in object.data) ||
+        !object.data['config.yaml'].matches(r'(?i)auth_enabled:\s*false')
+      message: "This ConfigMap's config.yaml sets auth_enabled: false — Loki performs no tenant-ID authentication at all; every request is treated as the same implicit 'fake' tenant."

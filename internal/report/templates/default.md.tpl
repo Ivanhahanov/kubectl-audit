@@ -69,7 +69,7 @@ Application components get no exception and are checked at full strength.
 | Component | Category | Detected via | Helm-managed |
 |---|---|---|---|
 {{- range .DetectedComponents }}
-| {{ .Name }} | {{ .Category }} | {{ detectedVia . }} | {{ if .HelmManaged }}Yes{{ else }}No{{ end }} |
+| {{ escapeCell .Name }} | {{ .Category }} | {{ detectedVia . }} | {{ if .HelmManaged }}Yes{{ else }}No{{ end }} |
 {{- end }}
 {{- end }}
 
@@ -197,8 +197,9 @@ No findings.
 - **Affected resources ({{ len .Findings }}):**
 {{ if .UniformMessage }}
   _{{ .UniformMessage }}_
-{{ range .Findings }}  - {{ .Resource.String }}{{ if and .Source $.MultipleSources }} (`{{ .Source }}`){{ end }}
-{{ end }}{{ else }}
+{{ range .Rows }}{{ if .Repeat }}  - **{{ .Repeat.Kind }}/{{ escapeCell .Repeat.Name }}** — repeated identically in **{{ len .Repeat.Namespaces }} namespaces**: {{ join .Repeat.Namespaces ", " }}
+{{ else }}  - {{ .Finding.Resource.String }}{{ if and .Finding.Source $.MultipleSources }} (`{{ .Finding.Source }}`){{ end }}
+{{ end }}{{ end }}{{ else }}
 {{ range .Findings }}  - **{{ .Resource.String }}**{{ if and .Source $.MultipleSources }} (`{{ .Source }}`){{ end }} — {{ .Message }}
 {{ end }}{{ end }}
 {{ end -}}

@@ -15,6 +15,25 @@ var templateOwnerKinds = map[string]bool{
 	"CronJob":     true,
 }
 
+// dedupableKinds are the ONLY resource kinds this dedup logic ever drops —
+// the kinds that can actually carry a redundant pod/job template relative
+// to one of templateOwnerKinds (Deployment->ReplicaSet, ReplicaSet/
+// DaemonSet/Job->Pod, CronJob->Job). Restricting to these is load-bearing,
+// not a style choice: a Secret, ConfigMap, or anything else can
+// legitimately have a Deployment/Job as its controller owner (e.g. a
+// cert-rotation controller's Deployment owning the Secret it manages) with
+// no template duplication involved at all — that object has its own
+// unique, non-redundant content and must never be dropped just because its
+// owning controller happened to also be loaded. This was a real bug: CNPG's
+// cnpg-controller-manager Deployment owns cnpg-ca-secret/cnpg-webhook-cert,
+// and without this restriction both Secrets were silently dropped from
+// every scan.
+var dedupableKinds = map[string]bool{
+	"Pod":        true,
+	"ReplicaSet": true,
+	"Job":        true,
+}
+
 // DedupeByOwnerChain drops resources whose pod/job template is already
 // represented by an owning controller present in the same resource set —
 // e.g. a ReplicaSet owned by a Deployment, or a Pod owned by that
@@ -44,6 +63,9 @@ func DedupeByOwnerChain(resources []Resource) []Resource {
 }
 
 func isRepresentedByLoadedOwner(r Resource, loadedUIDs map[string]bool) bool {
+	if !dedupableKinds[r.GVK().Kind] {
+		return false
+	}
 	for _, owner := range r.Object.GetOwnerReferences() {
 		if owner.Controller == nil || !*owner.Controller {
 			continue

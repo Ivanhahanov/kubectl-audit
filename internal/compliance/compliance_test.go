@@ -167,6 +167,62 @@ func TestOverrideUnobserved(t *testing.T) {
 	}
 }
 
+// TestOverrideUnobservedByPrefix guards a real bug found by an adversarial
+// compliance-audit pass: a scan with zero RBAC objects (or zero Capsule
+// Tenant objects) reported the mapped controls as PASS, indistinguishable
+// from "checked, found nothing wrong" — the most serious class of finding
+// that pass was looking for. Unlike OverrideUnobserved, RBAC/multitenancy
+// checks aren't per-component ("controlplane.<component>.<rest>") — there's
+// just one binary "was anything of this shape observed at all" signal.
+func TestOverrideUnobservedByPrefix(t *testing.T) {
+	mapping := &compliance.Mapping{
+		ID: "test", Title: "Test", Version: "1",
+		Controls: []compliance.Control{
+			{ID: "rbac-control", Applicable: true, PolicyIDs: []string{"rbac.no-cluster-admin-binding"}},
+			{ID: "rbac-analyzer-control", Applicable: true, NativeCheckIDs: []string{"rbac-analyzer.escalation-verb"}},
+			{ID: "capsule-control", Applicable: true, PolicyIDs: []string{"multitenancy.capsule-tenant-no-limit-range"}},
+			{ID: "mixed-control", Applicable: true, PolicyIDs: []string{"rbac.no-cluster-admin-binding", "workload.no-privileged-containers"}},
+			{ID: "unrelated", Applicable: true, PolicyIDs: []string{"workload.no-privileged-containers"}},
+		},
+	}
+
+	out := compliance.OverrideUnobservedByPrefix(mapping, "rbac.", false)
+	out = compliance.OverrideUnobservedByPrefix(out, "rbac-analyzer.", false)
+	out = compliance.OverrideUnobservedByPrefix(out, "multitenancy.", false)
+
+	byID := map[string]compliance.Control{}
+	for _, c := range out.Controls {
+		byID[c.ID] = c
+	}
+	if byID["rbac-control"].Applicable {
+		t.Errorf("expected rbac-control to become NOT_APPLICABLE when hasRBAC=false, got %+v", byID["rbac-control"])
+	}
+	if byID["rbac-control"].NAReason == "" {
+		t.Error("expected an NAReason explaining why")
+	}
+	if byID["rbac-analyzer-control"].Applicable {
+		t.Errorf("expected rbac-analyzer-control to become NOT_APPLICABLE, got %+v", byID["rbac-analyzer-control"])
+	}
+	if byID["capsule-control"].Applicable {
+		t.Errorf("expected capsule-control to become NOT_APPLICABLE when hasCapsuleTenant=false, got %+v", byID["capsule-control"])
+	}
+	if !byID["mixed-control"].Applicable {
+		t.Errorf("expected mixed-control (mixes rbac. with an unrelated prefix) to be left alone, got %+v", byID["mixed-control"])
+	}
+	if !byID["unrelated"].Applicable {
+		t.Errorf("expected an unrelated control to be untouched, got %+v", byID["unrelated"])
+	}
+	if !mapping.Controls[0].Applicable {
+		t.Error("OverrideUnobservedByPrefix must not mutate the input mapping")
+	}
+
+	// observed=true must be a complete no-op (returns the same mapping).
+	same := compliance.OverrideUnobservedByPrefix(mapping, "rbac.", true)
+	if !same.Controls[0].Applicable {
+		t.Errorf("expected observed=true to leave rbac-control untouched, got %+v", same.Controls[0])
+	}
+}
+
 func TestLoadMappingUnknownFramework(t *testing.T) {
 	if _, err := compliance.LoadMapping("does-not-exist"); err == nil {
 		t.Error("expected an error loading an unknown framework")

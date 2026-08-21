@@ -656,6 +656,152 @@ component-inventory entry (Application category) only covers `virt-operator`, th
 control-plane Deployment — verified against the official release manifest
 (`kubevirt.io: virt-operator` label).
 
+## Temporal (`temporal.io/v1beta1` CRD + ConfigMap/Deployment checks)
+
+The CRD checks below target `TemporalCluster`, from the community
+[alexandrevilain/temporal-operator](https://temporal-operator.pages.dev/) — Temporal itself doesn't
+ship a CRD; the far more common path is the official `temporalio/helm-charts` chart, covered by the
+ConfigMap/Deployment checks instead.
+
+- `temporal.authorization-not-configured` (Critical) — the rendered `config_template.yaml` (a
+  ConfigMap data key, not a fixed object name — the chart names it
+  `{{ temporal.fullname }}-config`, which varies by release) has no `authorization:` block under
+  `global:`. Temporal's own [security docs](https://docs.temporal.io/self-hosted-guide/security):
+  "If you do not explicitly configure an Authorizer, Temporal uses the default `noopAuthorizer`.
+  This default allows every API request, with no authentication or access control" — and explicitly:
+  "your deployment is effectively open to anyone with network access." Verified against the chart's
+  own template: the whole block is only rendered if a user sets `server.config.authorization`, and
+  the chart's own `values.yaml` ships it fully commented out.
+- `temporal.operator-authorizer-empty` (Critical) — `TemporalCluster.spec.authorization.authorizer`
+  is unset or `""`. Same underlying risk as the check above, for operator-managed clusters. Verified
+  directly against the operator's own CRD schema: "can be left as an empty string to use a
+  no-operation authorizer (noopAuthorizer)."
+- `temporal.internode-tls-disabled` (High) and `temporal.frontend-tls-disabled` (High) — the same
+  ConfigMap's `global.tls.internode.enabled`/`global.tls.frontend.enabled` is `false`. Verified
+  against the chart's own `values.yaml`: both default to `false`. Temporal's docs frame mTLS as the
+  documented way to secure server-to-server and client-facing traffic; the plaintext alternative is
+  explicitly framed as a deliberate operator choice ("run unsecured instances inside of a VPC
+  environment"), not the recommended default.
+- `temporal.web-auth-not-enabled` (High) — an `apps/v1 Deployment` running a `temporalio/ui*` image
+  has no `TEMPORAL_AUTH_ENABLED=true` env var. Temporal's own docs on Web UI SSO integration state
+  enabling it "requires... you must set `TEMPORAL_AUTH_ENABLED=true`" — i.e. authentication is
+  disabled by default. Broad-match (any Deployment) + narrow condition (the exact image prefix), same
+  pattern as `kyverno.admission-controller-force-failure-policy-ignore`.
+
+Investigated and declined: default DB/Cassandra/Elasticsearch backing-store passwords — the chart's
+own `values.yaml` has no hardcoded default anywhere; every backing-store credential is wired via
+`existingSecret`/`secretKey` references, so there's no known-default value to check even with
+`--read-secret-values`. Admin-tools' `useExternalFrontend: false` bypass — the documented, intended
+administrative access pattern, not a misconfiguration; the actual risk (who can reach the admintools
+Pod) is a NetworkPolicy/RBAC question this repo's generic `network.*`/`rbac-analyzer.*` checks already
+cover. No published GitHub Security Advisories exist for `temporalio/temporal` or `temporalio/ui` as
+of this writing, so unlike ArgoCD's Redis check there's no CVE-specific signature to trace a check to.
+
+## Grafana Loki (`loki.grafana.com/v1` `LokiStack` CRD + ConfigMap checks)
+
+- `loki.auth-disabled` (High) — the rendered `loki.yaml` (a ConfigMap data key) sets
+  `auth_enabled: false`. Loki's own config reference: "Enables authentication through the
+  `X-Scope-OrgID` header, which must be present if true. If false, the OrgID will always be set to
+  'fake'." Verified against the official `grafana/loki` chart's own `values.yaml`:
+  `auth_enabled: true` is the chart's own default — `false` only appears when an operator explicitly
+  overrode it. Caveat even when `true`: Loki's own docs state "Grafana Loki does not come with any
+  included authentication layer. You must run an authenticating reverse proxy in front of your
+  services" — this flag only enforces tenant-ID separation between callers already past that proxy,
+  it isn't authentication on its own; the remediation text says so explicitly to avoid over-trusting
+  a passing scan.
+- `loki.lokistack-tenants-not-configured` (Medium) — the `LokiStack` CRD's (Loki Operator, mainly
+  OpenShift installs) `spec.tenants` is unset. Verified directly against the operator's own Go
+  source: "Tenants defines the per-tenant authentication and authorization spec for the
+  lokistack-gateway component" — the operator's entire auth/authz configuration point. Medium rather
+  than High: this repo hasn't independently confirmed the operator's exact behavior (what gateway, if
+  any, gets deployed) when this is left unset.
+
+## Grafana Tempo (ConfigMap checks)
+
+- `tempo.receiver-tls-not-configured` (Medium) — the rendered `tempo.yaml` has an `otlp:` receiver
+  configured with no `tls:` anywhere in the file. Weaker-sourced than most checks here (Tempo's docs
+  describe the TLS config paths but don't independently warn that omitting them is insecure — same
+  tier as `istio.gateway-weak-tls-version`). Deliberately coarse-grained: reliably scoping "a `tls:`
+  block is a direct child of this specific receiver" via regex against a YAML text blob isn't robust
+  enough to ship without real false-positive/false-negative risk, so this only checks "is the word
+  `tls:` present anywhere in the file at all" once an OTLP receiver exists — trading precision for a
+  check that won't misfire, at the cost of a possible false pass if `tls:` appears elsewhere
+  unrelated to the receiver.
+
+Investigated and declined: `multitenancy_enabled: false` — unlike Loki's `auth_enabled`, Tempo's own
+chart default is also `false` (verified against `charts/tempo-distributed/values.yaml`), so flagging
+it would fire on the overwhelming majority of unmodified installs — not an operator-triggered
+downgrade, the pattern this pass specifically targets. Tempo's own authentication model (no built-in
+auth layer, same as Loki) has no admission-visible field to check — the actual mitigation (an
+authenticating reverse proxy) is a cross-object, external-tool concern this tool's single-object CEL
+model structurally can't verify; known gap, no existing mitigation.
+
+## Apache Superset (Secret/Deployment checks — no CRD)
+
+- `superset.secret-key-default-value` (Critical, **requires `--read-secret-values`**, see
+  [Secrets Mode]({{ '/secrets-mode/' | relative_url }})) — a `Secret`'s `SUPERSET_SECRET_KEY` equals
+  the base64 form of Superset's own well-known example value. Verified directly against Superset's
+  source: `superset/constants.py` defines `CHANGE_ME_SECRET_KEY =
+  "CHANGE_ME_TO_A_COMPLEX_RANDOM_SECRET"`, and `superset/config.py` falls back to it when
+  `SUPERSET_SECRET_KEY` isn't set. This is **CVE-2023-27524** — a known/default `SECRET_KEY` lets an
+  attacker forge a session cookie, bypass authentication, and reach SQL Lab (RCE in some
+  configurations). The official chart's own `values.yaml` shows this exact string as its
+  `extraSecretEnv.SUPERSET_SECRET_KEY` documentation example — a real, plausible copy-paste trap.
+  Checkable at all only because the chart renders `extraSecretEnv` entries as individual Secret data
+  keys, not because this tool can inspect the (opaque, base64, unparseable by this engine) full
+  `superset_config.py` blob the chart also renders into a Secret — see below.
+- `superset.talisman-disabled` (Medium) — a Superset container has `TALISMAN_ENABLED` set to a falsy
+  value. Verified directly against Superset's own source: `TALISMAN_ENABLED =
+  cast_to_boolean(os.environ.get("TALISMAN_ENABLED", True))` — a direct env-var override, default
+  `true`. Talisman is Superset's Flask-Talisman middleware (CSP, HSTS, X-Frame-Options, and similar
+  security response headers). Weaker-sourced tier (same as `istio.gateway-weak-tls-version`).
+
+Investigated and declined: `AUTH_TYPE`/`AUTH_ROLE_PUBLIC`/`PUBLIC_ROLE_LIKE`/`WTF_CSRF_ENABLED`/
+`PREVENT_UNSAFE_DB_CONNECTIONS`/`FEATURE_FLAGS` — all real, all confirmed in Superset's own
+`config.py`, but the official Helm chart renders Superset's *entire* `superset_config.py` into a
+**Secret** (`templates/secret-superset-config.yaml`), not a ConfigMap like Airflow's
+`webserver_config.py`. This engine deliberately never base64-decodes Secret values (see
+[Secrets Mode]({{ '/secrets-mode/' | relative_url }})), so a substring/regex check against an opaque
+base64 blob isn't possible — there's no way to look inside it at all, checkable or not. Known,
+structural gap; not mitigated elsewhere. `GUEST_TOKEN_JWT_SECRET`/`GLOBAL_ASYNC_QUERIES_JWT_SECRET`
+also default to known example values (`test-guest-secret-change-me`,
+`test-secret-change-me`) in `superset/constants.py`, same CVE-2023-27524 family — but both are plain
+assignments inside `superset_config.py` itself, not `os.environ.get()`-wrapped like `SECRET_KEY`, so
+there's no exposed env var/Secret key to check either. Same gap as above.
+
+## Metabase (Deployment env checks — no CRD, no official Helm chart)
+
+Metabase ships no official Helm chart at all (every community chart uses its own label convention —
+`internal/thirdparty/components.yaml`'s `app: metabase` detection label is correspondingly
+lower-confidence than every other entry in that file, verified only against the most-referenced
+community chart, not an official one). All configuration is via plain container env vars (`MB_*`),
+which makes it more checkable than Superset's opaque-Secret-blob shape, not less.
+
+- `metabase.public-sharing-enabled` (Medium) — a `metabase/metabase*` container has no
+  `MB_ENABLE_PUBLIC_SHARING=false` env var. Metabase's own environment variable reference:
+  "Enable admins to create publicly viewable links (and embeddable iframes) for Questions and
+  Dashboards?" **Default: true.** Once an admin creates a public link, anyone with the URL sees that
+  data with zero authentication — a real, documented, unauthenticated-by-design exposure surface left
+  at its default-enabled state.
+- `metabase.encryption-secret-key-missing` (Medium, weaker-sourced) — a `metabase/metabase*`
+  container has no `MB_ENCRYPTION_SECRET_KEY` env var (checking the var name's presence only, not its
+  value — satisfied whether it's set directly or via `secretKeyRef`, so no secrets-mode needed).
+  Weaker-sourced than most checks here: Metabase's own docs on encrypting details at rest use "can"
+  rather than an imperative "must"/"always" — a documented option, not a documented requirement (same
+  tier as `istio.gateway-weak-tls-version`). Underlying risk if unset: every database connection
+  string/password Metabase manages is stored in cleartext in Metabase's own application database.
+
+Investigated and declined: `MB_JWT_SHARED_SECRET` — real, but defaults to unset with no specific
+known-bad value to compare against, situational (same grounds as CNPG's PgBouncer `sslmode` decline).
+`MB_MFA_ENFORCEMENT` (default `"off"`) — MFA-not-enforced-by-default is close to universal across this
+whole product category, not an explicit downgrade from a real secure baseline; declined as noise, same
+reasoning as Kyverno's `Audit`-is-default decline. `MB_API_KEY` (the `/notify` webhook endpoint's
+auth) — investigated whether absence means the endpoint is open; evidence points the other way
+(reports describe it failing closed, erroring when unset, not allowing requests through) — declined
+rather than asserting a vulnerability that wasn't confirmed. `MB_ENABLE_EMBEDDING_*`/
+`MB_EMBEDDING_SECRET_KEY` — default `false`/unset, i.e. already secure-by-default and opt-in only, no
+insecure default to flag.
+
 ## Velero — deliberately not covered
 
 Researched and explicitly declined: Velero's own security guidance frames its actual risk surface as

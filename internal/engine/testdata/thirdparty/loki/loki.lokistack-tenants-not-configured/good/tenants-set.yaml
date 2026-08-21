@@ -1,0 +1,12 @@
+apiVersion: loki.grafana.com/v1
+kind: LokiStack
+metadata:
+  name: logging-loki
+  namespace: openshift-logging
+spec:
+  size: 1x.small
+  tenants:
+    mode: static
+    authentication:
+      - tenantName: application
+        tenantId: application

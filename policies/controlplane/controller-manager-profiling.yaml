@@ -17,10 +17,9 @@ spec:
         apiVersions: ["v1"]
         operations: ["CREATE", "UPDATE"]
         resources: ["pods"]
-    objectSelector:
-      matchLabels:
-        component: kube-controller-manager
   validations:
     - expression: |-
-        object.spec.containers.exists(c, ((has(c.command) ? c.command : []) + (has(c.args) ? c.args : [])).exists(a, a == '--profiling=false'))
+        !((has(object.metadata.labels) && 'component' in object.metadata.labels && object.metadata.labels['component'] == 'kube-controller-manager') || (object.metadata.namespace == 'kube-system' && object.metadata.name.startsWith('kube-controller-manager'))) || (
+          object.spec.containers.exists(c, ((has(c.command) ? c.command : []) + (has(c.args) ? c.args : [])).exists(a, a == '--profiling=false'))
+        )
       message: "[indirect signal — inferred from the kube-controller-manager static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access] --profiling is not explicitly set to false (the pprof debug endpoints are enabled by default when unset)."

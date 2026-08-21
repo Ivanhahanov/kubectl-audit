@@ -17,6 +17,7 @@ var (
 	flagExcludeNamespaces          []string
 	flagIncludeSystemRBAC          bool
 	flagCheckUpdates               bool
+	flagReadSecretValues           bool
 	flagPolicyDirs                 []string
 	flagOutputJSON                 string
 	flagOutputMD                   string
@@ -25,6 +26,7 @@ var (
 	flagFrameworks                 []string
 	flagReportTemplate             string
 	flagReportView                 string
+	flagNamespaceGroupThreshold    int
 	flagNoBuiltinExceptions        bool
 	flagDisableBuiltinExceptionIDs []string
 	flagVerbose                    bool
@@ -91,6 +93,7 @@ func addOutputFlags(cmd *cobra.Command) {
 	f.StringVar(&flagFailOn, "fail-on", "", "minimum severity that causes a non-zero exit: none|low|medium|high|critical (default: from config, \"high\")")
 	f.StringVar(&flagReportTemplate, "report-template", "", "path to a custom report.md.tpl (Go text/template); default uses the built-in template (see 'kubectl-audit template dump')")
 	f.StringVar(&flagReportView, "report-view", "", "how the Markdown report's Findings section is structured: check|namespace|both (default: from config, \"check\"). \"both\" lists every finding twice (once per view) — use \"check\" or \"namespace\" alone on large reports to avoid that duplication.")
+	f.IntVar(&flagNamespaceGroupThreshold, "namespace-group-threshold", 0, "collapse a check's affected-resources list when the same Kind/Name pair repeats identically across at least this many namespaces (the common per-tenant-namespace shape, e.g. Capsule) — default: from config, 3. Set 0 to disable collapsing and always list every namespace individually.")
 }
 
 // addPolicyDirFlag registers --policy-dir on commands that load VAP
@@ -111,4 +114,16 @@ func addFrameworksFlag(cmd *cobra.Command) {
 // runScan, which rbac analyze deliberately bypasses.
 func addCheckUpdatesFlag(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&flagCheckUpdates, "check-updates", false, "make a live request to endoflife.date to check the detected cluster version for available patch releases and real EOL/support status — the only network call this tool ever makes beyond the target cluster; off by default for air-gapped use")
+}
+
+// addReadSecretValuesFlag registers --read-secret-values on scan only.
+// Off by default: a small number of checks (see docs/secrets-mode.md) can
+// only tell "authentication is left at its documented default/disabled
+// value" by looking at a Secret's actual content, which this tool
+// otherwise never reads. Setting this both fetches Secrets (cluster mode)
+// and lets any -f manifest's Secret objects reach policy evaluation
+// (static mode) — and needs the elevated ClusterRole in
+// rbac/clusterrole-with-secrets.yaml, not the default read-only one.
+func addReadSecretValuesFlag(cmd *cobra.Command) {
+	cmd.Flags().BoolVar(&flagReadSecretValues, "read-secret-values", false, "let this scan read Secret values, to run checks that can only detect a default/disabled authentication value that way — off by default; needs rbac/clusterrole-with-secrets.yaml, not the default ClusterRole; see docs/secrets-mode.md")
 }

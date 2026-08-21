@@ -190,6 +190,53 @@ func unobservedComponent(ids []string, prefix string, observed map[string]bool) 
 	return component, true
 }
 
+// OverrideUnobservedByPrefix returns a copy of the mapping where every
+// control whose check IDs (see Control.CheckIDs) ALL start with prefix is
+// forced to NOT_APPLICABLE when observed is false, with an explanatory
+// NAReason — the same "unobserved must never compute as PASS" fix as
+// OverrideUnobserved, for analyzer categories that aren't per-component the
+// way control-plane checks are (apiserver/etcd/controller-manager/scheduler,
+// independently observable or not) — RBAC, multitenancy/Capsule, and
+// similar categories have just one binary "was anything of this shape even
+// present in this scan" signal, not several. A confirmed, real bug found by
+// an adversarial compliance-audit pass: without this, a scan with zero RBAC
+// objects reported CIS 5.1.1/5.1.3 as PASS, and a scan with zero Capsule
+// Tenant objects reported the entire capsule.yaml framework (8/8 controls)
+// as PASS — indistinguishable in the compliance table from "checked, found
+// nothing wrong," even though the report's own Scope section, elsewhere in
+// the same output, already correctly says "nothing was checked here." A
+// control that mixes IDs with and without this prefix is left alone —
+// can't safely assume the whole thing was unobserved.
+func OverrideUnobservedByPrefix(m *Mapping, prefix string, observed bool) *Mapping {
+	if observed {
+		return m
+	}
+	out := *m
+	out.Controls = make([]Control, len(m.Controls))
+	for i, c := range m.Controls {
+		out.Controls[i] = c
+		ids := c.CheckIDs()
+		if len(ids) == 0 || !allHavePrefix(ids, prefix) {
+			continue
+		}
+		out.Controls[i].Applicable = false
+		out.Controls[i].Implemented = nil
+		out.Controls[i].NAReason = fmt.Sprintf(
+			"No objects for this check (%s*) were observed in this scan — e.g. no matching objects were loaded, or the relevant component/operator isn't installed. Not a confirmed pass.",
+			prefix)
+	}
+	return &out
+}
+
+func allHavePrefix(ids []string, prefix string) bool {
+	for _, id := range ids {
+		if !strings.HasPrefix(id, prefix) {
+			return false
+		}
+	}
+	return true
+}
+
 // AvailableFrameworks lists every embedded framework ID.
 func AvailableFrameworks() ([]string, error) {
 	entries, err := fs.ReadDir(compliancemappings.FS, ".")

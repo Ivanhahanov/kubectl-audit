@@ -1,0 +1,41 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: tempo.receiver-tls-not-configured
+  annotations:
+    audit.k8s-auditor.io/title: "Tempo has an OTLP receiver enabled with no TLS configured anywhere in its config"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: tempo
+    audit.k8s-auditor.io/remediation: >-
+      Add a tls: block under distributor.receivers.otlp.protocols.grpc
+      (and/or .http) — Tempo's own TLS documentation confirms these exact
+      config paths (distributor.receivers.otlp.protocols.grpc.tls,
+      .http.tls, and the equivalent for the jaeger/zipkin receivers).
+      Weaker-sourced than most checks in this repo: Tempo's docs describe
+      how to configure receiver TLS but don't independently warn that
+      leaving it unset is insecure (same tier as
+      istio.gateway-weak-tls-version) — the OpenTelemetry-Collector-shaped
+      receiver config is TLS-opt-in by convention, so absence means
+      plaintext ingestion of trace data. Deliberately coarse-grained: this
+      only checks whether the word "tls:" appears anywhere at all in the
+      rendered config once an otlp receiver is present, not whether TLS is
+      attached to that specific receiver — reliably scoping a per-receiver
+      "tls: block is a direct child of this specific protocol" check via
+      regex against a YAML text blob isn't reliable enough to ship without
+      real false-positive risk, so this trades precision for a check that
+      won't misfire. A false "pass" is possible if tls: appears elsewhere
+      in the config unrelated to the receiver.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["configmaps"]
+  validations:
+    - expression: |-
+        !has(object.data) || !('tempo.yaml' in object.data) ||
+        !object.data['tempo.yaml'].matches(r'(?s)otlp:') ||
+        object.data['tempo.yaml'].matches(r'(?s)tls:')
+      message: "This ConfigMap's tempo.yaml has an otlp receiver enabled but no tls: configuration anywhere in the file — trace data is likely ingested in plaintext."

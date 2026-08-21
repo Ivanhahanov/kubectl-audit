@@ -1,0 +1,30 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: temporal.frontend-tls-disabled
+  annotations:
+    audit.k8s-auditor.io/title: "Temporal frontend (client-facing) traffic is not encrypted with TLS"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: temporal
+    audit.k8s-auditor.io/remediation: >-
+      Set server.config.tls.frontend.enabled: true in the official
+      temporalio/helm-charts values.yaml. Verified directly against the
+      chart's own values.yaml: server.config.tls.frontend.enabled defaults
+      to false. This is the traffic between every Temporal SDK client (and
+      the Web UI, and admin tooling) and the server's frontend service —
+      plaintext by default, same "operator must explicitly opt in to TLS"
+      posture as internode traffic (see
+      temporal.internode-tls-disabled).
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["configmaps"]
+  validations:
+    - expression: |-
+        !has(object.data) || !('config_template.yaml' in object.data) ||
+        !object.data['config_template.yaml'].matches(r'(?s)frontend:\s*\n\s*enabled:\s*false')
+      message: "This ConfigMap's config_template.yaml sets global.tls.frontend.enabled: false — client-facing (frontend) traffic is not encrypted with TLS."

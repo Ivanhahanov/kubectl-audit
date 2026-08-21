@@ -28,10 +28,12 @@ var defaultResources = []clusterResource{
 	{schema.GroupVersionResource{Group: "", Version: "v1", Resource: "services"}, true, "services"},
 	{schema.GroupVersionResource{Group: "", Version: "v1", Resource: "namespaces"}, false, "namespaces"},
 	{schema.GroupVersionResource{Group: "", Version: "v1", Resource: "serviceaccounts"}, true, "serviceaccounts"},
-	// ConfigMaps (not Secrets — this tool never reads Secret values, see
-	// internal/rbac's broad-secrets-access check, which flags grant breadth
-	// instead) are fetched so policies/secrets/*.yaml can flag ConfigMap data
-	// that looks like it should have been a Secret.
+	// ConfigMaps (not Secrets — those are conditionally fetched separately,
+	// see secretsResource below and docs/secrets-mode.md; by default this
+	// tool never reads Secret values, relying instead on
+	// internal/rbac's broad-secrets-access check, which flags grant
+	// breadth) are fetched so policies/secrets/*.yaml can flag ConfigMap
+	// data that looks like it should have been a Secret.
 	{schema.GroupVersionResource{Group: "", Version: "v1", Resource: "configmaps"}, true, "configmaps"},
 	{schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"}, true, "deployments"},
 	{schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "statefulsets"}, true, "statefulsets"},
@@ -46,6 +48,14 @@ var defaultResources = []clusterResource{
 	{schema.GroupVersionResource{Group: "networking.k8s.io", Version: "v1", Resource: "networkpolicies"}, true, "networkpolicies"},
 	{schema.GroupVersionResource{Group: "networking.k8s.io", Version: "v1", Resource: "ingresses"}, true, "ingresses"},
 }
+
+// secretsResource is Secret's clusterResource entry — deliberately kept out
+// of defaultResources (which is always fetched) so that a default `scan`
+// never even asks the API server for Secrets, and therefore never needs
+// get/list/watch on the secrets resource in its ClusterRole. LoadCluster
+// only fetches it when ClusterOptions.ReadSecretValues is true; see
+// docs/secrets-mode.md.
+var secretsResource = clusterResource{schema.GroupVersionResource{Group: "", Version: "v1", Resource: "secrets"}, true, "secrets"}
 
 // crdResource describes a CRD-backed kind that only exists if the
 // corresponding operator/CNI is installed — unlike defaultResources
@@ -75,21 +85,86 @@ var optionalResources = []crdResource{
 	{Group: "crd.projectcalico.org", Resource: "globalnetworkpolicies", Namespaced: false, Name: "calico-globalnetworkpolicies"},
 	// capsule.clastix.io — see policies/thirdparty/capsule/*.yaml.
 	{Group: "capsule.clastix.io", Resource: "tenants", Namespaced: false, Name: "tenants"},
-	// security.istio.io — see policies/thirdparty/istio/*.yaml (alpha).
+	// security.istio.io / networking.istio.io — see policies/thirdparty/istio/*.yaml
+	// (alpha). All Istio CRDs are namespace-scoped.
 	{Group: "security.istio.io", Resource: "peerauthentications", Namespaced: true, Name: "peerauthentications"},
 	{Group: "security.istio.io", Resource: "authorizationpolicies", Namespaced: true, Name: "authorizationpolicies"},
-	// argoproj.io — see policies/thirdparty/argocd/*.yaml. AppProject is cluster-scoped.
+	{Group: "networking.istio.io", Resource: "destinationrules", Namespaced: true, Name: "destinationrules"},
+	{Group: "networking.istio.io", Resource: "gateways", Namespaced: true, Name: "istio-gateways"},
+	{Group: "networking.istio.io", Resource: "sidecars", Namespaced: true, Name: "istio-sidecars"},
+	// argoproj.io — see policies/thirdparty/argocd/*.yaml. AppProject is
+	// cluster-scoped; Application is namespaced.
 	{Group: "argoproj.io", Resource: "appprojects", Namespaced: false, Name: "appprojects"},
+	{Group: "argoproj.io", Resource: "applications", Namespaced: true, Name: "applications"},
 	// secrets.hashicorp.com (Vault Secrets Operator) — see policies/thirdparty/vault/*.yaml.
 	{Group: "secrets.hashicorp.com", Resource: "vaultconnections", Namespaced: true, Name: "vaultconnections"},
+	{Group: "secrets.hashicorp.com", Resource: "vaultauths", Namespaced: true, Name: "vaultauths"},
 	// fluentbit.fluent.io (Fluent Operator) — see policies/thirdparty/fluentbit/*.yaml.
 	{Group: "fluentbit.fluent.io", Resource: "outputs", Namespaced: true, Name: "outputs"},
 	{Group: "fluentbit.fluent.io", Resource: "clusteroutputs", Namespaced: false, Name: "clusteroutputs"},
 	// operator.victoriametrics.com — see policies/thirdparty/victoriametrics/*.yaml.
 	{Group: "operator.victoriametrics.com", Resource: "vmsingles", Namespaced: true, Name: "vmsingles"},
 	{Group: "operator.victoriametrics.com", Resource: "vmclusters", Namespaced: true, Name: "vmclusters"},
+	{Group: "operator.victoriametrics.com", Resource: "vmauths", Namespaced: true, Name: "vmauths"},
+	{Group: "operator.victoriametrics.com", Resource: "vmagents", Namespaced: true, Name: "vmagents"},
 	// postgresql.cnpg.io (CloudNativePG) — see policies/thirdparty/cnpg/*.yaml.
 	{Group: "postgresql.cnpg.io", Resource: "clusters", Namespaced: true, Name: "cnpg-clusters"},
+	// kyverno.io — see policies/thirdparty/kyverno/*.yaml. ClusterPolicy is
+	// cluster-scoped, Policy is namespaced.
+	{Group: "kyverno.io", Resource: "clusterpolicies", Namespaced: false, Name: "clusterpolicies"},
+	{Group: "kyverno.io", Resource: "policies", Namespaced: true, Name: "kyverno-policies"},
+	// crd.projectcalico.org — see policies/thirdparty/calico/*.yaml.
+	// FelixConfiguration is a cluster-scoped singleton.
+	{Group: "crd.projectcalico.org", Resource: "felixconfigurations", Namespaced: false, Name: "felixconfigurations"},
+	// apisix.apache.org/v2 (apisix-ingress-controller) — see
+	// policies/thirdparty/apisix/*.yaml. Verified namespaced against the
+	// real CRD (config/crd/bases/apisix.apache.org_apisixtlses.yaml).
+	{Group: "apisix.apache.org", Resource: "apisixtlses", Namespaced: true, Name: "apisixtlses"},
+	// kubevirt.io — see policies/thirdparty/kubevirt/*.yaml. All three are
+	// namespace-scoped (verified against the real CRDs).
+	{Group: "kubevirt.io", Resource: "kubevirts", Namespaced: true, Name: "kubevirts"},
+	{Group: "kubevirt.io", Resource: "virtualmachines", Namespaced: true, Name: "virtualmachines"},
+	{Group: "kubevirt.io", Resource: "virtualmachineinstances", Namespaced: true, Name: "virtualmachineinstances"},
+	// temporal.io (alexandrevilain/temporal-operator) — see
+	// policies/thirdparty/temporal/*.yaml. Namespaced.
+	{Group: "temporal.io", Resource: "temporalclusters", Namespaced: true, Name: "temporalclusters"},
+	// loki.grafana.com (Grafana Loki Operator) — see
+	// policies/thirdparty/loki/*.yaml. Namespaced.
+	{Group: "loki.grafana.com", Resource: "lokistacks", Namespaced: true, Name: "lokistacks"},
+}
+
+// clusterFetchableGroupResources is the set of every (group, resource) pair
+// this loader knows how to fetch from a live cluster — the union of
+// defaultResources and optionalResources — keyed "group/resource" (empty
+// group for core v1, matching schema.GroupVersionResource.Group's
+// convention). Built once at package init.
+var clusterFetchableGroupResources = func() map[string]bool {
+	set := make(map[string]bool, len(defaultResources)+len(optionalResources)+1)
+	for _, r := range defaultResources {
+		set[r.GVR.Group+"/"+r.GVR.Resource] = true
+	}
+	for _, r := range optionalResources {
+		set[r.Group+"/"+r.Resource] = true
+	}
+	// secretsResource is conditionally fetched (see ReadSecretValues), not
+	// unconditionally like defaultResources — but LoadCluster does know how
+	// to fetch it, so it counts as "fetchable" for this guardrail's purpose.
+	set[secretsResource.GVR.Group+"/"+secretsResource.GVR.Resource] = true
+	return set
+}()
+
+// IsFetchableFromCluster reports whether LoadCluster knows how to fetch this
+// (group, resource) pair from a live cluster at all — via defaultResources
+// (always fetched) or optionalResources (fetched if the CRD group is
+// installed). A policy whose matchConstraints.resourceRules names a (group,
+// resource) pair for which this is false can never see a single matching
+// object during a live `scan` against a real cluster, even if the Kind is
+// correctly registered in kindToResource and the check works perfectly in
+// static-manifest (-f) mode — LoadStatic loads whatever's in the file
+// regardless of this list, but LoadCluster only ever asks the API server for
+// what's enumerated here.
+func IsFetchableFromCluster(group, resource string) bool {
+	return clusterFetchableGroupResources[group+"/"+resource]
 }
 
 // ClusterOptions controls which namespaces/kinds are fetched from the cluster.
@@ -106,6 +181,11 @@ type ClusterOptions struct {
 	// doesn't run that component. Nil is a valid no-op default, same as
 	// Warn.
 	Debug func(format string, args ...any)
+	// ReadSecretValues, when true, additionally fetches Secret objects —
+	// off by default, and deliberately not part of defaultResources, so a
+	// default scan's ClusterRole never needs access to secrets at all. See
+	// docs/secrets-mode.md.
+	ReadSecretValues bool
 }
 
 // LoadCluster enumerates the default (or filtered) set of security-relevant
@@ -132,6 +212,15 @@ func LoadCluster(ctx context.Context, c *k8sclient.Client, opts ClusterOptions) 
 			continue
 		}
 		out = append(out, items...)
+	}
+
+	if opts.ReadSecretValues {
+		items, err := listResource(ctx, c, secretsResource, opts)
+		if err != nil {
+			warn("skipping secrets: %v", err)
+		} else {
+			out = append(out, items...)
+		}
 	}
 
 	for _, r := range filterCRDResources(optionalResources, opts.IncludeKinds, opts.ExcludeKinds) {

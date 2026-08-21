@@ -187,7 +187,17 @@ func checkEscalationVerbs(sp *SubjectPermissions, source string) []findings.Find
 	seen := map[string]bool{}
 	for _, r := range sp.Rules {
 		for _, v := range r.Verbs {
-			if !contains(escalationVerbs, v) {
+			// v == "*" implicitly grants escalate/bind/impersonate too —
+			// checkExecAccess, checkSecretsBreadth, and
+			// checkRBACSelfModification below all already handle the
+			// wildcard-verb case; this one didn't, a real false-negative
+			// gap found by an adversarial audit (a role scoped to just
+			// clusterroles/clusterrolebindings with verbs: ["*"] produced
+			// zero findings here, even though rbac.no-wildcard-rules'
+			// CEL check also can't catch it — that one only fires on a
+			// FULL apiGroups+resources+verbs wildcard, not a
+			// resource-scoped one like this).
+			if v != "*" && !contains(escalationVerbs, v) {
 				continue
 			}
 			key := v + "|" + r.Via.BindingKind + "|" + r.Via.BindingNamespace + "|" + r.Via.BindingName

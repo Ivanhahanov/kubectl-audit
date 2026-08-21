@@ -1,0 +1,41 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: temporal.authorization-not-configured
+  annotations:
+    audit.k8s-auditor.io/title: "Temporal server has no Authorizer configured — every API request is allowed"
+    audit.k8s-auditor.io/severity: critical
+    audit.k8s-auditor.io/category: temporal
+    audit.k8s-auditor.io/remediation: >-
+      Set server.config.authorization (authorizer/claimMapper) in the
+      official temporalio/helm-charts values.yaml so the rendered
+      config_template.yaml gets a real authorization: block. Temporal's own
+      [security docs](https://docs.temporal.io/self-hosted-guide/security):
+      "If you do not explicitly configure an Authorizer, Temporal uses the
+      default noopAuthorizer. This default allows every API request, with
+      no authentication or access control" — and explicitly: "This is not
+      secure for production or for any environment that is accessible to
+      untrusted clients... your deployment is effectively open to anyone
+      with network access." Verified directly against the chart's own
+      template (charts/temporal/templates/server-configmap.yaml): the
+      entire authorization: block is only rendered
+      `{{- with $server.config.authorization }}...{{- end }}` — omitted
+      entirely unless a user explicitly sets it, and the chart's own
+      values.yaml ships it fully commented out.
+  # config_template.yaml is a distinctive-enough key name (verified against
+  # the real chart template) to check without needing a fixed ConfigMap
+  # name — the chart names it "{{ temporal.fullname }}-config", which
+  # varies by release name/nameOverride.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["configmaps"]
+  validations:
+    - expression: |-
+        !has(object.data) || !('config_template.yaml' in object.data) ||
+        object.data['config_template.yaml'].matches(r'(?s)\n\s*authorization:\s*\n')
+      message: "This ConfigMap's config_template.yaml has no authorization: block under global: — Temporal's default noopAuthorizer allows every API request with no authentication or access control."

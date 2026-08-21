@@ -1,0 +1,38 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: metabase.public-sharing-enabled
+  annotations:
+    audit.k8s-auditor.io/title: "Metabase public sharing is enabled (the default)"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: metabase
+    audit.k8s-auditor.io/remediation: >-
+      Set MB_ENABLE_PUBLIC_SHARING=false on the Metabase container unless
+      public links are genuinely needed. Metabase's own environment
+      variable reference: MB_ENABLE_PUBLIC_SHARING — "Enable admins to
+      create publicly viewable links (and embeddable iframes) for
+      Questions and Dashboards?" Defaults to true. Once an admin creates a
+      public link, anyone who has that URL can view that data with no
+      authentication at all — this check flags the capability being left
+      at its default-enabled state, whether or not a link has actually
+      been created yet (link creation itself isn't admission-visible from
+      this object).
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments"]
+  validations:
+    - expression: |-
+        !has(object.spec.template) || !has(object.spec.template.spec.containers) ||
+        object.spec.template.spec.containers.all(c,
+          !has(c.image) || !c.image.startsWith('metabase/metabase') ||
+          (has(c.env) && c.env.exists(e,
+            e.name == 'MB_ENABLE_PUBLIC_SHARING' && has(e.value) &&
+            e.value.matches(r'(?i)^false$')
+          ))
+        )
+      message: "This Metabase container has no MB_ENABLE_PUBLIC_SHARING=false env var — public sharing is left at its default-enabled state, letting an admin create unauthenticated public links to any Question/Dashboard."

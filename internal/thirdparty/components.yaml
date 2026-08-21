@@ -197,3 +197,57 @@ components:
     group: kubevirt.io
     labels:
       kubevirt.io: virt-operator
+
+  # No official Temporal-authored CRD; group is the community
+  # alexandrevilain/temporal-operator's temporal.io — verified against its
+  # real CRD. Label caveat: standard Helm _helpers.tpl convention
+  # (temporal.name), holds only if nameOverride/fullnameOverride isn't set
+  # — same caveat class as this tool's other Helm-chart-label detections.
+  - name: Temporal
+    category: Application
+    group: temporal.io
+    labels:
+      app.kubernetes.io/name: temporal
+
+  # loki.grafana.com is the Loki Operator's CRD group (mainly OpenShift
+  # installs) — the far more common plain-Helm-chart deployment
+  # (grafana/loki) has no CRD of its own, so labels-only detection
+  # (verified against production/helm/loki/templates/_helpers.tpl's
+  # loki.selectorLabels) is the only signal for that path; group is
+  # additionally wired for the Operator path.
+  - name: Loki
+    category: Application
+    group: loki.grafana.com
+    labels:
+      app.kubernetes.io/name: loki
+
+  # No CRD (grafana/tempo-distributed chart, no operator covered here).
+  # Label verified against the standard Helm _helpers.tpl convention — not
+  # independently re-verified against a live rendered manifest this pass,
+  # same caveat as Metabase below; revisit if this needs to be
+  # high-confidence.
+  - name: Tempo
+    category: Application
+    labels:
+      app.kubernetes.io/name: tempo
+
+  # No official chart (Superset ships no CRD; confirmed no operator).
+  # Verified against apache/superset chart's _helpers.tpl + deployment.yaml.
+  - name: Superset
+    category: Application
+    labels:
+      app.kubernetes.io/part-of: superset
+      app.kubernetes.io/component: web
+
+  # No official Helm chart exists for Metabase at all — every community
+  # chart uses its own label convention. app: metabase (the older,
+  # non-app.kubernetes.io/* style) matches the most-referenced community
+  # chart (pmint93/helm-charts), but this is a meaningfully lower-confidence
+  # detection signal than every other entry in this file, which are all
+  # verified against an official project-authored chart. Treat a Metabase
+  # "no matching workload" mismatch result with proportionally less
+  # confidence than for other components.
+  - name: Metabase
+    category: Application
+    labels:
+      app: metabase

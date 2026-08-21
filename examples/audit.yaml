@@ -57,6 +57,11 @@ output:
   # Custom report.md.tpl (Go text/template). Empty uses the built-in
   # template (`kubectl-audit template dump` to get a starting point).
   template: ""
+  # Collapse a check's repeated per-namespace findings in the Markdown
+  # report when the same Kind+Name pair fires identically in at least this
+  # many distinct namespaces — the common multi-tenant shape (e.g. Capsule
+  # tenant namespaces all deploying the same manifest). 0 disables it.
+  namespaceGroupThreshold: 3
 
 compliance:
   # Requirement framework(s) to score findings against: cis|fstec|nsa (see

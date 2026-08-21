@@ -50,6 +50,18 @@ A `compliance.ControlResult` (inside `.Frameworks[].Results`) has `.Control` (`I
 `Section`, `Applicable`, `NAReason`, `Note`, `CrossRefs`), `.Status`, `.FindingIDs`, `.Resources`,
 and `.Findings` (only populated when `.Status` is `FAIL`).
 
+The default template's "Findings" section actually renders through `.FindingsBySeverity[].Checks`
+(`[]report.CheckGroup`, one per policy ID within a severity), not `.Findings`/`.FindingsBySeverity`
+directly — grouping by check hoists each policy's title/remediation/CIS refs out to render once
+instead of once per affected resource. When every finding in a `CheckGroup` shares one message
+(`.UniformMessage`, true of essentially every built-in VAP/CEL check), it also collapses a Kind+Name
+pair repeated across `output.namespaceGroupThreshold`+ distinct namespaces (default `3`; see
+[Noise reduction]({{ '/getting-started/#noise-reduction' | relative_url }})) into one
+`report.AffectedRow` per `.Rows` — either `.Finding` (a normal `findings.Finding`) or `.Repeat`
+(a `report.RepeatGroup`: `.Kind`, `.Name`, `.Namespaces`). See
+[`CheckGroup`/`AffectedRow`/`RepeatGroup` in `internal/report/template.go`](https://github.com/{{ site.repository }}/blob/main/internal/report/template.go)
+for the full field list if you're customizing that part of the template.
+
 ## Template functions
 
 | Function | Signature | Purpose |

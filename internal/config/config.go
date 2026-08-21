@@ -59,6 +59,20 @@ type TargetConfig struct {
 	// stays fully usable in air-gapped/restricted-network environments;
 	// see internal/k8supdates.
 	CheckUpdates bool `json:"checkUpdates,omitempty"`
+	// ReadSecretValues, when true, lets this scan fetch Secret objects from
+	// the cluster (in cluster mode) and evaluate policies against them (in
+	// both cluster and static-manifest mode) — off by default. Every other
+	// check this tool ships works from ConfigMaps, CRD specs, or workload
+	// config alone; a small number of "is authentication left at its
+	// documented default" checks structurally cannot be answered any other
+	// way (the default/no-auth signal only exists as a Secret value, e.g.
+	// a default admin password). Those checks are gated so they simply
+	// don't run unless this is true — see docs/secrets-mode.md for exactly
+	// which checks that affects, why they can never leak the actual secret
+	// value into a finding (comparison-only against a known/expected
+	// value, never a dynamic messageExpression), and the separate,
+	// higher-privilege ClusterRole this requires (see rbac/clusterrole-with-secrets.yaml).
+	ReadSecretValues bool `json:"readSecretValues,omitempty"`
 }
 
 // PoliciesConfig controls which policies are loaded.
@@ -109,6 +123,25 @@ type OutputConfig struct {
 	// per view) — "check" (or "namespace" for a per-team handoff) avoids
 	// that duplication.
 	ReportView string `json:"reportView,omitempty"`
+	// NamespaceGroupThreshold collapses a check's "Affected resources" list
+	// in the Markdown report: when a check whose message is identical for
+	// every finding (true for essentially every VAP-based CEL check) fires
+	// on the same Kind+Name pair in at least this many distinct namespaces,
+	// those repeats are shown as a single row ("Kind/Name — repeated
+	// identically in N namespaces: ...") instead of one bullet per
+	// namespace. This targets the common multi-tenant shape where a
+	// per-tenant namespace pattern (e.g. Capsule-provisioned tenant
+	// namespaces, or any "one namespace per customer/env" convention)
+	// deploys the same manifest into every namespace, so the same
+	// misconfiguration is flagged once per namespace and drowns out
+	// everything else in the report. Checks whose message differs per
+	// finding (native analyzers like RBAC/PSS/control-plane, which build a
+	// per-resource message) are never collapsed — only the uniform-message
+	// case is safe to summarize without losing information. This is purely
+	// a Markdown rendering choice: findings.json/CSV always list every
+	// finding individually, so --fail-on gating, suppression accounting,
+	// and CI tooling see no difference. 0 disables collapsing entirely.
+	NamespaceGroupThreshold int `json:"namespaceGroupThreshold,omitempty"`
 }
 
 // ValidReportViews are the accepted values for ReportView.
@@ -222,10 +255,11 @@ func Default() *AuditConfig {
 			Builtin: boolPtr(true),
 		},
 		Output: OutputConfig{
-			JSON:       "findings.json",
-			Markdown:   "report.md",
-			FailOn:     "high",
-			ReportView: "check",
+			JSON:                    "findings.json",
+			Markdown:                "report.md",
+			FailOn:                  "high",
+			ReportView:              "check",
+			NamespaceGroupThreshold: 3,
 		},
 		Compliance: ComplianceConfig{
 			Frameworks: []string{"cis"},

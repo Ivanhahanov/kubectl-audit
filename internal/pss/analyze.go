@@ -52,7 +52,10 @@ const (
 // requirements that didn't exist yet for that version. An empty or
 // unparseable k8sVersion (a static-manifest-only scan with no live cluster
 // to ask) falls back to the newest version this build knows about.
-func Analyze(resources []loader.Resource, source, k8sVersion string) ([]findings.Finding, error) {
+func Analyze(resources []loader.Resource, source, k8sVersion string, warn func(format string, args ...any)) ([]findings.Finding, error) {
+	if warn == nil {
+		warn = func(string, ...any) {}
+	}
 	version := resolveVersion(k8sVersion)
 	evaluator, err := policy.NewEvaluator(policy.DefaultChecks(), &version)
 	if err != nil {
@@ -61,7 +64,7 @@ func Analyze(resources []loader.Resource, source, k8sVersion string) ([]findings
 
 	var out []findings.Finding
 	for _, r := range resources {
-		meta, spec, ok := podTemplateOf(r)
+		meta, spec, ok := podTemplateOf(r, warn)
 		if !ok {
 			continue
 		}
@@ -126,12 +129,21 @@ func finding(checkID, level string, result policy.AggregateCheckResult, ref find
 // resource produces: itself for a bare Pod, spec.template for
 // Deployment/StatefulSet/DaemonSet/ReplicaSet/Job, and
 // spec.jobTemplate.spec.template for a CronJob.
-func podTemplateOf(r loader.Resource) (*metav1.ObjectMeta, *corev1.PodSpec, bool) {
+//
+// warn is called when a resource is a recognized pod-template-bearing kind
+// but its spec fails to convert (e.g. a field with the wrong type, such as
+// runAsUser written as a YAML string instead of an integer) — previously
+// this was a silent skip with zero diagnostic signal anywhere, even in -v
+// mode, found by an adversarial audit. A resource whose kind isn't
+// pod-template-bearing at all (a ConfigMap, a Service, ...) is the normal,
+// expected case and does not warn.
+func podTemplateOf(r loader.Resource, warn func(format string, args ...any)) (*metav1.ObjectMeta, *corev1.PodSpec, bool) {
 	gvk := r.GVK()
 	switch {
 	case gvk.Group == "" && gvk.Kind == "Pod":
 		var pod corev1.Pod
 		if err := convert(r, &pod); err != nil {
+			warn("pss: skipping %s %s/%s — %v", gvk.Kind, r.Namespace(), r.Name(), err)
 			return nil, nil, false
 		}
 		return &pod.ObjectMeta, &pod.Spec, true
@@ -143,6 +155,7 @@ func podTemplateOf(r loader.Resource) (*metav1.ObjectMeta, *corev1.PodSpec, bool
 			} `json:"spec"`
 		}
 		if err := convert(r, &holder); err != nil {
+			warn("pss: skipping %s %s/%s — %v", gvk.Kind, r.Namespace(), r.Name(), err)
 			return nil, nil, false
 		}
 		return &holder.Spec.Template.ObjectMeta, &holder.Spec.Template.Spec, true
@@ -158,6 +171,7 @@ func podTemplateOf(r loader.Resource) (*metav1.ObjectMeta, *corev1.PodSpec, bool
 			} `json:"spec"`
 		}
 		if err := convert(r, &holder); err != nil {
+			warn("pss: skipping %s %s/%s — %v", gvk.Kind, r.Namespace(), r.Name(), err)
 			return nil, nil, false
 		}
 		return &holder.Spec.JobTemplate.Spec.Template.ObjectMeta, &holder.Spec.JobTemplate.Spec.Template.Spec, true

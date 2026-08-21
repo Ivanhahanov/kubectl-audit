@@ -52,6 +52,36 @@ type CheckGroup struct {
 	Remediation    string
 	UniformMessage string
 	Findings       []findings.Finding
+	// Rows is how the template actually renders "Affected resources" when
+	// UniformMessage is set: findings.Finding rows verbatim, except a
+	// Kind+Name pair repeated identically across at least
+	// namespaceGroupThreshold distinct namespaces is collapsed into one
+	// AffectedRow instead of one per namespace. Nil (falls back to ranging
+	// over Findings, today's behavior) when UniformMessage is empty or
+	// collapsing is disabled (threshold <= 0). See AffectedRow and
+	// groupAffectedResources.
+	Rows []AffectedRow
+}
+
+// AffectedRow is one line of a CheckGroup's "Affected resources" list: either
+// a single finding, or — when Repeat is set — a collapsed summary of many
+// findings against the same Kind+Name pair across different namespaces (the
+// common per-tenant-namespace shape, e.g. Capsule-provisioned tenants all
+// deploying the same manifest). Exactly one of Finding/Repeat is set.
+type AffectedRow struct {
+	Finding *findings.Finding
+	Repeat  *RepeatGroup
+}
+
+// RepeatGroup summarizes N findings sharing a Kind+Name pair that appears in
+// at least namespaceGroupThreshold distinct namespaces within one check —
+// same message (the group's UniformMessage), same resource shape, different
+// tenant/environment namespace. Namespaces is sorted and complete (the
+// template decides how much of it to print).
+type RepeatGroup struct {
+	Kind       string
+	Name       string
+	Namespaces []string
 }
 
 // ResourceGroup is every finding against one resource.
@@ -139,7 +169,7 @@ func newTemplateData(r Result) TemplateData {
 	}
 	if wantCheck {
 		for i := range groups {
-			groups[i].Checks = groupByCheck(groups[i].Findings)
+			groups[i].Checks = groupByCheck(groups[i].Findings, r.NamespaceGroupThreshold)
 		}
 	}
 
@@ -173,7 +203,10 @@ func newTemplateData(r Result) TemplateData {
 
 // groupByCheck buckets a (severity-scoped) slice of findings by PolicyID,
 // preserving first-seen order. See CheckGroup's doc comment for why.
-func groupByCheck(sorted []findings.Finding) []CheckGroup {
+// namespaceGroupThreshold is forwarded to groupAffectedResources for each
+// group's Rows; <= 0 disables collapsing (Rows stays nil, template falls
+// back to Findings).
+func groupByCheck(sorted []findings.Finding, namespaceGroupThreshold int) []CheckGroup {
 	var order []string
 	byPolicy := map[string][]findings.Finding{}
 	for _, f := range sorted {
@@ -193,6 +226,14 @@ func groupByCheck(sorted []findings.Finding) []CheckGroup {
 				break
 			}
 		}
+		// Always built (not just when collapsing is possible) whenever the
+		// message is uniform: the template ranges over Rows for that
+		// branch unconditionally, so an empty Rows would render nothing
+		// rather than falling back to Findings.
+		var rows []AffectedRow
+		if uniform != "" {
+			rows = groupAffectedResources(fs, namespaceGroupThreshold)
+		}
 		out = append(out, CheckGroup{
 			PolicyID:       id,
 			Title:          fs[0].Title,
@@ -201,9 +242,87 @@ func groupByCheck(sorted []findings.Finding) []CheckGroup {
 			Remediation:    fs[0].Remediation,
 			UniformMessage: uniform,
 			Findings:       fs,
+			Rows:           rows,
 		})
 	}
 	return out
+}
+
+// groupAffectedResources collapses a check's findings into AffectedRows: a
+// Kind+Name pair that recurs across at least threshold distinct namespaces
+// (a namespaced resource only — cluster-scoped findings, Namespace == "",
+// never collapse, since they can't repeat "per namespace" by definition)
+// becomes one RepeatGroup row; everything else stays one row per finding.
+// threshold <= 0 disables collapsing entirely: every finding gets its own
+// row, same order as fs (this is also what makes an unset
+// Result.NamespaceGroupThreshold — the zero value, so direct report.Result
+// literals in tests/other callers get today's pre-collapsing behavior —
+// safe).
+func groupAffectedResources(fs []findings.Finding, threshold int) []AffectedRow {
+	if threshold <= 0 {
+		rows := make([]AffectedRow, len(fs))
+		for i := range fs {
+			rows[i] = AffectedRow{Finding: &fs[i]}
+		}
+		return rows
+	}
+
+	type key struct{ kind, name string }
+
+	type bucket struct {
+		namespaces []string
+		seenNS     map[string]bool
+	}
+	buckets := map[key]*bucket{}
+	var order []key
+	for _, f := range fs {
+		if f.Resource.Namespace == "" {
+			continue
+		}
+		k := key{f.Resource.Kind, f.Resource.Name}
+		b, ok := buckets[k]
+		if !ok {
+			b = &bucket{seenNS: map[string]bool{}}
+			buckets[k] = b
+			order = append(order, k)
+		}
+		if !b.seenNS[f.Resource.Namespace] {
+			b.seenNS[f.Resource.Namespace] = true
+			b.namespaces = append(b.namespaces, f.Resource.Namespace)
+		}
+	}
+
+	// Only buckets meeting the threshold actually collapse; everything else
+	// (including cluster-scoped findings, which were never bucketed above)
+	// renders as an individual row.
+	collapse := map[key]*bucket{}
+	for _, k := range order {
+		if b := buckets[k]; len(b.namespaces) >= threshold {
+			collapse[k] = b
+		}
+	}
+
+	rows := make([]AffectedRow, 0, len(fs))
+	inRepeat := map[key]bool{}
+	for i, f := range fs {
+		k := key{f.Resource.Kind, f.Resource.Name}
+		b, isRepeat := collapse[k]
+		if !isRepeat {
+			rows = append(rows, AffectedRow{Finding: &fs[i]})
+			continue
+		}
+		if inRepeat[k] {
+			continue // already emitted this repeat group's row
+		}
+		inRepeat[k] = true
+		sort.Strings(b.namespaces)
+		rows = append(rows, AffectedRow{Repeat: &RepeatGroup{
+			Kind:       f.Resource.Kind,
+			Name:       f.Resource.Name,
+			Namespaces: b.namespaces,
+		}})
+	}
+	return rows
 }
 
 // groupByNamespace buckets findings by namespace (cluster-scoped resources

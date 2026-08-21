@@ -1,0 +1,8 @@
+apiVersion: temporal.io/v1beta1
+kind: TemporalCluster
+metadata:
+  name: prod
+  namespace: temporal
+spec:
+  authorization:
+    authorizer: ""

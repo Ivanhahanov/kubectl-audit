@@ -64,6 +64,51 @@ subjects:
 	}
 }
 
+// TestEscalationVerbDetectedViaWildcard guards a real false negative found
+// by an adversarial audit: checkEscalationVerbs only matched the literal
+// strings "escalate"/"bind"/"impersonate" — a role scoped to just
+// clusterroles/clusterrolebindings with verbs: ["*"] (which obviously
+// grants escalate/bind too) produced zero findings, even though the
+// sibling checks in the same file (checkExecAccess, checkSecretsBreadth,
+// checkRBACSelfModification) all already handled the wildcard-verb case
+// correctly. rbac.no-wildcard-rules' CEL check doesn't catch this either —
+// it fires on a full apiGroups+resources+verbs wildcard, not a
+// resource-scoped one like this.
+func TestEscalationVerbDetectedViaWildcard(t *testing.T) {
+	role := mustResource(t, `
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: escalator
+rules:
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterroles", "clusterrolebindings"]
+    verbs: ["*"]
+`)
+	binding := mustResource(t, `
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: escalator-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: escalator
+subjects:
+  - kind: User
+    name: mallory
+    apiGroup: rbac.authorization.k8s.io
+`)
+
+	result, err := rbac.Analyze([]loader.Resource{role, binding}, "test", false)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if !hasPolicy(result.Findings, "rbac-analyzer.escalation-verb") {
+		t.Errorf("expected an rbac-analyzer.escalation-verb finding for a role with verbs: [\"*\"] on clusterroles/clusterrolebindings, got %+v", result.Findings)
+	}
+}
+
 func TestPodExecAccessDetected(t *testing.T) {
 	role := mustResource(t, `
 apiVersion: rbac.authorization.k8s.io/v1

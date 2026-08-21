@@ -64,6 +64,7 @@ func newScanCmd() *cobra.Command {
 	addPolicyDirFlag(cmd)
 	addFrameworksFlag(cmd)
 	addCheckUpdatesFlag(cmd)
+	addReadSecretValuesFlag(cmd)
 	addOutputFlags(cmd)
 	return cmd
 }
