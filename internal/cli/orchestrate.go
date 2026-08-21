@@ -123,6 +123,9 @@ func loadEffectiveConfig(cmd *cobra.Command) (*config.AuditConfig, error) {
 	if cmd.Flags().Changed("namespace-group-threshold") {
 		cfg.Output.NamespaceGroupThreshold = flagNamespaceGroupThreshold
 	}
+	if cmd.Flags().Changed("group-by-name-pattern") {
+		cfg.Output.GroupByNamePattern = &flagGroupByNamePattern
+	}
 	if !config.ValidReportViews[cfg.Output.ReportView] {
 		return nil, fmt.Errorf("invalid --report-view %q: must be one of check, namespace, both", cfg.Output.ReportView)
 	}
@@ -552,6 +555,7 @@ func runScan(ctx context.Context, cfg *config.AuditConfig) (report.Result, error
 		ReportView:              cfg.Output.ReportView,
 		MultipleSources:         hasMultipleSources(resources),
 		NamespaceGroupThreshold: cfg.Output.NamespaceGroupThreshold,
+		GroupByNamePattern:      cfg.Output.GroupByNamePatternEnabled(),
 	}
 
 	validPolicyIDs := make(map[string]bool, len(policies))

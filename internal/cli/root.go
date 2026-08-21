@@ -27,6 +27,7 @@ var (
 	flagReportTemplate             string
 	flagReportView                 string
 	flagNamespaceGroupThreshold    int
+	flagGroupByNamePattern         bool
 	flagNoBuiltinExceptions        bool
 	flagDisableBuiltinExceptionIDs []string
 	flagVerbose                    bool
@@ -94,6 +95,7 @@ func addOutputFlags(cmd *cobra.Command) {
 	f.StringVar(&flagReportTemplate, "report-template", "", "path to a custom report.md.tpl (Go text/template); default uses the built-in template (see 'kubectl-audit template dump')")
 	f.StringVar(&flagReportView, "report-view", "", "how the Markdown report's Findings section is structured: check|namespace|both (default: from config, \"check\"). \"both\" lists every finding twice (once per view) — use \"check\" or \"namespace\" alone on large reports to avoid that duplication.")
 	f.IntVar(&flagNamespaceGroupThreshold, "namespace-group-threshold", 0, "collapse a check's affected-resources list when the same Kind/Name pair repeats identically across at least this many namespaces (the common per-tenant-namespace shape, e.g. Capsule) — default: from config, 3. Set 0 to disable collapsing and always list every namespace individually.")
+	f.BoolVar(&flagGroupByNamePattern, "group-by-name-pattern", true, "extend --namespace-group-threshold collapsing to names that share a generated-identifier shape (a UUID, or another long hex/digit run), not just an identical literal name — catches e.g. per-tenant Namespace objects themselves named \"usersvs-<uuid>\", which can never share a literal name since Namespace is cluster-scoped. On by default; set false to only collapse exact name matches.")
 }
 
 // addPolicyDirFlag registers --policy-dir on commands that load VAP

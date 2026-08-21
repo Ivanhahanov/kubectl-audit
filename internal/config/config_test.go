@@ -28,6 +28,9 @@ func TestDefault_NamespaceGroupThresholdIsOnByDefault(t *testing.T) {
 	if got := config.Default().Output.NamespaceGroupThreshold; got <= 0 {
 		t.Errorf("expected a positive default NamespaceGroupThreshold (collapsing on by default), got %d", got)
 	}
+	if !config.Default().Output.GroupByNamePatternEnabled() {
+		t.Error("expected GroupByNamePattern to be enabled by default")
+	}
 }
 
 func TestLoad_ExclusionRequiresReason(t *testing.T) {

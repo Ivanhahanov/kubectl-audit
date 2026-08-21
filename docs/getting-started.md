@@ -101,8 +101,11 @@ Available on `scan` and `rbac analyze`:
   `both` renders the check-grouped view plus a compact by-namespace index. On a large cluster
   `both` roughly doubles the number of finding lines in the report (every finding listed once per
   view); pick `check` or `namespace` alone once the finding count gets into the hundreds/thousands.
-- `--namespace-group-threshold <n>` — collapse a check's repeated per-namespace findings in the
-  Markdown report (default `3`; `0` disables); see [Noise reduction](#noise-reduction) below.
+- `--namespace-group-threshold <n>` — collapse a check's repeated findings in the Markdown report
+  (default `3`; `0` disables); see [Noise reduction](#noise-reduction) below.
+- `--group-by-name-pattern` — also collapse names sharing a generated-identifier shape (a UUID or
+  other long hex/digit run), not just an identical literal name; on by default; see
+  [Noise reduction](#noise-reduction) below.
 - `--fail-on none|low|medium|high|critical` — CI exit-code gate (default `high`).
 
 `scan`-only:
@@ -181,22 +184,40 @@ Three things keep a cluster scan from being dominated by duplicate or non-action
   above), and `--include-system-rbac`.
 - **Repeated-tenant-namespace collapsing.** Multi-tenant clusters commonly provision one namespace
   per tenant/customer/environment — Capsule-provisioned tenants are the canonical example, but this
-  applies to any "one namespace per X" convention — and deploy the *same* manifest into each, so
-  the same misconfiguration is flagged once per namespace. With dozens or hundreds of such
-  namespaces, this can drown out everything else in the report. In the Markdown report, whenever a
-  check's message is identical for every finding (true of essentially every built-in VAP/CEL check
-  — native analyzers like RBAC/PSS/control-plane, which build a per-resource message, are never
-  affected) and it fires on the same Kind+Name pair in at least `N` distinct namespaces, those
-  findings are shown as one row — "`Deployment/app` — repeated identically in `N` namespaces:
-  `tenant-a, tenant-b, ...`" — instead of one bullet per namespace.
+  applies to any "one namespace per X" convention. Two shapes of the same underlying problem show
+  up:
+  - The *same* manifest deployed into every tenant namespace, so an object like `Deployment/app`
+    repeats with an identical name across dozens of namespaces.
+  - The *namespace itself* named per-tenant with a generated identifier (e.g. `usersvs-<uuid>`) —
+    seen on a real Capsule-managed cluster with 9000+ tenant namespaces, where a native Go analyzer
+    whose findings target the `Namespace` object directly (`psa-analyzer.no-active-enforcement`,
+    checking for the `pod-security.kubernetes.io/enforce` label) produced one finding per tenant,
+    each on a differently-named — but structurally identical — object.
+
+  Either way, the same misconfiguration gets flagged once per tenant, and with dozens or thousands
+  of them this can drown out everything else in the report. In the Markdown report, whenever a
+  check's message is identical for every finding (true of essentially every built-in VAP/CEL check,
+  and some native analyzer checks — like `psa-analyzer.no-active-enforcement` — whose message
+  doesn't embed anything resource-specific; native checks that *do* build a per-resource message,
+  like most of RBAC/PSS/control-plane, are never affected) and it fires on the same Kind, with
+  names that are either identical or share a generated-identifier shape, at least `N` times, those
+  findings are shown as one row — `Namespace/usersvs-* — repeated identically across N objects:
+  usersvs-<uuid1>, usersvs-<uuid2>, ... (+N-8 more)` — instead of one bullet each. The example list
+  is capped at 8 regardless of how large the group actually is.
 
   This is purely a Markdown rendering choice: `findings.json` and CSV output always list every
-  finding individually with its own namespace, so `--fail-on` gating, suppression accounting, and
-  any CI tooling consuming JSON see no difference at all.
+  finding individually with its own namespace/name, so `--fail-on` gating, suppression accounting,
+  and any CI tooling consuming JSON see no difference at all.
 
-  On by default (`N = 3`). Tune with `--namespace-group-threshold <n>` or
-  `output.namespaceGroupThreshold` in `audit.yaml`; set `0` to always list every namespace
-  individually.
+  Both knobs are on by default:
+  - `--namespace-group-threshold <n>` / `output.namespaceGroupThreshold` (default `N = 3`) — the
+    count threshold; `0` disables collapsing entirely.
+  - `--group-by-name-pattern` / `output.groupByNamePattern` (default `true`) — whether names are
+    first normalized (a UUID, or another run of 8+ hex or 4+ digit characters, replaced with `*`)
+    before matching, so differently-named tenant objects can still collapse, or only an identical
+    literal name collapses. Short numeric segments (`app-v2`, `web-01`) are deliberately left
+    alone — collapsing those would misleadingly imply unrelated resources are the same tenant's
+    repeated template.
 
 ## Engine limitations
 

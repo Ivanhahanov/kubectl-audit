@@ -62,6 +62,10 @@ output:
   # many distinct namespaces — the common multi-tenant shape (e.g. Capsule
   # tenant namespaces all deploying the same manifest). 0 disables it.
   namespaceGroupThreshold: 3
+  # Also collapse names sharing a generated-identifier shape (a UUID, or another
+  # long hex/digit run), not just an identical literal name — catches e.g.
+  # per-tenant Namespace objects themselves named "usersvs-<uuid>". On by default.
+  groupByNamePattern: true
 
 compliance:
   # Requirement framework(s) to score findings against: cis|fstec|nsa (see

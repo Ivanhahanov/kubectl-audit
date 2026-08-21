@@ -4,6 +4,7 @@ import (
 	"bytes"
 	_ "embed"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"text/template"
@@ -53,11 +54,11 @@ type CheckGroup struct {
 	UniformMessage string
 	Findings       []findings.Finding
 	// Rows is how the template actually renders "Affected resources" when
-	// UniformMessage is set: findings.Finding rows verbatim, except a
-	// Kind+Name pair repeated identically across at least
-	// namespaceGroupThreshold distinct namespaces is collapsed into one
-	// AffectedRow instead of one per namespace. Nil (falls back to ranging
-	// over Findings, today's behavior) when UniformMessage is empty or
+	// UniformMessage is set: findings.Finding rows verbatim, except a group
+	// of findings sharing the same Kind and "name shape" (see nameTemplate)
+	// — at least namespaceGroupThreshold of them — collapses into one
+	// AffectedRow instead of one row each. Nil (falls back to ranging over
+	// Findings, today's behavior) when UniformMessage is empty or
 	// collapsing is disabled (threshold <= 0). See AffectedRow and
 	// groupAffectedResources.
 	Rows []AffectedRow
@@ -65,23 +66,76 @@ type CheckGroup struct {
 
 // AffectedRow is one line of a CheckGroup's "Affected resources" list: either
 // a single finding, or — when Repeat is set — a collapsed summary of many
-// findings against the same Kind+Name pair across different namespaces (the
-// common per-tenant-namespace shape, e.g. Capsule-provisioned tenants all
-// deploying the same manifest). Exactly one of Finding/Repeat is set.
+// findings sharing a Kind and name shape (the common per-tenant-namespace
+// shape, e.g. Capsule-provisioned tenants all deploying the same manifest
+// under the same object name into different namespaces, or a per-tenant
+// namespace itself named with a generated/UUID suffix). Exactly one of
+// Finding/Repeat is set.
 type AffectedRow struct {
 	Finding *findings.Finding
 	Repeat  *RepeatGroup
 }
 
-// RepeatGroup summarizes N findings sharing a Kind+Name pair that appears in
-// at least namespaceGroupThreshold distinct namespaces within one check —
-// same message (the group's UniformMessage), same resource shape, different
-// tenant/environment namespace. Namespaces is sorted and complete (the
-// template decides how much of it to print).
+// RepeatGroup summarizes Count findings sharing a Kind and name shape within
+// one check — same message (the group's UniformMessage), same resource Kind,
+// names either identical or matching the same generated-identifier template
+// (see nameTemplate). Unit is "namespaces" when every collapsed finding is a
+// namespaced resource (the per-tenant-namespace-deploying-the-same-manifest
+// shape — Examples then lists distinct namespaces) or "objects" when they're
+// cluster-scoped (e.g. Namespace objects themselves named per-tenant —
+// Examples then lists distinct object names, since there's no namespace to
+// report). Examples is capped at maxRepeatExamples and sorted; Truncated
+// says whether Count exceeds len(Examples).
 type RepeatGroup struct {
-	Kind       string
-	Name       string
-	Namespaces []string
+	Kind         string
+	NameTemplate string
+	Unit         string
+	Count        int
+	Examples     []string
+	Truncated    bool
+}
+
+// maxRepeatExamples caps how many example namespaces/object names a
+// collapsed RepeatGroup row prints — a real multi-tenant cluster can have
+// thousands of matching namespaces (see the docstring on nameTemplate), and
+// printing all of them would defeat the point of collapsing.
+const maxRepeatExamples = 8
+
+// uuidPattern matches a canonical 8-4-4-4-12 hex UUID (case-insensitive) —
+// by far the most common generated-identifier shape in practice (Capsule
+// and similar tools commonly suffix or name tenant namespaces with one).
+var uuidPattern = regexp.MustCompile(`(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
+
+// longHexRunPattern and longDigitRunPattern catch other generated-identifier
+// shapes that aren't a full UUID: a truncated hash/id, a numeric tenant/
+// customer ID, etc. The length floors (8 hex chars, 4 digits) are
+// deliberately conservative — short numeric segments are common in
+// legitimate, hand-chosen names (e.g. "app-v2", a port number) and
+// collapsing those together would actively mislead a reader into thinking
+// unrelated resources are the same tenant's repeated template.
+var (
+	longHexRunPattern   = regexp.MustCompile(`(?i)[0-9a-f]{8,}`)
+	longDigitRunPattern = regexp.MustCompile(`[0-9]{4,}`)
+)
+
+// nameTemplate normalizes a resource name to a "shape" for grouping: runs
+// that look like a generated/random identifier are replaced with "*", so
+// e.g. "usersvs-0004237b-3813-48ce-a48f-3cabdaeccbea" and
+// "usersvs-0006e164-99bc-4fac-aaec-079df475fa6b" (a real shape seen on a
+// Capsule-managed cluster, where every tenant gets its own
+// "<prefix>-<uuid>" namespace) both normalize to "usersvs-*", while
+// hand-chosen names like "argocd" or "cert-manager" — which contain no
+// UUID or long hex/digit run — pass through completely unchanged and so
+// never accidentally group with anything. A name with no variable-looking
+// part at all normalizes to itself, which is exactly what makes plain
+// exact-name matching (e.g. the same Deployment name "app" repeated across
+// several tenant namespaces) a special case of this same mechanism rather
+// than a separate one.
+func nameTemplate(name string) string {
+	t := uuidPattern.ReplaceAllString(name, "*")
+	t = longHexRunPattern.ReplaceAllString(t, "*")
+	t = longDigitRunPattern.ReplaceAllString(t, "*")
+	return t
 }
 
 // ResourceGroup is every finding against one resource.
@@ -169,7 +223,7 @@ func newTemplateData(r Result) TemplateData {
 	}
 	if wantCheck {
 		for i := range groups {
-			groups[i].Checks = groupByCheck(groups[i].Findings, r.NamespaceGroupThreshold)
+			groups[i].Checks = groupByCheck(groups[i].Findings, r.NamespaceGroupThreshold, r.GroupByNamePattern)
 		}
 	}
 
@@ -203,10 +257,10 @@ func newTemplateData(r Result) TemplateData {
 
 // groupByCheck buckets a (severity-scoped) slice of findings by PolicyID,
 // preserving first-seen order. See CheckGroup's doc comment for why.
-// namespaceGroupThreshold is forwarded to groupAffectedResources for each
-// group's Rows; <= 0 disables collapsing (Rows stays nil, template falls
-// back to Findings).
-func groupByCheck(sorted []findings.Finding, namespaceGroupThreshold int) []CheckGroup {
+// namespaceGroupThreshold and byPattern are forwarded to
+// groupAffectedResources for each group's Rows; threshold <= 0 disables
+// collapsing (Rows stays nil, template falls back to Findings).
+func groupByCheck(sorted []findings.Finding, namespaceGroupThreshold int, byPattern bool) []CheckGroup {
 	var order []string
 	byPolicy := map[string][]findings.Finding{}
 	for _, f := range sorted {
@@ -232,7 +286,7 @@ func groupByCheck(sorted []findings.Finding, namespaceGroupThreshold int) []Chec
 		// rather than falling back to Findings.
 		var rows []AffectedRow
 		if uniform != "" {
-			rows = groupAffectedResources(fs, namespaceGroupThreshold)
+			rows = groupAffectedResources(fs, namespaceGroupThreshold, byPattern)
 		}
 		out = append(out, CheckGroup{
 			PolicyID:       id,
@@ -249,16 +303,20 @@ func groupByCheck(sorted []findings.Finding, namespaceGroupThreshold int) []Chec
 }
 
 // groupAffectedResources collapses a check's findings into AffectedRows: a
-// Kind+Name pair that recurs across at least threshold distinct namespaces
-// (a namespaced resource only — cluster-scoped findings, Namespace == "",
-// never collapse, since they can't repeat "per namespace" by definition)
-// becomes one RepeatGroup row; everything else stays one row per finding.
-// threshold <= 0 disables collapsing entirely: every finding gets its own
-// row, same order as fs (this is also what makes an unset
+// group of at least threshold findings sharing a Kind and name shape
+// collapses into one RepeatGroup row; everything else stays one row per
+// finding. The name shape is either the exact Name (byPattern false — the
+// same Deployment name "app" repeated across several tenant namespaces is
+// the canonical case) or nameTemplate(Name) (byPattern true — additionally
+// catches per-tenant resources whose *name itself* is generated, e.g. a
+// Namespace named "usersvs-<uuid>" per tenant, which can never share an
+// exact Name since Namespace objects are cluster-scoped and uniquely
+// named). threshold <= 0 disables collapsing entirely: every finding gets
+// its own row, same order as fs (this is also what makes an unset
 // Result.NamespaceGroupThreshold — the zero value, so direct report.Result
 // literals in tests/other callers get today's pre-collapsing behavior —
 // safe).
-func groupAffectedResources(fs []findings.Finding, threshold int) []AffectedRow {
+func groupAffectedResources(fs []findings.Finding, threshold int, byPattern bool) []AffectedRow {
 	if threshold <= 0 {
 		rows := make([]AffectedRow, len(fs))
 		for i := range fs {
@@ -267,37 +325,48 @@ func groupAffectedResources(fs []findings.Finding, threshold int) []AffectedRow 
 		return rows
 	}
 
-	type key struct{ kind, name string }
+	type key struct{ kind, shape string }
 
 	type bucket struct {
-		namespaces []string
-		seenNS     map[string]bool
+		examples    []string
+		seenExample map[string]bool
+		count       int
 	}
 	buckets := map[key]*bucket{}
 	var order []key
 	for _, f := range fs {
-		if f.Resource.Namespace == "" {
-			continue
+		shape := f.Resource.Name
+		if byPattern {
+			shape = nameTemplate(f.Resource.Name)
 		}
-		k := key{f.Resource.Kind, f.Resource.Name}
+		k := key{f.Resource.Kind, shape}
 		b, ok := buckets[k]
 		if !ok {
-			b = &bucket{seenNS: map[string]bool{}}
+			b = &bucket{seenExample: map[string]bool{}}
 			buckets[k] = b
 			order = append(order, k)
 		}
-		if !b.seenNS[f.Resource.Namespace] {
-			b.seenNS[f.Resource.Namespace] = true
-			b.namespaces = append(b.namespaces, f.Resource.Namespace)
+		b.count++
+		// The identifying label: which namespace, for a namespaced
+		// resource sharing one object name across tenants; which object
+		// name, for a cluster-scoped resource (or a namespaced one whose
+		// own name is what varies) — whichever one actually varies across
+		// this bucket's members.
+		label := f.Resource.Namespace
+		if label == "" {
+			label = f.Resource.Name
+		}
+		if !b.seenExample[label] {
+			b.seenExample[label] = true
+			b.examples = append(b.examples, label)
 		}
 	}
 
 	// Only buckets meeting the threshold actually collapse; everything else
-	// (including cluster-scoped findings, which were never bucketed above)
 	// renders as an individual row.
 	collapse := map[key]*bucket{}
 	for _, k := range order {
-		if b := buckets[k]; len(b.namespaces) >= threshold {
+		if b := buckets[k]; b.count >= threshold {
 			collapse[k] = b
 		}
 	}
@@ -305,7 +374,11 @@ func groupAffectedResources(fs []findings.Finding, threshold int) []AffectedRow 
 	rows := make([]AffectedRow, 0, len(fs))
 	inRepeat := map[key]bool{}
 	for i, f := range fs {
-		k := key{f.Resource.Kind, f.Resource.Name}
+		shape := f.Resource.Name
+		if byPattern {
+			shape = nameTemplate(f.Resource.Name)
+		}
+		k := key{f.Resource.Kind, shape}
 		b, isRepeat := collapse[k]
 		if !isRepeat {
 			rows = append(rows, AffectedRow{Finding: &fs[i]})
@@ -315,11 +388,23 @@ func groupAffectedResources(fs []findings.Finding, threshold int) []AffectedRow 
 			continue // already emitted this repeat group's row
 		}
 		inRepeat[k] = true
-		sort.Strings(b.namespaces)
+		sort.Strings(b.examples)
+		unit := "objects"
+		if f.Resource.Namespace != "" {
+			unit = "namespaces"
+		}
+		examples := b.examples
+		truncated := len(examples) > maxRepeatExamples
+		if truncated {
+			examples = examples[:maxRepeatExamples]
+		}
 		rows = append(rows, AffectedRow{Repeat: &RepeatGroup{
-			Kind:       f.Resource.Kind,
-			Name:       f.Resource.Name,
-			Namespaces: b.namespaces,
+			Kind:         f.Resource.Kind,
+			NameTemplate: shape,
+			Unit:         unit,
+			Count:        b.count,
+			Examples:     examples,
+			Truncated:    truncated,
 		}})
 	}
 	return rows
@@ -389,6 +474,7 @@ func templateFuncs() template.FuncMap {
 		"orDash":     orDash,
 		"slug":       slug,
 		"join":       func(elems []string, sep string) string { return strings.Join(elems, sep) },
+		"minus":      func(a, b int) int { return a - b },
 		"rfc3339":    func(t time.Time) string { return t.Format(time.RFC3339) },
 		// bindingLabels names the actual Binding object(s) granting each
 		// row's Permissions, not just the Role/ClusterRole they point to —

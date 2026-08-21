@@ -69,6 +69,7 @@ func newRBACAnalyzeCmd() *cobra.Command {
 				MultipleSources:         hasMultipleSources(resources),
 				DetectedComponents:      detected,
 				NamespaceGroupThreshold: cfg.Output.NamespaceGroupThreshold,
+				GroupByNamePattern:      cfg.Output.GroupByNamePatternEnabled(),
 			}
 
 			if err := writeOutputs(cfg, result); err != nil {

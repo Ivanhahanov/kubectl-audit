@@ -3,6 +3,7 @@ package report_test
 import (
 	"encoding/csv"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -215,7 +216,7 @@ func TestNamespaceGroupThresholdCollapsesRepeatedNamespaces(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderMarkdown: %v", err)
 	}
-	if !strings.Contains(md, "repeated identically in **3 namespaces**") {
+	if !strings.Contains(md, "repeated identically across **3 namespaces**") {
 		t.Errorf("expected a collapsed repeat-group row, got:\n%s", md)
 	}
 	if !strings.Contains(md, "tenant-a, tenant-b, tenant-c") {
@@ -312,36 +313,126 @@ func TestNamespaceGroupThresholdNeverCollapsesNonUniformMessages(t *testing.T) {
 	}
 }
 
-// TestNamespaceGroupThresholdIgnoresClusterScopedResources guards against
-// grouping cluster-scoped findings (Namespace == "") by mistake — they
-// can't repeat "per namespace" by definition, and must always render
-// individually regardless of the threshold.
-func TestNamespaceGroupThresholdIgnoresClusterScopedResources(t *testing.T) {
-	// Same Kind+Name+Message (the exact shape that would collapse if
-	// namespaced) but Namespace == "" — three distinct findings, e.g. one
-	// per policy variant/discriminator, all against the same cluster-scoped
-	// object name.
-	mk := func(id string) findings.Finding {
+// TestGroupByNamePatternCollapsesUUIDSuffixedClusterScopedNames reproduces
+// a real bug report: a Capsule-managed cluster with thousands of per-tenant
+// Namespace objects named "usersvs-<uuid>" produced one
+// psa-analyzer.no-active-enforcement finding per namespace (a native Go
+// analyzer whose Resource IS the Namespace object itself — cluster-scoped,
+// so it can never repeat under exact-Name matching, since a cluster-scoped
+// object's name is unique cluster-wide by construction). GroupByNamePattern
+// must catch this by normalizing away the UUID before bucketing, while a
+// handful of unrelated, hand-named cluster-scoped resources (argocd,
+// cert-manager, ...) must stay listed individually since they share no
+// generated-identifier shape with anything.
+func TestGroupByNamePatternCollapsesUUIDSuffixedClusterScopedNames(t *testing.T) {
+	mk := func(name string) findings.Finding {
 		return findings.Finding{
-			ID: id, PolicyID: "rbac.cluster-admin-binding", Title: "cluster-admin bound broadly", Severity: findings.SeverityCritical,
-			Category: "rbac", Resource: findings.ResourceRef{Kind: "ClusterRoleBinding", Name: "cluster-admin-binding"},
-			Message: "grants cluster-admin",
+			ID: name, PolicyID: "psa-analyzer.no-active-enforcement", Title: "Namespace has no active Pod Security Admission enforcement",
+			Severity: findings.SeverityMedium, Category: "workload-security",
+			Resource: findings.ResourceRef{Kind: "Namespace", Name: name},
+			Message:  "Namespace does not set the pod-security.kubernetes.io/enforce label.",
+		}
+	}
+	uuids := []string{
+		"0004237b-3813-48ce-a48f-3cabdaeccbea",
+		"0006e164-99bc-4fac-aaec-079df475fa6b",
+		"0007ac46-a472-49fd-baec-9aacfab542c3",
+		"0009502c-573a-4e18-8263-b505bf29d705",
+	}
+	var fs []findings.Finding
+	for _, u := range uuids {
+		fs = append(fs, mk("usersvs-"+u))
+	}
+	fs = append(fs, mk("argocd"), mk("cert-manager"))
+
+	r := report.Result{
+		GeneratedAt: time.Now(), Target: "test", Findings: fs,
+		NamespaceGroupThreshold: 3, GroupByNamePattern: true,
+	}
+	md, err := report.RenderMarkdown(r, "")
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
+	if !strings.Contains(md, "Namespace/usersvs-*") {
+		t.Errorf("expected the UUID-suffixed namespaces to collapse under the \"usersvs-*\" template, got:\n%s", md)
+	}
+	if !strings.Contains(md, "repeated identically across **4 objects**") {
+		t.Errorf("expected a count of 4 collapsed namespaces, got:\n%s", md)
+	}
+	if !strings.Contains(md, "argocd") || !strings.Contains(md, "cert-manager") {
+		t.Errorf("expected the two unrelated, hand-named namespaces to still be listed, got:\n%s", md)
+	}
+	// They must NOT have been swept into the same collapsed group as the
+	// UUID-suffixed ones.
+	if strings.Contains(md, "5 objects") || strings.Contains(md, "6 objects") {
+		t.Errorf("expected argocd/cert-manager to stay out of the usersvs-* group, got:\n%s", md)
+	}
+}
+
+// TestGroupByNamePatternFalseFallsBackToExactMatchOnly covers the opt-out:
+// with GroupByNamePattern: false, differently-named cluster-scoped
+// resources must never collapse even if they'd share a name-pattern
+// template — only an exact, literal Name match collapses (which for
+// cluster-scoped resources can never happen in practice, since names are
+// cluster-wide unique; the assertion here is just that pattern-matching
+// itself doesn't kick in).
+func TestGroupByNamePatternFalseFallsBackToExactMatchOnly(t *testing.T) {
+	mk := func(name string) findings.Finding {
+		return findings.Finding{
+			ID: name, PolicyID: "psa-analyzer.no-active-enforcement", Title: "t", Severity: findings.SeverityMedium,
+			Category: "workload-security", Resource: findings.ResourceRef{Kind: "Namespace", Name: name},
+			Message: "uniform",
 		}
 	}
 	r := report.Result{
-		GeneratedAt: time.Now(),
-		Target:      "test",
+		GeneratedAt: time.Now(), Target: "test",
 		Findings: []findings.Finding{
-			mk("a"), mk("b"), mk("c"),
+			mk("usersvs-0004237b-3813-48ce-a48f-3cabdaeccbea"),
+			mk("usersvs-0006e164-99bc-4fac-aaec-079df475fa6b"),
+			mk("usersvs-0007ac46-a472-49fd-baec-9aacfab542c3"),
 		},
-		NamespaceGroupThreshold: 3,
+		NamespaceGroupThreshold: 3, GroupByNamePattern: false,
 	}
 	md, err := report.RenderMarkdown(r, "")
 	if err != nil {
 		t.Fatalf("RenderMarkdown: %v", err)
 	}
 	if strings.Contains(md, "repeated identically") {
-		t.Errorf("expected cluster-scoped findings to never collapse, got:\n%s", md)
+		t.Errorf("expected GroupByNamePattern: false to disable pattern-based collapsing, got:\n%s", md)
+	}
+}
+
+// TestGroupAffectedResourcesCapsExampleList guards against a huge collapsed
+// group (the reported cluster had 9351 matching namespaces) printing every
+// single example — that would defeat the entire point of collapsing.
+func TestGroupAffectedResourcesCapsExampleList(t *testing.T) {
+	mk := func(name string) findings.Finding {
+		return findings.Finding{
+			ID: name, PolicyID: "psa-analyzer.no-active-enforcement", Title: "t", Severity: findings.SeverityMedium,
+			Category: "workload-security", Resource: findings.ResourceRef{Kind: "Namespace", Name: name},
+			Message: "uniform",
+		}
+	}
+	var fs []findings.Finding
+	for i := 0; i < 50; i++ {
+		fs = append(fs, mk(fmt.Sprintf("usersvs-%08x-0000-4000-8000-%012x", i, i)))
+	}
+	r := report.Result{
+		GeneratedAt: time.Now(), Target: "test", Findings: fs,
+		NamespaceGroupThreshold: 3, GroupByNamePattern: true,
+	}
+	md, err := report.RenderMarkdown(r, "")
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
+	if !strings.Contains(md, "repeated identically across **50 objects**") {
+		t.Errorf("expected the total count (50) to be shown even though examples are capped, got:\n%s", md)
+	}
+	if !strings.Contains(md, "more)") {
+		t.Errorf("expected a \"(+N more)\" truncation marker, got:\n%s", md)
+	}
+	if strings.Count(md, "usersvs-") > 9 { // 8 examples + the collapsed "usersvs-*" label itself
+		t.Errorf("expected the example list to be capped well below 50 entries, got:\n%s", md)
 	}
 }
 

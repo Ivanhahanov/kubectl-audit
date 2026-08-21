@@ -142,6 +142,33 @@ type OutputConfig struct {
 	// finding individually, so --fail-on gating, suppression accounting,
 	// and CI tooling see no difference. 0 disables collapsing entirely.
 	NamespaceGroupThreshold int `json:"namespaceGroupThreshold,omitempty"`
+	// GroupByNamePattern extends NamespaceGroupThreshold's collapsing
+	// beyond an identical literal Name repeated across namespaces: names
+	// are first normalized by replacing generated-identifier-looking runs
+	// (a UUID, or another long hex/digit run — see
+	// internal/report.nameTemplate) with a placeholder, so e.g. per-tenant
+	// Namespace objects literally named "usersvs-<uuid>" (a real shape
+	// this catches — Namespace is cluster-scoped and every tenant's name
+	// is unique, so it could never repeat under exact-name matching alone)
+	// also collapse into one row instead of one per tenant. On by default;
+	// a false positive here is rare (the identifier-shaped segment needs
+	// to be a real UUID or an 8+ char hex / 4+ digit run — short version-
+	// looking numbers like "app-v2" are deliberately excluded) but this
+	// gives an explicit way to fall back to exact-name-only matching, or
+	// disable collapsing entirely via NamespaceGroupThreshold: 0.
+	GroupByNamePattern *bool `json:"groupByNamePattern,omitempty"`
+}
+
+// GroupByNamePatternEnabled reports the effective GroupByNamePattern value:
+// the configured pointer if set, true otherwise (on by default — see the
+// field's doc comment). A *bool (like PoliciesConfig.Builtin) because
+// "false" and "not set" must be distinguishable when merging audit.yaml
+// with CLI flags.
+func (o OutputConfig) GroupByNamePatternEnabled() bool {
+	if o.GroupByNamePattern == nil {
+		return true
+	}
+	return *o.GroupByNamePattern
 }
 
 // ValidReportViews are the accepted values for ReportView.

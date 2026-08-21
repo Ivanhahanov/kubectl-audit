@@ -86,6 +86,12 @@ type Result struct {
 	// 0 (the zero value, so callers that don't set it get today's
 	// behavior) disables collapsing.
 	NamespaceGroupThreshold int
+	// GroupByNamePattern extends NamespaceGroupThreshold's collapsing to
+	// also match resources whose *name itself* is per-tenant-generated
+	// (e.g. a UUID-suffixed Namespace name), not just an identical literal
+	// name repeated across namespaces — see
+	// config.OutputConfig.GroupByNamePattern.
+	GroupByNamePattern bool
 }
 
 // Summary counts findings by severity. Suppressed findings aren't counted.

@@ -54,12 +54,16 @@ The default template's "Findings" section actually renders through `.FindingsByS
 (`[]report.CheckGroup`, one per policy ID within a severity), not `.Findings`/`.FindingsBySeverity`
 directly — grouping by check hoists each policy's title/remediation/CIS refs out to render once
 instead of once per affected resource. When every finding in a `CheckGroup` shares one message
-(`.UniformMessage`, true of essentially every built-in VAP/CEL check), it also collapses a Kind+Name
-pair repeated across `output.namespaceGroupThreshold`+ distinct namespaces (default `3`; see
-[Noise reduction]({{ '/getting-started/#noise-reduction' | relative_url }})) into one
-`report.AffectedRow` per `.Rows` — either `.Finding` (a normal `findings.Finding`) or `.Repeat`
-(a `report.RepeatGroup`: `.Kind`, `.Name`, `.Namespaces`). See
-[`CheckGroup`/`AffectedRow`/`RepeatGroup` in `internal/report/template.go`](https://github.com/{{ site.repository }}/blob/main/internal/report/template.go)
+(`.UniformMessage`, true of essentially every built-in VAP/CEL check, and some native analyzer
+checks whose message doesn't embed anything resource-specific), it also collapses findings sharing
+a Kind and a "name shape" — either an identical literal Name, or (with
+`output.groupByNamePattern`, on by default) names that only differ in a generated-identifier
+segment (a UUID, or another long hex/digit run) — appearing at least `output.namespaceGroupThreshold`
+times (default `3`; see [Noise reduction]({{ '/getting-started/#noise-reduction' | relative_url }}))
+into one `report.AffectedRow` per `.Rows` — either `.Finding` (a normal `findings.Finding`) or
+`.Repeat` (a `report.RepeatGroup`: `.Kind`, `.NameTemplate`, `.Unit`, `.Count`, `.Examples`
+capped at 8, `.Truncated`). See
+[`CheckGroup`/`AffectedRow`/`RepeatGroup`/`nameTemplate` in `internal/report/template.go`](https://github.com/{{ site.repository }}/blob/main/internal/report/template.go)
 for the full field list if you're customizing that part of the template.
 
 ## Template functions

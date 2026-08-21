@@ -197,7 +197,7 @@ No findings.
 - **Affected resources ({{ len .Findings }}):**
 {{ if .UniformMessage }}
   _{{ .UniformMessage }}_
-{{ range .Rows }}{{ if .Repeat }}  - **{{ .Repeat.Kind }}/{{ escapeCell .Repeat.Name }}** — repeated identically in **{{ len .Repeat.Namespaces }} namespaces**: {{ join .Repeat.Namespaces ", " }}
+{{ range .Rows }}{{ if .Repeat }}  - **{{ .Repeat.Kind }}/{{ escapeCell .Repeat.NameTemplate }}** — repeated identically across **{{ .Repeat.Count }} {{ .Repeat.Unit }}**: {{ join .Repeat.Examples ", " }}{{ if .Repeat.Truncated }} (+{{ minus .Repeat.Count (len .Repeat.Examples) }} more){{ end }}
 {{ else }}  - {{ .Finding.Resource.String }}{{ if and .Finding.Source $.MultipleSources }} (`{{ .Finding.Source }}`){{ end }}
 {{ end }}{{ end }}{{ else }}
 {{ range .Findings }}  - **{{ .Resource.String }}**{{ if and .Source $.MultipleSources }} (`{{ .Source }}`){{ end }} — {{ .Message }}

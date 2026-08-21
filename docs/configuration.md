@@ -100,6 +100,13 @@ output:
   # findings.json/CSV always list every finding individually, so --fail-on
   # gating and CI tooling see no difference. 0 disables collapsing.
   namespaceGroupThreshold: 3
+  # Extends namespaceGroupThreshold's collapsing to names that share a
+  # generated-identifier shape (a UUID, or another long hex/digit run),
+  # not just an identical literal name — catches e.g. per-tenant Namespace
+  # objects themselves named "usersvs-<uuid>", which can never share a
+  # literal name since Namespace is cluster-scoped. On by default; set
+  # false to only collapse exact name matches.
+  groupByNamePattern: true
 
 compliance:
   # Requirement framework(s) to score against: cis|fstec|nsa|capsule (see

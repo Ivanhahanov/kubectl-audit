@@ -112,8 +112,12 @@ relevant to it. Key flags available on `scan` and `rbac analyze`:
 - `--report-view check|namespace|both` — how the Findings section(s) are structured (default
   `check`, grouped by check/policy ID). `both` lists every finding twice (once per view) — use
   `check` or `namespace` alone once findings run into the hundreds/thousands.
-- `--namespace-group-threshold <n>` — collapse repeated per-namespace findings in the Markdown
-  report (default `3`; `0` disables). See [Noise reduction](#noise-reduction-owner-chains-platform-namespaces--repeated-tenant-namespaces) below.
+- `--namespace-group-threshold <n>` — collapse repeated findings in the Markdown report (default
+  `3`; `0` disables). See [Noise reduction](#noise-reduction-owner-chains-platform-namespaces--repeated-tenant-namespaces) below.
+- `--group-by-name-pattern` — also collapse names sharing a generated-identifier shape (a UUID or
+  other long hex/digit run), not just an identical literal name; on by default. See
+  [Noise reduction](#noise-reduction-owner-chains-platform-namespaces--repeated-tenant-namespaces)
+  below.
 - `--fail-on none|low|medium|high|critical` — CI exit-code gate (default `high`).
 
 `scan`-only:
@@ -157,15 +161,28 @@ Three things keep a cluster scan from being dominated by duplicate or non-action
   entirely), `--no-builtin-exceptions`, and `--include-system-rbac`.
 - **Repeated-tenant-namespace collapsing.** Multi-tenant clusters commonly provision one namespace
   per tenant/customer/environment (e.g. Capsule tenants, or any other "one namespace per X"
-  convention) and deploy the *same* manifest into each — so the same misconfiguration gets flagged
-  once per namespace and can drown out everything else once there are dozens of them. In the
-  Markdown report, when a check's message is identical for every finding (true of essentially every
-  built-in VAP/CEL check) and it fires on the same Kind+Name pair in at least `N` distinct
-  namespaces, those are shown as one row ("`Deployment/app` — repeated identically in `N`
-  namespaces: ...") instead of one bullet per namespace. This is purely a Markdown rendering choice:
-  `findings.json`/CSV always list every finding individually, so `--fail-on` gating and CI tooling
-  see no difference. On by default (`N = 3`); tune or disable with `--namespace-group-threshold`
-  (`0` disables it) or `output.namespaceGroupThreshold` in `audit.yaml`.
+  convention), and either deploy the *same* manifest into each (same object name, e.g.
+  `Deployment/app`, repeated across every tenant namespace) or name the namespace itself with a
+  generated identifier per tenant (e.g. `usersvs-<uuid>`) — a real shape seen on a
+  Capsule-managed cluster that produced 9000+ near-identical `psa-analyzer.no-active-enforcement`
+  findings, one per tenant `Namespace` object, since `Namespace` is cluster-scoped and a native
+  Go analyzer's findings target the namespace object itself rather than a workload inside it. In
+  either case the same misconfiguration gets flagged once per tenant and can drown out everything
+  else once there are dozens (or thousands) of them.
+
+  In the Markdown report, when a check's message is identical for every finding (true of
+  essentially every built-in VAP/CEL check and most native analyzer checks) and it fires on the
+  same Kind, with names that are either identical or share a generated-identifier shape (a UUID,
+  or another long hex/digit run — see `--group-by-name-pattern` below), in at least `N` instances,
+  those are shown as one row (`Namespace/usersvs-* — repeated identically across N objects: ...`,
+  capped to a handful of examples) instead of one bullet each. This is purely a Markdown rendering
+  choice: `findings.json`/CSV always list every finding individually, so `--fail-on` gating and CI
+  tooling see no difference at all. Both are on by default (`N = 3`):
+  - `--namespace-group-threshold <n>` / `output.namespaceGroupThreshold` — the count threshold;
+    `0` disables collapsing entirely.
+  - `--group-by-name-pattern` / `output.groupByNamePattern` — whether names are normalized (UUID/
+    hex/digit runs → `*`) before matching, or only an identical literal name collapses; `false`
+    falls back to literal-name-only matching.
 
 ## Configuration (`audit.yaml`)
 
