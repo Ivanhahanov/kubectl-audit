@@ -11,6 +11,16 @@ metadata:
       securityContext.allowPrivilegeEscalation to false on every container.
       Privileged containers have near-unrestricted access to the host.
     audit.k8s-auditor.io/cis: "5.2.2,5.2.6"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Check the Detected Components table for a documented exception —
+      rare, since even most privileged system DaemonSets are scoped to
+      specific capabilities rather than the blanket privileged flag. 2. If
+      this is an application container, treat it as a true critical with
+      essentially no legitimate exception: privileged grants near-
+      unrestricted host access. Check the container image/entrypoint to see
+      if it actually needs that (some legacy images request it out of habit,
+      not genuine need) — that determines remediation approach (drop it
+      entirely vs. replace with specific capabilities).
 spec:
   failurePolicy: Fail
   matchConstraints:

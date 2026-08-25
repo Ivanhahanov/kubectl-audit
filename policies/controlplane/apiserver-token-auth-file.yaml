@@ -9,6 +9,13 @@ metadata:
     audit.k8s-auditor.io/remediation: >-
       Remove --token-auth-file and use a more auditable authentication method (OIDC, client certificates, or a webhook).
     audit.k8s-auditor.io/cis: "1.2.2"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Inferred from command-line flags, not node/file access — cross-check if
+      possible. 2. Unlike most checks in this family, if genuinely still set this is
+      close to definitionally a true positive: --token-auth-file uses long-lived static
+      bearer tokens with no built-in rotation/revocation and was removed entirely in
+      newer Kubernetes releases — treat with urgency rather than spending much time on
+      further verification.
 spec:
   failurePolicy: Fail
   matchConstraints:

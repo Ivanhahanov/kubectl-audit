@@ -13,6 +13,15 @@ metadata:
       access here can install a webhook that intercepts or bypasses
       admission control cluster-wide.
     audit.k8s-auditor.io/cis: "5.1.12"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Identify the subject bound and confirm it's a trusted, audited
+      webhook-management controller (e.g. cert-manager's own webhook
+      component, an admission-policy engine's controller) vs. something
+      else. 2. If unexpected, treat with high urgency regardless of how
+      narrow the rest of the subject's permissions otherwise look: a
+      malicious webhook configuration can intercept or silently bypass
+      admission control cluster-wide, not just within this subject's other
+      declared scope.
 spec:
   failurePolicy: Fail
   matchConstraints:

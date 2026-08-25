@@ -119,6 +119,22 @@ compliance:
   frameworks:
     - cis
 
+# Configures `kubectl audit triage` — see Triage. No credential field: the
+# Jira Personal Access Token comes from --jira-token or
+# $KUBECTL_AUDIT_JIRA_TOKEN only, never this file.
+triage:
+  stateFile: triage-state.yaml
+  jira:
+    baseUrl: ""
+    projectKey: ""
+    issueType: ""
+    # Optional: extraLabels (static labels on every created issue),
+    # customFields (arbitrary Jira fields, string values Go-templated),
+    # and summaryTemplate/descriptionTemplate (external .tpl file paths
+    # fully replacing the built-in issue text, e.g. to translate it) — see
+    # Triage > Custom fields, extra labels, and a fully custom template.
+    # All read fresh on every run, no rebuild.
+
 # Waivers for specific (check, resource) pairs — an accepted, documented
 # risk, not a silent gap. Config-file only (no CLI flag: a rule has too many
 # structured fields to fit one). Suppressed findings are never dropped: they

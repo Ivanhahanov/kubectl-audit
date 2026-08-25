@@ -21,6 +21,13 @@ metadata:
       cluster-wide opt-in to arbitrary code execution in the pod that
       runs every VM. See also kubevirt.hook-sidecar-annotation-present,
       which flags VMs actually using this once the gate is on.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm this is genuinely enabled on the live KubeVirt CR. 2. Check how many
+      distinct VM owners/namespaces can actually create
+      VirtualMachine/VirtualMachineInstance objects on this cluster (see any RBAC
+      findings for kubevirt.io API group access) — per KubeVirt's own docs, EVERY VM
+      owner gets arbitrary-code-execution capability once this gate is on, so the blast
+      radius scales with how many people/teams that includes.
 spec:
   failurePolicy: Fail
   matchConstraints:

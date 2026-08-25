@@ -9,6 +9,11 @@ metadata:
     audit.k8s-auditor.io/remediation: >-
       Set --profiling=false.
     audit.k8s-auditor.io/cis: "1.4.1"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Inferred from command-line flags, not node/file access. 2. Test directly:
+      attempt to reach the scheduler's /debug/pprof/ endpoint — if it responds,
+      profiling is genuinely still exposed; if unreachable, practical exposure is lower
+      than the flag inference alone implies.
 spec:
   failurePolicy: Fail
   matchConstraints:

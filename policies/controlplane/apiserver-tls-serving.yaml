@@ -9,6 +9,12 @@ metadata:
     audit.k8s-auditor.io/remediation: >-
       Set both --tls-cert-file and --tls-private-key-file.
     audit.k8s-auditor.io/cis: "1.2.24"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Inferred from command-line flags, not node/file access. 2. Test directly:
+      connect to the apiserver's HTTPS port with a TLS client (`openssl s_client
+      -connect <host>:6443`) and inspect the actual certificate served, cross-checking
+      that a real, expected certificate is in use rather than relying on flag presence
+      alone.
 spec:
   failurePolicy: Fail
   matchConstraints:

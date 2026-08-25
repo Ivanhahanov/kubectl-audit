@@ -11,6 +11,14 @@ metadata:
       container, so the container is refused if its image would otherwise
       run as UID 0.
     audit.k8s-auditor.io/cis: "5.2.7"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Read the Message carefully — it distinguishes "nothing is set" from
+      "a container explicitly overrides a secure pod-level default back to
+      false", the latter being a more deliberate (and more suspicious)
+      misconfiguration worth extra scrutiny. 2. Check the image's actual
+      USER directive/entrypoint — some images genuinely can't run as
+      non-root without modification (legacy apps), which doesn't excuse the
+      finding but does affect remediation complexity and timeline.
   # Per-container evaluation, not "pod-level-ok OR every-container-ok": a
   # container's own securityContext.runAsNonRoot always overrides the
   # pod-level default for that one container (real Kubernetes semantics).

@@ -12,7 +12,7 @@ import (
 var csvHeader = []string{
 	"severity", "policyId", "title", "category", "cis",
 	"kind", "namespace", "name", "apiVersion",
-	"message", "remediation", "source", "id",
+	"message", "remediation", "source", "id", "verificationSteps",
 }
 
 // RenderCSV renders findings as CSV, one row per finding, sorted by
@@ -36,7 +36,7 @@ func RenderCSV(r Result) ([]byte, error) {
 		row := []string{
 			string(f.Severity), f.PolicyID, f.Title, f.Category, strings.Join(f.CIS, ";"),
 			f.Resource.Kind, f.Resource.Namespace, f.Resource.Name, f.Resource.APIVersion,
-			f.Message, f.Remediation, f.Source, f.ID,
+			f.Message, f.Remediation, f.Source, f.ID, f.VerificationSteps,
 		}
 		if err := w.Write(row); err != nil {
 			return nil, err

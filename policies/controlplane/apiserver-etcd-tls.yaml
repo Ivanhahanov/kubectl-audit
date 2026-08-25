@@ -9,6 +9,11 @@ metadata:
     audit.k8s-auditor.io/remediation: >-
       Set both --etcd-certfile and --etcd-keyfile so kube-apiserver authenticates to etcd with a client certificate.
     audit.k8s-auditor.io/cis: "1.2.23"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Inferred from command-line flags, not node/file access. 2. If you have etcd
+      access, confirm etcd logs show a successful mTLS handshake from the apiserver (not
+      a fallback to plaintext) — the definitive test for whether client TLS is genuinely
+      in effect.
 spec:
   failurePolicy: Fail
   matchConstraints:

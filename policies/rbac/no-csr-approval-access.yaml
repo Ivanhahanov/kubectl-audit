@@ -12,6 +12,15 @@ metadata:
       controller. It allows approving arbitrary CertificateSigningRequests,
       which mints new, trusted client credentials for the cluster.
     audit.k8s-auditor.io/cis: "5.1.11"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Identify the subject bound to this Role/ClusterRole and confirm
+      it's the cluster's genuine, trusted CSR-approval controller (e.g.
+      cert-manager's approver, kubelet-csr-approver) vs. something broader.
+      2. If unexpected, test the practical exploit path: `kubectl auth
+      can-i update certificatesigningrequests/approval --as=<subject>` —
+      approving a crafted CSR mints a new, trusted client certificate for
+      the cluster, so confirm this is real before treating it as low
+      priority.
 spec:
   failurePolicy: Fail
   matchConstraints:

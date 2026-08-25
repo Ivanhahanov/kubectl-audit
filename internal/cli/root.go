@@ -62,6 +62,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newPolicyCmd())
 	root.AddCommand(newRBACCmd())
 	root.AddCommand(newTemplateCmd())
+	root.AddCommand(newTriageCmd())
 	root.AddCommand(newVersionCmd())
 	return root
 }

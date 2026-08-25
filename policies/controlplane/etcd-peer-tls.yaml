@@ -9,6 +9,12 @@ metadata:
     audit.k8s-auditor.io/remediation: >-
       Set both --peer-cert-file and --peer-key-file on etcd.
     audit.k8s-auditor.io/cis: "2.4"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Inferred from command-line flags, not node/file access. 2. If you have etcd
+      access, check etcd logs for peer TLS handshake details — a misconfigured peer TLS
+      setup can silently fall back to plaintext without an obvious apiserver-facing
+      symptom, so this is worth confirming directly rather than trusting flag presence
+      alone.
 spec:
   failurePolicy: Fail
   matchConstraints:

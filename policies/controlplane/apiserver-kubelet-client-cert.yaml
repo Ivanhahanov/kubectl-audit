@@ -9,6 +9,11 @@ metadata:
     audit.k8s-auditor.io/remediation: >-
       Set both --kubelet-client-certificate and --kubelet-client-key so the API server authenticates to kubelets with a client certificate.
     audit.k8s-auditor.io/cis: "1.2.4"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Inferred from command-line flags, not node/file access. 2. This flag only
+      covers the apiserver's side of the mutual handshake — also confirm kubelets are
+      configured to require client certificate authentication from the apiserver
+      (kubelet's own --client-ca-file) for the full picture.
 spec:
   failurePolicy: Fail
   matchConstraints:

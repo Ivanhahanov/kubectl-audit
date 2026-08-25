@@ -10,6 +10,14 @@ metadata:
       Set securityContext.capabilities.drop: ["ALL"] on every container, and
       add back only the specific capabilities the workload actually needs.
     audit.k8s-auditor.io/cis: "5.2.8,5.2.9"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Check whether the workload actually needs specific capabilities back
+      (e.g. NET_BIND_SERVICE to bind a port below 1024) — dropping ALL and
+      re-adding a small, named set is the correct pattern, not itself a
+      finding to chase. 2. If the image needs broad root-equivalent
+      operations, also check whether no-privileged-containers or
+      run-as-non-root fire on the same workload — capabilities alone rarely
+      determine the real risk level on their own.
 spec:
   failurePolicy: Fail
   matchConstraints:

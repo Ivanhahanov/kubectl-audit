@@ -9,6 +9,14 @@ metadata:
     audit.k8s-auditor.io/remediation: >-
       Set --encryption-provider-config to an EncryptionConfiguration that encrypts Secrets (at minimum) at rest in etcd.
     audit.k8s-auditor.io/cis: "1.2.27"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Inferred from command-line flags, not node/file access. 2. This has a
+      definitive, direct test if you have etcd access: read a Secret's raw value from
+      etcd (`etcdctl get /registry/secrets/<ns>/<name>` with appropriate certs) and
+      check whether it's plaintext JSON or carries an encryption-provider prefix (e.g.
+      k8s:enc:aescbc:v1:) — far more reliable than the flag's mere presence, since the
+      referenced config file's actual content (which provider, which key) isn't visible
+      to this tool at all.
 spec:
   failurePolicy: Fail
   matchConstraints:

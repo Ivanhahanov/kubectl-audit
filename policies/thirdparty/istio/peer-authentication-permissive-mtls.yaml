@@ -17,6 +17,13 @@ metadata:
       weakening one. In Istio ambient mode, DISABLE is unsupported and
       STRICT is the mode that actually guarantees mesh traffic can't bypass
       the ztunnel — see the Scope section for ambient-mode caveats.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Per this policy's own annotation, this evaluates each PeerAuthentication object
+      independently — check whether a MORE SPECIFIC object (workload-level overrides
+      namespace overrides mesh-level) already enforces STRICT, or whether this object is
+      unintentionally weakening a stricter default. 2. In Istio ambient mode, confirm
+      whether DISABLE is even in play (it's unsupported there) vs. PERMISSIVE, which has
+      different practical implications.
 spec:
   failurePolicy: Fail
   matchConstraints:

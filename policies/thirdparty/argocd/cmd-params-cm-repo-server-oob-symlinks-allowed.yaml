@@ -18,6 +18,11 @@ metadata:
       which are not explicitly blocked by other checks will be allowed."
       An explicit opt-out of repo-server's default path-traversal
       protection for any repository it syncs.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live ConfigMap genuinely sets this to "true". 2. Check how trusted
+      the repositories this ArgoCD instance syncs from actually are — this protection
+      matters most when syncing from repos with less-trusted contributors (e.g.
+      external/community charts) vs. a tightly-controlled internal monorepo.
 spec:
   failurePolicy: Fail
   matchConstraints:

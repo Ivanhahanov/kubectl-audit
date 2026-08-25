@@ -9,6 +9,12 @@ metadata:
     audit.k8s-auditor.io/remediation: >-
       Set --kubelet-certificate-authority to the CA that issued kubelet serving certificates.
     audit.k8s-auditor.io/cis: "1.2.5"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Inferred from command-line flags, not node/file access. 2. Confirm the
+      apiserver actually validates kubelet certificates when proxying requests (e.g.
+      `kubectl logs`/`exec`) — if you can test in a non-production environment, an
+      untrusted/self-signed kubelet cert should be rejected when this is correctly
+      configured.
 spec:
   failurePolicy: Fail
   matchConstraints:

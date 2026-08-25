@@ -20,6 +20,15 @@ metadata:
       at /var/run/secrets/azure/tokens/...) — this check only flags the
       pod's own default Kubernetes API token path, not containerPath
       usage in general.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm this VM genuinely doesn't need the pod's own Kubernetes API token
+      inside the guest — the documented, intended use of containerPath is a DIFFERENT
+      purpose-provisioned token (AWS IRSA, Azure workload identity), so check whether
+      this looks like a copy-paste of an intended-external-token pattern that
+      accidentally pointed at the wrong path. 2. Check what permissions the pod's
+      ServiceAccount actually has (kubectl get sa <name> -o yaml, then check bound
+      Roles) — a token with near-zero permissions exposed to the guest is lower risk
+      than one with broad cluster access.
 spec:
   failurePolicy: Fail
   matchConstraints:

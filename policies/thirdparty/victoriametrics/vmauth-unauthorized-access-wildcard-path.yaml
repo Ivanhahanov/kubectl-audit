@@ -27,6 +27,12 @@ metadata:
   # this section" mechanics plus the wildcard itself, the same evidentiary
   # shape already used for the ArgoCD AppProject/Istio AuthorizationPolicy
   # wildcard checks in this tool.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live VMAuth object genuinely has this wildcard src_paths entry
+      (kubectl get vmauth <name> -o yaml). 2. Check what backend this rule actually
+      routes to — a wildcard routing unauthenticated requests to a genuinely public,
+      non-sensitive endpoint (e.g. a health check) is far lower risk than one routing to
+      metrics/query endpoints with real data.
 spec:
   failurePolicy: Fail
   matchConstraints:

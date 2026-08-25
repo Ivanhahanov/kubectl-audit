@@ -11,6 +11,15 @@ metadata:
       subjects. Any permission granted here is usable by anyone who can
       reach the API server without credentials.
     audit.k8s-auditor.io/cis: "5.1.1"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the binding is real (`kubectl describe rolebinding/clusterrolebinding
+      <name>`) and identify exactly what role it grants — even a seemingly
+      minor role bound to system:anonymous is exploitable by anyone who can
+      reach the API server without credentials. 2. Test directly: `kubectl
+      auth can-i <verb> <resource> --as=system:anonymous` (or
+      --as=system:unauthenticated) to confirm the grant is actually
+      effective, not incidentally blocked by a NetworkPolicy or ingress
+      restriction on who can reach the API server unauthenticated at all.
 spec:
   failurePolicy: Fail
   matchConstraints:

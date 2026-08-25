@@ -9,6 +9,11 @@ metadata:
     audit.k8s-auditor.io/remediation: >-
       Set --client-cert-auth=true.
     audit.k8s-auditor.io/cis: "2.2"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Inferred from command-line flags, not node/file access. 2. Test directly if you
+      have etcd access: attempt a client connection with a valid CA-signed cert but the
+      wrong client identity (or no client cert) and confirm etcd actually rejects it —
+      the concrete behavior this flag is supposed to enforce.
 spec:
   failurePolicy: Fail
   matchConstraints:

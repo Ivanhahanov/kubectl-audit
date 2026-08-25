@@ -18,6 +18,12 @@ metadata:
       annotation under spec.template.metadata.annotations (not
       metadata.annotations directly) for it to take effect on the VMI it
       creates — both locations are checked here.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the Sidecar feature gate is actually enabled cluster-wide (see
+      kubevirt.sidecar-feature-gate-enabled) — without it, this annotation has no effect
+      at all, meaning this finding would be inert. 2. If the gate is enabled, identify
+      who owns/created this specific VM and whether hook-sidecar usage is a documented,
+      reviewed need vs. an unreviewed capability being exercised.
 spec:
   failurePolicy: Fail
   matchConstraints:

@@ -33,6 +33,16 @@ metadata:
   # running Redis Sentinel behind an HAProxy) uses a different manifest
   # shape entirely and is NOT covered here — known gap, no existing
   # mitigation for HA-mode installs.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live argocd-redis Deployment genuinely lacks --requirepass (kubectl
+      get deploy argocd-redis -n argocd -o yaml) and check the actual running ArgoCD
+      version against the fixed versions cited (2.11.1/2.10.10/2.9.15/2.8.19+) — if on a
+      fixed version with the flag still missing, this was manually stripped, a very
+      different signal than simply running an old version. 2. This is CVE-2024-31989 —
+      if confirmed, treat as urgent: check whether the Redis Service is reachable from
+      outside the argocd namespace/cluster, since exploitation requires reaching it
+      directly. 3. This check does NOT cover ArgoCD's HA topology (argocd-redis-ha) — if
+      this cluster runs ArgoCD in HA mode, verify that setup separately.
 spec:
   failurePolicy: Fail
   matchConstraints:

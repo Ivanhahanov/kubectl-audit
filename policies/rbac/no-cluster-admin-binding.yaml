@@ -11,6 +11,14 @@ metadata:
       actually need instead of cluster-admin. Reserve cluster-admin for a
       small, audited set of human break-glass accounts.
     audit.k8s-auditor.io/cis: "5.1.1"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Identify the actual subject bound (`kubectl describe
+      rolebinding/clusterrolebinding <name>`) — a small, audited set of
+      human break-glass accounts is the expected, accepted case; anything
+      else (a CI ServiceAccount, an application, a broad group) is the real
+      finding worth escalating. 2. Check whether a narrower role would
+      actually satisfy the subject's real needs — cluster-admin is rarely
+      genuinely required even for privileged-looking automation.
 spec:
   failurePolicy: Fail
   matchConstraints:

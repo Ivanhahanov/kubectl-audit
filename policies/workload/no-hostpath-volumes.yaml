@@ -11,6 +11,15 @@ metadata:
       Secret instead. hostPath exposes the node's filesystem to the
       container and can be used to escape to the host.
     audit.k8s-auditor.io/cis: "5.2.11"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Check the Detected Components table for a legitimate infrastructure
+      reason (a log-shipping DaemonSet mounting /var/log, a CSI node
+      plugin). 2. For an application workload, check exactly which host path
+      is mounted and whether it's read-only — a read-only mount of a narrow,
+      non-sensitive path is materially lower risk than a writable mount of
+      something like / or /var/run/docker.sock (the latter is a well-known,
+      immediate container-escape path — treat as critical if seen regardless
+      of the severity label above).
 spec:
   failurePolicy: Fail
   matchConstraints:

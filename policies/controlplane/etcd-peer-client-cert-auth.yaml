@@ -9,6 +9,11 @@ metadata:
     audit.k8s-auditor.io/remediation: >-
       Set --peer-client-cert-auth=true.
     audit.k8s-auditor.io/cis: "2.5"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Inferred from command-line flags, not node/file access. 2. Test directly if you
+      have etcd access: attempt a peer connection with an untrusted or self-signed
+      certificate and confirm etcd actually rejects it — the concrete behavior this flag
+      is supposed to enforce for member-to-member traffic.
 spec:
   failurePolicy: Fail
   matchConstraints:

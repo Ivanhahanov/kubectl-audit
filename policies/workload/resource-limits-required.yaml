@@ -10,6 +10,14 @@ metadata:
       Set resources.limits.cpu and resources.limits.memory on every
       container to prevent a single workload from starving the node and
       affecting other tenants.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. This is a reliability control, not a direct security exploit —
+      check whether the namespace already has a LimitRange/ResourceQuota
+      applying sane defaults, which would partially compensate for the
+      missing per-container limits. 2. Assess actual noisy-neighbor risk: a
+      low-traffic internal tool missing limits is a lower priority than a
+      workload sharing nodes with latency-sensitive production services or
+      running on a genuinely resource-constrained cluster.
 spec:
   failurePolicy: Fail
   matchConstraints:

@@ -13,6 +13,12 @@ metadata:
       ambient mode, "to" (L7) rules require a waypoint proxy deployed for
       the target workload/namespace, or they're not enforced at all; see
       the Scope section for this caveat.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm this is genuinely a wildcard and not a legitimately narrow prefix that
+      happens to end in a common pattern. 2. Per this policy's own annotation, in Istio
+      ambient mode this L7 path restriction is only enforced when a waypoint proxy is
+      deployed for the target — confirm one exists, or this control may not be enforced
+      at all regardless of what the YAML says (see docs/istio.md's Scope note).
 spec:
   failurePolicy: Fail
   matchConstraints:

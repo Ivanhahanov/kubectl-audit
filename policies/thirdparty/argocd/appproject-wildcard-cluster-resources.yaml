@@ -13,6 +13,12 @@ metadata:
       lets synced Applications create any cluster-scoped resource,
       including RBAC objects like ClusterRole/ClusterRoleBinding — this is
       ArgoCD's own out-of-the-box "default" AppProject configuration.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live AppProject genuinely has this wildcard (kubectl get appproject
+      <name> -o yaml). 2. Check which Applications actually belong to this project and
+      whether any of them could plausibly be used to create arbitrary cluster-scoped
+      resources (RBAC objects especially) — the practical risk scales with how many
+      people/pipelines can modify or add Applications to this project.
 spec:
   failurePolicy: Fail
   matchConstraints:

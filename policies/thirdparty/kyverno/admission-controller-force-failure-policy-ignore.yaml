@@ -24,6 +24,13 @@ metadata:
   # admission-controller Deployment: config.forceFailurePolicyIgnore.enabled
   # renders directly as --forceFailurePolicyIgnore=<bool> on that
   # container, default false.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live Deployment genuinely runs with this flag (kubectl get deploy
+      <name> -n kyverno -o yaml | grep forceFailurePolicyIgnore). 2. Check whether
+      Kyverno has a real high-availability setup (multiple replicas,
+      PodDisruptionBudget) — the practical risk window is "while Kyverno is
+      unreachable," so a highly-available deployment has a much smaller exposure window
+      than a single-replica one.
 spec:
   failurePolicy: Fail
   matchConstraints:

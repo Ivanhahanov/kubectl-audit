@@ -110,7 +110,13 @@ func Analyze(resources []loader.Resource, k8sVersion, source string) []findings.
 			Resource:    ref,
 			Message:     msg,
 			Remediation: fmt.Sprintf("Update apiVersion to %s.", replacement),
-			Source:      r.Source,
+			VerificationSteps: "1. Confirm this is the actual apiVersion in the live source (a GitOps-tracked " +
+				"manifest could already be fixed upstream but not yet re-scanned). 2. If this object comes " +
+				"from a Helm chart/operator you don't hand-author, check whether a newer chart version already " +
+				"emits the replacement apiVersion — the real fix may be a version bump, not a manual edit. " +
+				"3. If marked critical (already removed on this cluster's version), confirm the apiserver " +
+				"genuinely rejects it: `kubectl apply --dry-run=server -f <file>` against a real cluster.",
+			Source: r.Source,
 		})
 	}
 	return out

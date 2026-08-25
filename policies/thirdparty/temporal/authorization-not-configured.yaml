@@ -26,6 +26,14 @@ metadata:
   # the real chart template) to check without needing a fixed ConfigMap
   # name — the chart names it "{{ temporal.fullname }}-config", which
   # varies by release name/nameOverride.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live rendered ConfigMap genuinely lacks an authorization: block
+      (kubectl get configmap <name> -o yaml). 2. If confirmed, per Temporal's own docs
+      this is a full no-authentication, no-access-control state — check whether the
+      frontend service is reachable from anywhere untrusted (Service type,
+      NetworkPolicy) to judge real urgency, but treat as a true positive regardless,
+      since the finding is directly sourced from Temporal's own explicit security
+      warning.
 spec:
   failurePolicy: Fail
   matchConstraints:

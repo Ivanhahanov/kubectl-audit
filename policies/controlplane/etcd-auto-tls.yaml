@@ -9,6 +9,12 @@ metadata:
     audit.k8s-auditor.io/remediation: >-
       Remove --auto-tls=true; use certificates issued by the cluster's own CA instead of self-signed ones.
     audit.k8s-auditor.io/cis: "2.3"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Inferred from command-line flags, not node/file access. 2. auto-tls generates
+      self-signed, unrotatable certificates at etcd startup — confirm this isn't paired
+      with a proper --cert-file/--key-file already covering the same client connection
+      (in which case auto-tls being also set may be a harmless leftover, not the actual
+      mechanism in use) before prioritizing remediation.
 spec:
   failurePolicy: Fail
   matchConstraints:

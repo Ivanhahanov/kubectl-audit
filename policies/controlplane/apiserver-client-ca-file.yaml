@@ -9,6 +9,11 @@ metadata:
     audit.k8s-auditor.io/remediation: >-
       Set --client-ca-file to the CA used to validate client certificates presented to the API server.
     audit.k8s-auditor.io/cis: "1.2.25"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Inferred from command-line flags, not node/file access. 2. Confirm client
+      certificate authentication is actually enforced in practice: attempt an API
+      request with no client cert and confirm the expected behavior (rejection, or
+      fallback to another auth mode) rather than relying on the flag's presence alone.
 spec:
   failurePolicy: Fail
   matchConstraints:

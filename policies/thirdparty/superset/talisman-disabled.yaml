@@ -17,6 +17,14 @@ metadata:
       Weaker-sourced than most checks in this repo (no separate "insecure"
       warning beyond the mechanism's own purpose — same tier as
       istio.gateway-weak-tls-version).
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Weaker-sourced check per its own annotation — assess whether this
+      Superset instance is internet-facing (security headers matter far
+      more there than for a purely internal-network tool). 2. Check which
+      specific headers matter most for this deployment's threat model (CSP
+      for XSS, HSTS for downgrade attacks, X-Frame-Options for clickjacking)
+      rather than treating "Talisman disabled" as one undifferentiated
+      risk.
 spec:
   failurePolicy: Fail
   matchConstraints:

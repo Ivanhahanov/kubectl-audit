@@ -19,6 +19,11 @@ metadata:
       control.
   # Same object/pattern as argocd.cmd-params-cm-server-insecure — gated
   # on the ConfigMap's well-known name inside the expression itself.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live ConfigMap genuinely sets server.disable.auth: "true" (kubectl
+      get configmap argocd-cmd-params-cm -n argocd -o yaml). 2. If confirmed, treat as
+      an active, unauthenticated full-admin exposure — check whether the ArgoCD server
+      is reachable from anywhere untrusted and treat as an emergency if so.
 spec:
   failurePolicy: Fail
   matchConstraints:

@@ -21,6 +21,13 @@ metadata:
   # value renders here, and into an ARGOCD_SERVER_INSECURE env var on the
   # argocd-server Deployment). Gated on object name inside the expression
   # itself, same pattern as argocd.rbac-cm-default-admin-policy.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. This check can't confirm from the ConfigMap alone whether a TLS-terminating
+      proxy actually sits in front — check the actual Ingress/Service/LoadBalancer
+      configuration for argocd-server to confirm TLS termination is genuinely happening
+      somewhere. 2. If no TLS termination exists anywhere in the path, this is a real
+      plaintext-traffic exposure for UI/API/git-credential traffic — treat with real
+      urgency in that case.
 spec:
   failurePolicy: Fail
   matchConstraints:

@@ -13,6 +13,14 @@ metadata:
       Admission enforcement (same underlying gap as
       psa-analyzer.no-active-enforcement, pinned at the tenant level so
       tenant owners can't remove it from namespaces they self-service).
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Per this policy's own annotation, a Tenant using the older v1beta1 API shape
+      will ALWAYS fail this check even if PSA is enforced some other way — check the
+      Tenant's actual API version and whether Pod Security enforcement is achieved
+      through a different mechanism (a namespace label applied directly, a cluster-wide
+      --admission-control-config-file) before treating this as a confirmed gap. 2.
+      Cross-reference with actual psa-analyzer.no-active-enforcement findings on this
+      tenant's real namespaces to see if the gap is realized in practice.
 spec:
   failurePolicy: Fail
   matchConstraints:

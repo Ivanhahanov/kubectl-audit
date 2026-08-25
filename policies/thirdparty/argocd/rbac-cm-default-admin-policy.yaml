@@ -21,6 +21,12 @@ metadata:
   # part-of: argocd). Gated on object name inside the expression itself
   # (matchConstraints has no per-object-name filter) so this never fires
   # on an unrelated ConfigMap that happens to share the same key name.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live argocd-rbac-cm ConfigMap genuinely has policy.default:
+      role:admin (or is simply unset, which is ArgoCD's own default). 2. Check how
+      authentication is configured (SSO integration, local users) — the practical risk
+      scales with how many people can authenticate to this ArgoCD instance at all, since
+      ALL of them get admin per ArgoCD's own docs, with no deny-rule override possible.
 spec:
   failurePolicy: Fail
   matchConstraints:

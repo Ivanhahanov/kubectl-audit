@@ -12,6 +12,11 @@ metadata:
       to. This is ArgoCD's own out-of-the-box "default" AppProject
       configuration — if you haven't created a scoped project, your
       Applications are inheriting unrestricted deploy scope.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live AppProject genuinely has this wildcard destination entry. 2.
+      Check how many clusters are actually registered with this ArgoCD instance (argocd
+      cluster list) — a wildcard destination on an instance managing only one
+      cluster/namespace in practice has a smaller blast radius than one managing many.
 spec:
   failurePolicy: Fail
   matchConstraints:

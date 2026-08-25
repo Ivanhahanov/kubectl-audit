@@ -9,6 +9,11 @@ metadata:
     audit.k8s-auditor.io/remediation: >-
       Set --audit-policy-file to a policy that captures at least the security-relevant request stages (see CIS 3.2.2).
     audit.k8s-auditor.io/cis: "3.2.1"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Inferred from command-line flags, not node/file access. 2. Without --audit-
+      policy-file, --audit-log-path (if set) still logs at a default policy level —
+      check both flags together, and confirm no alternate audit mechanism exists, before
+      treating this as a full gap.
 spec:
   failurePolicy: Fail
   matchConstraints:

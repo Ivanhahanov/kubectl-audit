@@ -12,6 +12,13 @@ metadata:
       ArgoCD's own out-of-the-box "default" AppProject configuration — if
       you haven't created a scoped project for your Applications, they're
       inheriting this unrestricted source-repo scope.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live AppProject genuinely has this wildcard. 2. Check who can
+      actually create/modify Applications in this project (RBAC on the argoproj.io API
+      group) — a wildcard source-repo scope combined with broad Application-creation
+      access lets anyone sync from any repository, including a malicious one; narrower
+      Application-creation access mitigates this somewhat even with the wildcard
+      present.
 spec:
   failurePolicy: Fail
   matchConstraints:

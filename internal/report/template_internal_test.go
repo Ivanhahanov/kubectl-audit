@@ -3,7 +3,7 @@ package report
 import "testing"
 
 // TestNameTemplate covers the name-shape normalization that
-// GroupByNamePattern relies on — see nameTemplate's doc comment for the
+// GroupByNamePattern relies on — see NameTemplate's doc comment for the
 // real-world shape (Capsule-style "usersvs-<uuid>" tenant namespaces) this
 // exists to catch, and why short numeric segments are deliberately left
 // alone.
@@ -24,8 +24,8 @@ func TestNameTemplate(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := nameTemplate(c.in); got != c.want {
-				t.Errorf("nameTemplate(%q) = %q, want %q", c.in, got, c.want)
+			if got := NameTemplate(c.in); got != c.want {
+				t.Errorf("NameTemplate(%q) = %q, want %q", c.in, got, c.want)
 			}
 		})
 	}
@@ -35,8 +35,8 @@ func TestNameTemplate(t *testing.T) {
 // grouping precondition: two different tenant namespace names must produce
 // an identical template so groupAffectedResources buckets them together.
 func TestNameTemplate_TwoDifferentUUIDsNormalizeToTheSameShape(t *testing.T) {
-	a := nameTemplate("usersvs-0004237b-3813-48ce-a48f-3cabdaeccbea")
-	b := nameTemplate("usersvs-0006e164-99bc-4fac-aaec-079df475fa6b")
+	a := NameTemplate("usersvs-0004237b-3813-48ce-a48f-3cabdaeccbea")
+	b := NameTemplate("usersvs-0006e164-99bc-4fac-aaec-079df475fa6b")
 	if a != b {
 		t.Errorf("expected both UUID-suffixed names to normalize identically, got %q vs %q", a, b)
 	}

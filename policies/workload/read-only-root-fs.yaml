@@ -11,6 +11,15 @@ metadata:
       and mount an emptyDir volume for any directory that genuinely needs
       to be writable at runtime.
     audit.k8s-auditor.io/cis: "5.6.3"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the application doesn't write to its own filesystem at
+      runtime (logs, temp files, caches) without an emptyDir already
+      covering that — applying this blindly can be a real functional
+      break, not just a security gap, so check before flipping the flag.
+      2. Low severity reflects that a writable root filesystem is a
+      defense-in-depth gap, not a direct exploit on its own — deprioritize
+      relative to privileged/hostPath/capabilities findings on the same
+      workload.
 spec:
   failurePolicy: Fail
   matchConstraints:

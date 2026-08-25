@@ -318,7 +318,7 @@ data:
 // package's doc comment promises: no finding this package ever produces —
 // across every scenario the rest of this file exercises — may contain the
 // base64 form (or the decoded plaintext form) of any input Secret value
-// anywhere in its Title/Message/Remediation. Unlike the CEL engine's
+// anywhere in its Title/Message/Remediation/VerificationSteps. Unlike the CEL engine's
 // secret-targeting policies (which are structurally prevented from this by
 // forbidding messageExpression), this package builds findings directly in
 // Go, so the guarantee has to be verified by inspection, not assumed from
@@ -388,7 +388,7 @@ data:
 		t.Fatal("expected at least one finding to actually exercise the leak check")
 	}
 	for _, f := range got {
-		blob := f.Title + " " + f.Message + " " + f.Remediation
+		blob := f.Title + " " + f.Message + " " + f.Remediation + " " + f.VerificationSteps
 		for _, v := range secretValues {
 			if strings.Contains(blob, v) {
 				t.Errorf("finding %s leaks a secret value: %q appears in %q", f.PolicyID, v, blob)

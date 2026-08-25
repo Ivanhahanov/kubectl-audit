@@ -13,6 +13,15 @@ metadata:
       generated secrets and sets the postgres user password to NULL,
       preventing remote access via password authentication" — the secure
       posture is a single documented value, not situational.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm this is genuinely set (`kubectl get cluster <name> -o yaml
+      | grep enableSuperuserAccess`) and check whether the superuser
+      password Secret actually exists with a non-null value — per the docs
+      cited, when this is false the operator removes the secret entirely,
+      so its live presence is a strong corroborating signal. 2. If true,
+      understand why: sometimes a legitimate migration/bootstrap need —
+      check whether that need has passed and it was simply never turned
+      back off.
 spec:
   failurePolicy: Fail
   matchConstraints:

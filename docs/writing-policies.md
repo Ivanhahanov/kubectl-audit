@@ -39,7 +39,8 @@ Recognized annotations:
 | `audit.k8s-auditor.io/title` | Human-readable finding title (defaults to `metadata.name`). |
 | `audit.k8s-auditor.io/severity` | `critical\|high\|medium\|low\|info` (defaults to `medium`). |
 | `audit.k8s-auditor.io/category` | Free-form grouping label (defaults to `general`). |
-| `audit.k8s-auditor.io/remediation` | Shown in the finding and the report. |
+| `audit.k8s-auditor.io/remediation` | Shown in the finding and the report. How to fix a confirmed issue. |
+| `audit.k8s-auditor.io/verification-steps` | Shown in the finding, the report, and read by `kubectl audit triage`. Concrete, numbered steps for a human to confirm this finding is a true positive in their specific environment before acting on it (e.g. "check whether this Service is actually internet-reachable") — distinct from `remediation`, which assumes the finding is already confirmed. Every bundled policy sets this; see [Triage](./triage/) for the full rationale and how it's used. |
 | `audit.k8s-auditor.io/cis` | Comma-separated CIS control IDs this policy maps to. |
 
 Load it with `kubectl audit scan --policy-dir ./my-policies`, or add the directory under

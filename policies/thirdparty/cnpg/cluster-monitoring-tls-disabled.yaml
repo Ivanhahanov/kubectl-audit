@@ -17,6 +17,14 @@ metadata:
       (postgresql.cnpg.io_clusters.yaml: properties.tls.properties.enabled.default:
       false) — so the metrics endpoint (Postgres statistics, not
       credentials) ships in plain text over HTTP by default.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live Cluster object (`kubectl get cluster <name> -o
+      yaml`) genuinely has spec.monitoring.tls.enabled absent/false — a
+      Helm values override could differ from what this scan observed. 2.
+      Check whether the metrics endpoint is reachable only from trusted
+      scrapers (a NetworkPolicy limiting access to Prometheus) — the
+      exposed data is Postgres statistics, not credentials, so real risk is
+      mostly about network exposure scope rather than data sensitivity.
 spec:
   failurePolicy: Fail
   matchConstraints:

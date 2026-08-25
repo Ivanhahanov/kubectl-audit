@@ -18,6 +18,12 @@ metadata:
       same shape as vault.auth-allowed-namespaces-wildcard. Weaker-sourced
       than most checks in this repo (no explicit "insecure" warning from
       VictoriaMetrics itself, same tier as istio.gateway-weak-tls-version).
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Weaker-sourced check per its own annotation — check whether this VMAuth
+      genuinely needs to trust every VMUser (e.g. a single-tenant, platform-team-only
+      cluster) vs. a multi-tenant one where scoping matters more. 2. Check what access
+      each trusted VMUser actually has configured — broad trust combined with broad per-
+      user permissions is the highest-priority combination.
 spec:
   failurePolicy: Fail
   matchConstraints:

@@ -19,6 +19,12 @@ metadata:
       spec.owners[].clusterRoles field. Same underlying risk as that
       check: a tenant subject with cluster-admin defeats tenant isolation
       entirely.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live Tenant object genuinely has this in spec.owners[].clusterRoles
+      (kubectl get tenant <name> -o yaml) — a distinct field from multitenancy.capsule-
+      tenant-cluster-admin-binding, so check both if either fires. 2. Identify who this
+      owner subject actually is and whether cluster-admin was a deliberate platform-team
+      decision or an unreviewed default.
 spec:
   failurePolicy: Fail
   matchConstraints:

@@ -9,6 +9,12 @@ metadata:
     audit.k8s-auditor.io/remediation: >-
       Set --service-account-extend-token-expiration=false so legacy long-lived token compatibility isn't extended.
     audit.k8s-auditor.io/cis: "1.2.30"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Inferred from command-line flags, not node/file access. 2. Confirm the
+      apiserver's actual token TTL behavior directly: `kubectl create token <sa>
+      --duration=1h` then decode the token's exp claim, or check the ServiceAccount
+      token projection config on a real workload, to see the effective lifetime rather
+      than relying on the flag alone.
 spec:
   failurePolicy: Fail
   matchConstraints:

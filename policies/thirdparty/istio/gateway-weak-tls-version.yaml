@@ -16,6 +16,12 @@ metadata:
       warning, it's an external protocol-level standard, cited the same
       way NIST SP 800-190 backs this tool's ConfigMap-credentials check
       where no vendor-specific guidance exists.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live Gateway genuinely sets minProtocolVersion to TLSV1_0/TLSV1_1
+      rather than just allowing them implicitly. 2. Check whether any real client
+      actually still needs the older protocol version — if so, this needs coordinated
+      client-side remediation before tightening; if not, it's a straightforward fix to
+      TLSV1_2/TLSV1_3.
 spec:
   failurePolicy: Fail
   matchConstraints:

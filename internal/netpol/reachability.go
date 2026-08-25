@@ -131,7 +131,14 @@ func broadPeerFinding(p nativePolicy, direction string, ruleIdx, peerIdx int, pe
 			"%s rule #%d, peer #%d sets namespaceSelector without a podSelector — this matches %s, not just specific pods within it.",
 			directionLabel(direction), ruleIdx+1, peerIdx+1, scope),
 		Remediation: "Add a podSelector alongside namespaceSelector to scope the rule to specific pods, or confirm that allowing every pod in the matched namespace(s) is actually intended.",
-		Source:      p.res.Source,
+		VerificationSteps: "1. Re-read the actual peer rule (see the rule/peer numbers in the Message) in the " +
+			"source YAML to confirm the omission is real. 2. Check whether matching every pod in the selected " +
+			"namespace(s) was the actual intent (e.g. an ingress-controller namespace where every pod IS the " +
+			"trusted peer) vs. an accidental over-broad rule — the fix differs: add a podSelector, or just " +
+			"document the intent if it's already correct. 3. An empty namespaceSelector (matches ALL " +
+			"namespaces in the cluster, called out explicitly in the Message when it applies) is materially " +
+			"more severe than one scoped to a labeled subset — prioritize accordingly.",
+		Source: p.res.Source,
 	}, true
 }
 
@@ -173,7 +180,14 @@ func checkNoEgressRestriction(workloads []loader.Resource, nativeByNS map[string
 				"No NetworkPolicy in namespace %q restricts this workload's egress traffic (checked native Kubernetes NetworkPolicy; no Cilium/Calico policy was found for this namespace either): it can reach any destination outbound, including the Kubernetes API server, other namespaces, and the internet.",
 				ns),
 			Remediation: "Add a NetworkPolicy with policyTypes: [Egress] selecting this workload, restricting outbound traffic to only the destinations it actually needs.",
-			Source:      w.Source,
+			VerificationSteps: "1. Check the Detected Components table for Cilium/Calico egress control that " +
+				"this check couldn't observe (same caveat as the ingress-coverage check). 2. Assess actual " +
+				"blast radius: unrestricted egress from a compromised pod is most dangerous for internet-" +
+				"facing or high-privilege workloads (data exfiltration, C2 callback) — prioritize those over " +
+				"genuinely internal, low-value pods when sequencing remediation. 3. If cluster access is " +
+				"available, confirm directly: from this workload, attempt to reach an unexpected destination " +
+				"(an external IP, or another namespace's Service) to verify egress really is unrestricted.",
+			Source: w.Source,
 		})
 	}
 	return out

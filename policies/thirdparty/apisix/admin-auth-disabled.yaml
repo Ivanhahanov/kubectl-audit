@@ -22,6 +22,13 @@ metadata:
   # of true), so this only matters if a user overrides raw config.yaml
   # content directly. When they do, it's more severe than a weak/default
   # key: no key is required at all.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live config genuinely sets admin_key_required: false — per this
+      policy's own annotation, this doesn't come from a Helm chart default, so if
+      present it was a deliberate manual override. 2. If confirmed, this is worse than a
+      weak key: no key at all is required, so treat as an active, unauthenticated
+      control-plane exposure — check whether the Admin API port is reachable from
+      anywhere untrusted.
 spec:
   failurePolicy: Fail
   matchConstraints:

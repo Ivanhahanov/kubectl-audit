@@ -17,6 +17,11 @@ metadata:
       certificate verification entirely, the same "flag the specific
       dangerous value, not mere field presence" pattern as
       victoriametrics.vmauth-unauthorized-access-wildcard-path.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live ApisixTls object genuinely has this wildcard pattern (kubectl
+      get apisixtls <name> -o yaml). 2. Check what this route/service actually protects
+      — a wildcard mTLS skip on a genuinely public, non-sensitive endpoint has different
+      risk than one on something meant to require client certs for real access control.
 spec:
   failurePolicy: Fail
   matchConstraints:

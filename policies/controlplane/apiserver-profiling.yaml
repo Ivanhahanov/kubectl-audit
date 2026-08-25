@@ -9,6 +9,12 @@ metadata:
     audit.k8s-auditor.io/remediation: >-
       Set --profiling=false to disable the pprof debug endpoints.
     audit.k8s-auditor.io/cis: "1.2.15"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Inferred from command-line flags, not node/file access. 2. Test directly:
+      attempt to reach the apiserver's /debug/pprof/ endpoint on its metrics/healthz
+      port — if it responds, profiling is genuinely still exposed; if unreachable
+      (NetworkPolicy, firewall, no route from your position), the practical exposure is
+      lower than the flag inference alone implies.
 spec:
   failurePolicy: Fail
   matchConstraints:

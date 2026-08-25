@@ -20,6 +20,12 @@ metadata:
       ("Use a plaintext client (non-TLS) to connect to dex server") — all
       default "false". Each is an explicit opt-out of TLS between two
       ArgoCD components communicating in-cluster.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm which specific key fired (see the Message) and check whether that
+      internal connection stays within a trusted network boundary (same-pod, same-
+      cluster, no untrusted hops). 2. This affects ArgoCD-internal traffic, not user-
+      facing traffic — lower priority than argocd.cmd-params-cm-server-insecure or cmd-
+      params-cm-disable-auth, but still worth fixing.
 spec:
   failurePolicy: Fail
   matchConstraints:

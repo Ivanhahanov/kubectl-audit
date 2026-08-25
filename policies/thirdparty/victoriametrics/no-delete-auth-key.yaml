@@ -17,6 +17,12 @@ metadata:
       approach) or restricting access via NetworkPolicy covers the same
       gap — so treat this as one missing layer, not proof the endpoint is
       actually reachable by an attacker.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Per this policy's own annotation, a vmauth/vmgateway proxy or NetworkPolicy in
+      front of this component covers the same gap — check for either before treating
+      this as confirmed exposure. 2. If neither exists, confirm whether the delete API
+      is actually reachable from anything untrusted (Service type, NetworkPolicy scope)
+      to judge real urgency.
 spec:
   failurePolicy: Fail
   matchConstraints:

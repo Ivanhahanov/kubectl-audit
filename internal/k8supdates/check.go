@@ -114,7 +114,13 @@ func (c Client) Check(ctx context.Context, detectedVersion, source string) ([]fi
 			Message: fmt.Sprintf("Detected Kubernetes %s (cycle %s), which isn't among the %d release cycles endoflife.date currently tracks for Kubernetes — it's older than any of them, meaning it's been end-of-life for upstream security patches for a long time.",
 				detectedVersion, cycleName, len(releases)),
 			Remediation: "Plan an urgent upgrade path; this version has had no upstream security patches for an extended period.",
-			Source:      source,
+			VerificationSteps: "1. Confirm the detected version string is accurate — a vendor-patched " +
+				"distro that reports a nonstandard GitVersion (e.g. an unusual build suffix) could confuse the " +
+				"release-cycle match against endoflife.date's data. 2. Cross-check against your cloud " +
+				"provider/distro's own support matrix (EKS/GKE/AKS/OpenShift and others sometimes offer paid " +
+				"extended support past what public upstream EOL data reflects) before treating this as an " +
+				"unpatched, unsupported version.",
+			Source: source,
 		})
 		return out, nil
 	}
@@ -130,7 +136,12 @@ func (c Client) Check(ctx context.Context, detectedVersion, source string) ([]fi
 			Message: fmt.Sprintf("Detected Kubernetes %s (cycle %s), which reached end-of-life on %s per endoflife.date — no more upstream security patches.",
 				detectedVersion, cycleName, orUnknown(matched.EolFrom)),
 			Remediation: "Plan an upgrade path to a maintained minor version, or confirm this cluster is on a vendor's paid extended-support track that still backports fixes.",
-			Source:      source,
+			VerificationSteps: "1. Confirm the version detection is accurate and this isn't a vendor fork " +
+				"whose own support lifecycle differs from upstream's. 2. Check whether the cluster is on a " +
+				"paid extended-support track (common on EKS/GKE/AKS/OpenShift) that continues backporting CVE " +
+				"fixes past the community's own EOL date — if so, this is still worth recording but the " +
+				"remediation is \"verify the support contract\", not necessarily an urgent version upgrade.",
+			Source: source,
 		})
 	} else if matched.IsEoas || !matched.IsMaintained {
 		out = append(out, findings.Finding{
@@ -143,7 +154,12 @@ func (c Client) Check(ctx context.Context, detectedVersion, source string) ([]fi
 			Message: fmt.Sprintf("Detected Kubernetes %s (cycle %s) entered end-of-active-support on %s per endoflife.date — active development/feature backports have stopped; verify it's still receiving the security-only patches it's entitled to.",
 				detectedVersion, cycleName, orUnknown(matched.EoasFrom)),
 			Remediation: "Plan an upgrade to a fully-maintained minor version.",
-			Source:      source,
+			VerificationSteps: "1. Same vendor-extended-support caveat as the end-of-life check — verify " +
+				"against your provider/distro's own support matrix. 2. Confirm the cluster is actually still " +
+				"receiving the security-only patches it's nominally entitled to at this support tier — compare " +
+				"the last patch version actually running against what's been published since entering " +
+				"end-of-active-support.",
+			Source: source,
 		})
 	}
 
@@ -158,7 +174,12 @@ func (c Client) Check(ctx context.Context, detectedVersion, source string) ([]fi
 			Message: fmt.Sprintf("Detected Kubernetes %s; %s (released %s) is the latest patch release in the %s cycle per endoflife.date — a patch release can include backported security fixes.",
 				detectedVersion, matched.Latest.Name, orUnknown(matched.Latest.Date), cycleName),
 			Remediation: fmt.Sprintf("Upgrade to %s (or the current latest patch in the %s cycle) to pick up any backported security fixes.", matched.Latest.Name, cycleName),
-			Source:      source,
+			VerificationSteps: "1. Check the actual release notes/changelog for the specific patch version " +
+				"cited to see whether the fixes it contains are security-relevant to this cluster (some patch " +
+				"releases are pure bugfixes with no CVE content) — that changes the urgency, not whether it's " +
+				"a true positive. 2. Confirm there isn't already a scheduled upgrade window that makes this " +
+				"informational rather than time-sensitive.",
+			Source: source,
 		})
 	}
 
@@ -173,7 +194,11 @@ func (c Client) Check(ctx context.Context, detectedVersion, source string) ([]fi
 			Message: fmt.Sprintf("Detected Kubernetes %s (cycle %s); %s is the newest release cycle per endoflife.date.",
 				detectedVersion, cycleName, newestCycle),
 			Remediation: "Not urgent by itself (unlike the findings above, being behind the newest minor isn't a security issue on its own) — factor into normal upgrade planning.",
-			Source:      source,
+			VerificationSteps: "1. Not urgent by itself, per the Message — this is upgrade-planning-cadence " +
+				"information, not a security gap. 2. Check whether skipping straight to the newest cycle is " +
+				"even supported (Kubernetes only officially supports sequential minor-version upgrades, one " +
+				"minor at a time) before treating the version-gap size as the actual remediation timeline.",
+			Source: source,
 		})
 	}
 

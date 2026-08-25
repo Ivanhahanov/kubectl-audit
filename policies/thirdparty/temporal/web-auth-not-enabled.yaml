@@ -21,6 +21,12 @@ metadata:
   # pattern as kyverno.admission-controller-force-failure-policy-ignore —
   # verified this can't false-positive on an unrelated Deployment since
   # the condition requires this specific image name.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live Deployment genuinely lacks TEMPORAL_AUTH_ENABLED=true. 2.
+      Check whether the Web UI is reachable only from a trusted internal network (no
+      public Ingress) — an internal-only UI with no auth is still a real risk (any pod-
+      to-pod or VPN-connected user could reach it) but materially less than a public-
+      facing one.
 spec:
   failurePolicy: Fail
   matchConstraints:

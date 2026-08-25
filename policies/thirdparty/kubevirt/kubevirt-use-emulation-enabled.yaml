@@ -28,6 +28,15 @@ metadata:
   # named "kubevirt", one per KubeVirt install) — like Calico's
   # FelixConfiguration, this is "is emulation enabled cluster-wide," not
   # per-VM.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Weaker-sourced check per its own annotation, though the fact that this field
+      lives under developerConfiguration (KubeVirt's own naming for dev/test-only
+      settings) is a strong corroborating signal that it shouldn't be set in production.
+      2. Confirm whether the cluster's nodes genuinely lack /dev/kvm (e.g. nested
+      virtualization without KVM passthrough, or bare containers with no hardware virt
+      support) — if so, this may be a deliberate, unavoidable trade-off for that
+      environment rather than an oversight, worth documenting as an accepted risk rather
+      than silently disabling it (which would just break VM scheduling entirely).
 spec:
   failurePolicy: Fail
   matchConstraints:

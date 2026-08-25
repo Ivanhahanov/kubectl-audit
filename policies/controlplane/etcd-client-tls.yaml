@@ -9,6 +9,12 @@ metadata:
     audit.k8s-auditor.io/remediation: >-
       Set both --cert-file and --key-file on etcd.
     audit.k8s-auditor.io/cis: "2.1"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Inferred from command-line flags, not node/file access. 2. Confirm both --cert-
+      file and --key-file are genuinely absent (the Message states which) — either alone
+      without the other is still a real TLS misconfiguration, and checking etcd's actual
+      listening config (if you have node access) is more reliable than the flag
+      inference alone.
 spec:
   failurePolicy: Fail
   matchConstraints:

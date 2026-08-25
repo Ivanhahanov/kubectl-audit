@@ -24,6 +24,13 @@ metadata:
   # (staging/src/kubevirt.io/api/core/v1/{types,schema}.go):
   # VirtualMachineInstanceSpec.Volumes []Volume, Volume embeds
   # VolumeSource inline, VolumeSource.HostDisk *HostDisk (json "hostDisk").
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Check the Detected Components table / cluster context for a legitimate
+      infrastructure reason (rare — mostly migration/bootstrap scenarios). 2. Same
+      practical-impact reasoning as workload.no-hostpath-volumes: check which specific
+      node path is exposed and whether it's read-only vs. writable to judge real
+      severity, since this is the KubeVirt-specific equivalent of that same underlying
+      risk.
 spec:
   failurePolicy: Fail
   matchConstraints:

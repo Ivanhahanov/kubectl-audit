@@ -9,6 +9,11 @@ metadata:
     audit.k8s-auditor.io/remediation: >-
       Set --bind-address=127.0.0.1 unless the metrics/healthz endpoint genuinely needs to be reachable off-node.
     audit.k8s-auditor.io/cis: "1.4.2"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Inferred from command-line flags, not node/file access. 2. Test directly: from
+      outside the node, attempt to reach the scheduler's metrics/healthz port on the
+      address it's actually bound to — if unreachable off-node despite the flag
+      inference, practical exposure is lower than the finding implies.
 spec:
   failurePolicy: Fail
   matchConstraints:

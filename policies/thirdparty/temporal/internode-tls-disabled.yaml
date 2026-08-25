@@ -24,6 +24,13 @@ metadata:
   # (Helm's toYaml -> yaml.Marshal sorts map keys), so "enabled" is always
   # the first key emitted directly under "internode:" — verified against
   # the real chart template and values.yaml.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live config genuinely has this set to false. 2. Per Temporal's own
+      docs, running without internode TLS is an explicit accepted trade-off for a fully
+      VPC-isolated deployment — check whether that's genuinely this cluster's situation
+      (a single trusted network with no untrusted tenants) before treating as a
+      straightforward gap; on a shared/multi-tenant cluster this is a real risk
+      regardless.
 spec:
   failurePolicy: Fail
   matchConstraints:

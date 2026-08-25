@@ -19,6 +19,14 @@ metadata:
       default, not something a default install produces. Defense in
       depth independent of admin_key/admin_key_required: even a strong,
       rotated key is reachable from anywhere without this.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live rendered ConfigMap genuinely contains 0.0.0.0/0 or ::/0
+      (kubectl get configmap <name> -o yaml). 2. Check whether the Admin API is also
+      protected by a NetworkPolicy or Service type restricting reachability despite the
+      config-level wide-open setting — a defense-in-depth mitigation that doesn't fix
+      the finding but affects real urgency. Also check admin_key_required/admin_key
+      state (see the sibling apisix.admin-* checks), since this finding explicitly notes
+      it's independent defense-in-depth, not the only layer.
 spec:
   failurePolicy: Fail
   matchConstraints:

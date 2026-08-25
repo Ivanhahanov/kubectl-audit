@@ -17,6 +17,12 @@ metadata:
       kyverno.admission-controller-force-failure-policy-ignore (which
       flags the admission-controller-wide container flag) — this flags
       the same fail-open downgrade set on an individual policy object.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm this is deliberate for a specific, low-risk policy (e.g. a purely
+      informational/audit-only rule) vs. a security-critical policy carelessly set to
+      fail open. 2. Check Kyverno's actual uptime/reliability on this cluster — a
+      Kyverno that's frequently unreachable makes this setting's practical impact much
+      higher than on a stable, highly-available installation.
 spec:
   failurePolicy: Fail
   matchConstraints:

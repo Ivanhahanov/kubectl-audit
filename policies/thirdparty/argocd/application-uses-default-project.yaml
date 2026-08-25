@@ -17,6 +17,13 @@ metadata:
       project's AppProject object currently allows — which, out of the
       box, is the unrestricted wildcard configuration this tool's other
       argocd.appproject-wildcard-* checks flag.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Check what the cluster's actual default AppProject currently allows (kubectl
+      get appproject default -n argocd -o yaml) — if it's already been tightened away
+      from the out-of-the-box wildcard config, this finding's practical risk is much
+      lower than the generic case. 2. Cross-reference with the argocd.appproject-
+      wildcard-* findings on the default AppProject specifically to see if the inherited
+      permissions are actually broad.
 spec:
   failurePolicy: Fail
   matchConstraints:

@@ -17,6 +17,14 @@ metadata:
       at its default-enabled state, whether or not a link has actually
       been created yet (link creation itself isn't admission-visible from
       this object).
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Check whether any public link has actually been created (Metabase
+      Admin > Public Sharing in the UI, if you have access) — this check
+      flags the CAPABILITY being left enabled, not confirmed active
+      exposure; a fresh install with the capability on but zero links
+      created has materially lower real risk. 2. If public sharing is a
+      genuinely needed feature for this deployment, confirm it's a
+      deliberate choice rather than an unreviewed default.
 spec:
   failurePolicy: Fail
   matchConstraints:

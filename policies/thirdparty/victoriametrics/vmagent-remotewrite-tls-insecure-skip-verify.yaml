@@ -15,6 +15,11 @@ metadata:
       write destination with certificate verification disabled is
       vulnerable to a man-in-the-middle attack redirecting or
       intercepting every metric this VMAgent scrapes and forwards.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm this is genuinely set on the live VMAgent object (kubectl get vmagent
+      <name> -o yaml). 2. Check where the remote write destination actually is — a same-
+      cluster, trusted-network destination has lower MITM risk than one crossing an
+      untrusted network, though the setting should still be fixed either way.
 spec:
   failurePolicy: Fail
   matchConstraints:

@@ -104,6 +104,7 @@ func checkSystemMastersUsage(g *Graph, source string) []findings.Finding {
 			fmt.Sprintf("%s %q binds the built-in system:masters group %s. system:masters bypasses RBAC entirely at the authorization layer (it's not a permission grant that can be narrowed) — one binding for cluster bootstrap is expected on self-hosted clusters, but any binding beyond that should be investigated.",
 				bindingKind, bindingName, scope),
 			"Confirm this binding is the expected cluster-bootstrap one (commonly named \"cluster-admin\") and not an additional, avoidable grant to system:masters.",
+			"1. List every system:masters binding on the cluster (`kubectl get clusterrolebindings,rolebindings -A -o json | jq` filtering subjects for system:masters) and confirm there's exactly one, the expected bootstrap one. 2. If more than one exists, identify who/what added the extra binding and why — since system:masters bypasses RBAC entirely, any avoidable additional binding is a full-cluster-compromise blast radius, not a narrow permission grant to review.",
 			source,
 			key,
 		))
@@ -167,18 +168,19 @@ func bindingLabel(via BindingRef) string {
 	return fmt.Sprintf("%s %q", via.BindingKind, via.BindingName)
 }
 
-func finding(policyID, title string, sev findings.Severity, cis []string, ref findings.ResourceRef, message, remediation, source string, discriminator ...string) findings.Finding {
+func finding(policyID, title string, sev findings.Severity, cis []string, ref findings.ResourceRef, message, remediation, verificationSteps, source string, discriminator ...string) findings.Finding {
 	return findings.Finding{
-		ID:          findings.NewID(policyID, ref, discriminator...),
-		PolicyID:    policyID,
-		Title:       title,
-		Severity:    sev,
-		Category:    "rbac",
-		CIS:         cis,
-		Resource:    ref,
-		Message:     message,
-		Remediation: remediation,
-		Source:      source,
+		ID:                findings.NewID(policyID, ref, discriminator...),
+		PolicyID:          policyID,
+		Title:             title,
+		Severity:          sev,
+		Category:          "rbac",
+		CIS:               cis,
+		Resource:          ref,
+		Message:           message,
+		Remediation:       remediation,
+		VerificationSteps: verificationSteps,
+		Source:            source,
 	}
 }
 
@@ -215,6 +217,7 @@ func checkEscalationVerbs(sp *SubjectPermissions, source string) []findings.Find
 				fmt.Sprintf("%s can use the %q verb via %s → %s %q, which can be used to grant itself additional permissions.%s",
 					subjectLabel(sp.Subject), v, bindingLabel(r.Via), r.Via.RoleKind, r.Via.RoleName, subjectScopeNote(sp.Subject)),
 				"Remove escalate/bind/impersonate from this role unless the subject is a trusted, audited controller that genuinely needs it.",
+				"1. Identify who/what actually holds this subject (`kubectl describe "+strings.ToLower(r.Via.BindingKind)+" "+r.Via.BindingName+"`) — a human user, a CI ServiceAccount, or a controller. 2. Check whether it's a well-known, trusted controller that legitimately needs this verb for its own operation (e.g. a GitOps/RBAC-management controller) vs. a broadly-held human or CI identity. 3. If unexpected, confirm the practical exploit path by testing (with appropriate impersonation/authorization) whether the subject can actually self-grant additional permissions, not just that the abstract verb is present.",
 				source,
 				key,
 			))
@@ -249,6 +252,7 @@ func checkExecAccess(sp *SubjectPermissions, source string) []findings.Finding {
 			fmt.Sprintf("%s can create pods/exec, pods/attach, or pods/portforward %s via %s → %s %q, which is equivalent to shell access on any matching pod.%s",
 				subjectLabel(sp.Subject), scope, bindingLabel(r.Via), r.Via.RoleKind, r.Via.RoleName, subjectScopeNote(sp.Subject)),
 			"Restrict pods/exec, pods/attach, and pods/portforward to a small, audited set of subjects, ideally scoped with resourceNames.",
+			"1. Check who holds this subject and whether interactive/CI shell access to pods is a legitimate, documented need (e.g. a debugging tool, a CI runner, a break-glass admin role). 2. Determine which pods this actually reaches — cluster-wide vs. namespace-scoped vs. resourceNames-restricted (see the Message) — the practical risk is far larger cluster-wide. 3. If unexpected, confirm the grant is real (not overridden by an admission webhook or OPA/Kyverno policy) before treating it as exploitable.",
 			source,
 			key,
 		))
@@ -306,6 +310,7 @@ func checkSecretsBreadth(sp *SubjectPermissions, source string) []findings.Findi
 		ref,
 		message,
 		"Scope secret access to a single namespace and, where possible, to specific resourceNames instead of every Secret.",
+		"1. Confirm the scope stated in the Message (cluster-wide vs. N namespaces) against what the subject's actual workload needs. 2. Check whether this is a well-known operator/controller that legitimately needs broad Secret access (a secrets-management operator, an ingress controller reading TLS secrets, external-secrets) vs. an application ServiceAccount that shouldn't have it. 3. If the cluster was also scanned with --read-secret-values, cross-reference: this subject combined with weak/reused-value findings on the Secrets it can read is a materially higher-priority case than either finding alone.",
 		source,
 	)}
 }
@@ -335,6 +340,7 @@ func checkRBACSelfModification(sp *SubjectPermissions, source string) []findings
 			fmt.Sprintf("%s can create/update/patch/delete Roles, ClusterRoles, or *Bindings %s via %s → %s %q, allowing it to grant itself further access.%s",
 				subjectLabel(sp.Subject), scopeLabel(r.Namespace), bindingLabel(r.Via), r.Via.RoleKind, r.Via.RoleName, subjectScopeNote(sp.Subject)),
 			"Remove write access to RBAC resources from this role unless the subject is a trusted RBAC-management controller.",
+			"1. Identify the subject and check whether it's a trusted RBAC-management controller (e.g. a GitOps reconciler, an admin-tooling operator) vs. something else that shouldn't need this. 2. If unexpected, this combined with the escalation-verb or broad-secrets-access checks on the same subject is a much higher-priority finding — check whether they co-occur. 3. Confirm the practical exploit path (can the subject actually create a ClusterRoleBinding granting itself cluster-admin) rather than treating the abstract permission alone as the full risk.",
 			source,
 			key,
 		))
@@ -366,6 +372,7 @@ func checkDefaultServiceAccountBindings(g *Graph, perms map[SubjectKey]*SubjectP
 			ref,
 			fmt.Sprintf("The 'default' ServiceAccount in namespace %q has one or more roles bound to it; every pod in that namespace that doesn't set a dedicated serviceAccountName inherits this access.", ns),
 			"Create a dedicated ServiceAccount per workload and bind roles to it instead of the namespace's default ServiceAccount.",
+			"1. Check whether any pod in this namespace actually uses the default SA implicitly (`kubectl get pods -n "+ns+" -o jsonpath='{.items[*].spec.serviceAccountName}'` — blank or \"default\" means yes). 2. Review exactly what the bound role grants (`kubectl describe rolebinding,clusterrolebinding -n "+ns+"` filtered to the default SA's bindings) — a trivial, low-risk grant (e.g. read-only ConfigMaps) is a much lower priority than a broad one.",
 			source,
 		))
 	}
@@ -392,6 +399,7 @@ func checkAutomountWithSensitiveAccess(g *Graph, perms map[SubjectKey]*SubjectPe
 			ref,
 			fmt.Sprintf("ServiceAccount %q/%q has sensitive permissions (secrets, write access, or RBAC objects) bound to it and does not set automountServiceAccountToken: false, so every pod using it gets a token capable of exercising that access.", sa.Namespace, sa.Name),
 			"Set automountServiceAccountToken: false on the ServiceAccount (or the pod spec) unless the workload genuinely needs to call the API server.",
+			"1. Confirm the ServiceAccount is actually referenced by a running Pod (`kubectl get pods -n "+sa.Namespace+" -o jsonpath='{.items[*].spec.serviceAccountName}'`) — a token automount on an SA nothing currently uses is lower urgency, but still worth fixing before something does. 2. Check whether the application code in those pods genuinely calls the Kubernetes API at all (grep the app/sidecar images or ask the owning team) — if not, disabling automount is a pure, low-risk win regardless of exactly what permissions are bound.",
 			source,
 		))
 	}

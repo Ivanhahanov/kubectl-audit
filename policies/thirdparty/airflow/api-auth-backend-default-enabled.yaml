@@ -17,6 +17,14 @@ metadata:
       access to the REST API — same severity tier as
       airflow.webserver-config-auth-role-public (both are "the whole
       app/API is open" findings).
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live ConfigMap's airflow.cfg genuinely includes this backend
+      (kubectl get configmap <name> -o yaml | grep auth_backends) — Airflow's own docs
+      are explicit that this backend "allows all requests," so if confirmed this is
+      close to definitionally a true positive. 2. Check whether the Airflow REST API is
+      reachable at all from outside the cluster (Service type, Ingress) — an internal-
+      only API still has real risk (any pod-to-pod traffic reaches it) but materially
+      less than one exposed publicly.
 spec:
   failurePolicy: Fail
   matchConstraints:

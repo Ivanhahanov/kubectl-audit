@@ -20,6 +20,14 @@ metadata:
   # a ConfigMap only when apiServer.apiServerConfig/webserver.webserverConfig
   # is set (verified via helm template) — harmless (zero findings) on the
   # common case where a cluster doesn't customize it at all.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live webserver_config.py (if rendered as a ConfigMap, kubectl get
+      configmap <name> -o yaml) genuinely sets AUTH_ROLE_PUBLIC to a non-empty role —
+      per Airflow's own docs, any non-empty value here grants that role to every
+      unauthenticated visitor, so if confirmed this is close to definitionally a true
+      positive. 2. Check what permissions the assigned role actually has (Admin vs. a
+      more limited custom role) to judge real blast radius, though even a limited role
+      granted to anonymous visitors is a serious finding.
 spec:
   failurePolicy: Fail
   matchConstraints:

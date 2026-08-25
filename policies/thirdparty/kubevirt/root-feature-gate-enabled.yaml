@@ -23,6 +23,13 @@ metadata:
       missing hardening step.
   # Cluster-wide singleton config object, same shape as
   # kubevirt.kubevirt-use-emulation-enabled.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm this is genuinely enabled on the live KubeVirt CR (kubectl get kubevirt
+      <name> -n <ns> -o yaml | grep -A5 featureGates). 2. Per this policy's own
+      sourcing, this is a deliberate, explicit opt-out of KubeVirt's secure-by-default
+      posture, not a missing hardening step — if confirmed, this is close to
+      definitionally a true positive; focus verification effort on understanding WHY it
+      was enabled (a specific compatibility need?) rather than whether it's real.
 spec:
   failurePolicy: Fail
   matchConstraints:

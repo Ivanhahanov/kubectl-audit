@@ -10,6 +10,15 @@ metadata:
       Pin the image to an explicit version tag or, preferably, a content
       digest (image@sha256:...) instead of ":latest" or an implicit tag, so
       deployments are reproducible and not silently changed underneath you.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Low severity reflects that this is a supply-chain/reproducibility
+      hygiene issue (unpredictable deploys, harder rollback, "what version is
+      actually running" ambiguity), not a direct exploit — deprioritize
+      relative to workload-security findings on the same manifest. 2. Check
+      the registry/CI practices behind this image: some pipelines push an
+      effectively-immutable image even under a moving tag name, which
+      changes the practical reproducibility risk even though the tag string
+      itself still fails this check.
 spec:
   failurePolicy: Fail
   matchConstraints:

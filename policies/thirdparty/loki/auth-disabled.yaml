@@ -21,6 +21,15 @@ metadata:
       services" — auth_enabled only enforces X-Scope-OrgID-based tenant
       separation between callers who are already past that proxy; it is
       not authentication on its own.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live rendered ConfigMap (`kubectl get configmap <name>
+      -o yaml`) actually contains auth_enabled: false — this scan may be
+      looking at a stale or different manifest than what's deployed. 2.
+      Even when auth_enabled is true, remember Loki has no authentication
+      layer of its own (per its own docs) — confirm there's a genuine
+      authenticating reverse proxy in front of it (check Ingress/gateway
+      config), since that's the real access-control boundary, not this
+      flag alone.
   # config.yaml is the rendered ConfigMap key name — verified directly
   # against production/helm/loki/templates/config.yaml (both grafana/loki
   # and grafana/loki-distributed render the same key). A previous version

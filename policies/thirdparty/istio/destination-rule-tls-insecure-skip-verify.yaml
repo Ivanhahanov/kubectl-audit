@@ -23,6 +23,12 @@ metadata:
   # per-port/per-subset, same "evaluated independently, no merged-
   # effective policy" caveat as istio.destination-rule-tls-disabled and
   # this tool's other istio.* checks (see docs/istio.md's Scope note).
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live object genuinely sets this — same portLevelSettings/subsets
+      override caveat as istio.destination-rule-tls-disabled. 2. This is a more
+      dangerous variant than TLS being fully disabled (traffic looks encrypted but the
+      peer isn't authenticated) — treat with real urgency if confirmed, and check what
+      data flows to this upstream.
 spec:
   failurePolicy: Fail
   matchConstraints:

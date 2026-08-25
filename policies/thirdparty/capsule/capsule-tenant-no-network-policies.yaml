@@ -13,6 +13,12 @@ metadata:
       or the rest of the cluster (same underlying gap as
       netpol-analyzer.no-network-policy-coverage, but at the tenant
       definition instead of per-workload).
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Check whether tenant namespaces already get NetworkPolicy coverage through a
+      different mechanism (a cluster-wide default-deny policy applied outside Capsule,
+      or per-workload policies) — cross-reference with actual netpol-analyzer.no-
+      network-policy-coverage findings for this tenant's real namespaces to see if the
+      gap is realized in practice, not just unconfigured at the Tenant level.
 spec:
   failurePolicy: Fail
   matchConstraints:

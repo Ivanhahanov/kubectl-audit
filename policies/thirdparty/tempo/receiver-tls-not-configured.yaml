@@ -25,6 +25,16 @@ metadata:
       real false-positive risk, so this trades precision for a check that
       won't misfire. A false "pass" is possible if tls: appears elsewhere
       in the config unrelated to the receiver.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. This check is deliberately coarse (see above) — it only confirms
+      whether "tls:" appears ANYWHERE in the config, not whether it's
+      actually attached to the otlp receiver. Manually inspect the real
+      rendered tempo.yaml to confirm TLS genuinely isn't configured for the
+      receiver specifically before treating this as a confirmed gap. 2.
+      Check whether OTLP ingestion is reachable only from trusted in-cluster
+      senders (a NetworkPolicy restricting who can reach the receiver) vs.
+      genuinely exposed — that materially changes urgency even if the
+      config gap is real.
 spec:
   failurePolicy: Fail
   matchConstraints:

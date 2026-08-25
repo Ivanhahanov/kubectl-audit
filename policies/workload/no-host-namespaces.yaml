@@ -11,6 +11,16 @@ metadata:
       to false). Sharing host namespaces lets a compromised container observe
       or interfere with host-level processes and network traffic.
     audit.k8s-auditor.io/cis: "5.2.3,5.2.4,5.2.5"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Check the report's Detected Components table — CNI/CSI/monitoring
+      DaemonSets legitimately need hostNetwork/hostPID/hostIPC and often
+      have a documented, built-in exception (see docs/third-party-operators)
+      — confirm this isn't already an accepted case before treating it as a
+      gap. 2. If this is an application workload (not system
+      infrastructure), it's a real risk: a compromised container in a shared
+      host namespace can observe or interfere with host-level processes or
+      network traffic directly, closer to node compromise than ordinary
+      container escape.
 spec:
   failurePolicy: Fail
   matchConstraints:

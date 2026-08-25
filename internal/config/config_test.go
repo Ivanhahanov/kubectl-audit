@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -30,6 +31,31 @@ func TestDefault_NamespaceGroupThresholdIsOnByDefault(t *testing.T) {
 	}
 	if !config.Default().Output.GroupByNamePatternEnabled() {
 		t.Error("expected GroupByNamePattern to be enabled by default")
+	}
+}
+
+// TestDefault_TriageStateFileHasADefault guards that `kubectl audit triage`
+// works out of the box without requiring a --state flag or audit.yaml
+// entry first.
+func TestDefault_TriageStateFileHasADefault(t *testing.T) {
+	if config.Default().Triage.StateFile == "" {
+		t.Error("expected a default Triage.StateFile")
+	}
+}
+
+// TestDefault_JiraConfigHasNoCredentialField is a structural guard, not a
+// runtime one: JiraConfig must never grow a token/credential field, since
+// audit.yaml is a git-committable file — the PAT belongs in a flag/env var
+// only (see internal/config's JiraConfig doc comment).
+func TestDefault_JiraConfigHasNoCredentialField(t *testing.T) {
+	typ := reflect.TypeOf(config.JiraConfig{})
+	for i := 0; i < typ.NumField(); i++ {
+		name := strings.ToLower(typ.Field(i).Name)
+		for _, bad := range []string{"token", "password", "secret", "credential", "apikey", "pat"} {
+			if strings.Contains(name, bad) {
+				t.Errorf("JiraConfig has a field named %q — credentials must come from a flag/env var, never audit.yaml", typ.Field(i).Name)
+			}
+		}
 	}
 }
 

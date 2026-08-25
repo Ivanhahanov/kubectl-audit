@@ -25,6 +25,13 @@ metadata:
   # Flags both the explicit ALLOW_ANY/ALLOW_ANY_DYNAMIC_DNS values and the
   # field being absent entirely (ALLOW_ANY is the default) — only an
   # explicit REGISTRY_ONLY passes.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live "istio" ConfigMap's mesh config genuinely lacks REGISTRY_ONLY
+      (kubectl get configmap istio -n istio-system -o yaml). 2. Switching to
+      REGISTRY_ONLY is a real operational change (every legitimate external destination
+      needs an explicit ServiceEntry) — before flipping this, check whether the org is
+      prepared for that migration work, since a naive flip can break workloads relying
+      on undeclared external calls.
 spec:
   failurePolicy: Fail
   matchConstraints:

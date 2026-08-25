@@ -18,6 +18,13 @@ metadata:
       kubevirt.root-feature-gate-enabled.
   # ClusterPolicy (cluster-scoped) and Policy (namespaced) share the same
   # spec shape, same resourceRules as this tool's other Kyverno checks.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm this is intentional background-scan-only usage (check for a companion
+      PolicyReport/ClusterPolicyReport being consumed by a dashboard or alerting
+      pipeline) vs. an accidental leftover from testing. 2. If unintentional, this
+      policy provides ZERO admission-time protection despite appearing "installed" —
+      treat with the same urgency as if the policy didn't exist at all, not as a partial
+      mitigation.
 spec:
   failurePolicy: Fail
   matchConstraints:

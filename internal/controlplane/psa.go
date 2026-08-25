@@ -57,6 +57,15 @@ func checkNamespacePSAEnforcement(resources []loader.Resource, apiserverFlags fl
 				"for this namespace.",
 			Remediation: "Set the pod-security.kubernetes.io/enforce label on the namespace (baseline or restricted), " +
 				"or configure cluster-wide PodSecurityConfiguration defaults via --admission-control-config-file.",
+			VerificationSteps: "1. Run `kubectl get ns <name> -o jsonpath='{.metadata.labels}'` yourself to " +
+				"confirm the enforce label is genuinely absent (not just missing from what this scan happened " +
+				"to load). 2. Ask whether this namespace is expected to be short-lived/system-internal " +
+				"(e.g. a CI scratch namespace) where PSA enforcement may be deliberately skipped — that's a " +
+				"legitimate reason to accept the risk, not a false positive, so record it as such rather than " +
+				"dismissing the finding outright. 3. If the cluster IS using --admission-control-config-file " +
+				"but this tool couldn't see the apiserver Pod at all (a managed control plane), this finding " +
+				"could be a false positive — check the Scope section of the report for whether control-plane " +
+				"objects were observed in this scan before trusting it.",
 			Source: r.Source,
 		})
 	}

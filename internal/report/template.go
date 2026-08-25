@@ -55,7 +55,7 @@ type CheckGroup struct {
 	Findings       []findings.Finding
 	// Rows is how the template actually renders "Affected resources" when
 	// UniformMessage is set: findings.Finding rows verbatim, except a group
-	// of findings sharing the same Kind and "name shape" (see nameTemplate)
+	// of findings sharing the same Kind and "name shape" (see NameTemplate)
 	// — at least namespaceGroupThreshold of them — collapses into one
 	// AffectedRow instead of one row each. Nil (falls back to ranging over
 	// Findings, today's behavior) when UniformMessage is empty or
@@ -79,7 +79,7 @@ type AffectedRow struct {
 // RepeatGroup summarizes Count findings sharing a Kind and name shape within
 // one check — same message (the group's UniformMessage), same resource Kind,
 // names either identical or matching the same generated-identifier template
-// (see nameTemplate). Unit is "namespaces" when every collapsed finding is a
+// (see NameTemplate). Unit is "namespaces" when every collapsed finding is a
 // namespaced resource (the per-tenant-namespace-deploying-the-same-manifest
 // shape — Examples then lists distinct namespaces) or "objects" when they're
 // cluster-scoped (e.g. Namespace objects themselves named per-tenant —
@@ -97,7 +97,7 @@ type RepeatGroup struct {
 
 // maxRepeatExamples caps how many example namespaces/object names a
 // collapsed RepeatGroup row prints — a real multi-tenant cluster can have
-// thousands of matching namespaces (see the docstring on nameTemplate), and
+// thousands of matching namespaces (see the docstring on NameTemplate), and
 // printing all of them would defeat the point of collapsing.
 const maxRepeatExamples = 8
 
@@ -118,7 +118,7 @@ var (
 	longDigitRunPattern = regexp.MustCompile(`[0-9]{4,}`)
 )
 
-// nameTemplate normalizes a resource name to a "shape" for grouping: runs
+// NameTemplate normalizes a resource name to a "shape" for grouping: runs
 // that look like a generated/random identifier are replaced with "*", so
 // e.g. "usersvs-0004237b-3813-48ce-a48f-3cabdaeccbea" and
 // "usersvs-0006e164-99bc-4fac-aaec-079df475fa6b" (a real shape seen on a
@@ -131,7 +131,12 @@ var (
 // exact-name matching (e.g. the same Deployment name "app" repeated across
 // several tenant namespaces) a special case of this same mechanism rather
 // than a separate one.
-func nameTemplate(name string) string {
+//
+// Exported for internal/triage, which reuses the exact same clustering
+// signal for its "apply this triage decision to every matching finding"
+// bulk action — the two features share one heuristic rather than each
+// maintaining their own copy.
+func NameTemplate(name string) string {
 	t := uuidPattern.ReplaceAllString(name, "*")
 	t = longHexRunPattern.ReplaceAllString(t, "*")
 	t = longDigitRunPattern.ReplaceAllString(t, "*")
@@ -307,7 +312,7 @@ func groupByCheck(sorted []findings.Finding, namespaceGroupThreshold int, byPatt
 // collapses into one RepeatGroup row; everything else stays one row per
 // finding. The name shape is either the exact Name (byPattern false — the
 // same Deployment name "app" repeated across several tenant namespaces is
-// the canonical case) or nameTemplate(Name) (byPattern true — additionally
+// the canonical case) or NameTemplate(Name) (byPattern true — additionally
 // catches per-tenant resources whose *name itself* is generated, e.g. a
 // Namespace named "usersvs-<uuid>" per tenant, which can never share an
 // exact Name since Namespace objects are cluster-scoped and uniquely
@@ -337,7 +342,7 @@ func groupAffectedResources(fs []findings.Finding, threshold int, byPattern bool
 	for _, f := range fs {
 		shape := f.Resource.Name
 		if byPattern {
-			shape = nameTemplate(f.Resource.Name)
+			shape = NameTemplate(f.Resource.Name)
 		}
 		k := key{f.Resource.Kind, shape}
 		b, ok := buckets[k]
@@ -376,7 +381,7 @@ func groupAffectedResources(fs []findings.Finding, threshold int, byPattern bool
 	for i, f := range fs {
 		shape := f.Resource.Name
 		if byPattern {
-			shape = nameTemplate(f.Resource.Name)
+			shape = NameTemplate(f.Resource.Name)
 		}
 		k := key{f.Resource.Kind, shape}
 		b, isRepeat := collapse[k]

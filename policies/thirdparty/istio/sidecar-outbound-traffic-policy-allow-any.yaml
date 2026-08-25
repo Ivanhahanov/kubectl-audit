@@ -20,6 +20,13 @@ metadata:
       override of whatever the mesh-wide default is (including a
       REGISTRY_ONLY mesh default), the same "operator can explicitly
       switch something off" shape as this tool's other opt-out checks.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Per this policy's own annotation, this only fires on an EXPLICIT ALLOW_ANY —
+      confirm this Sidecar resource is intentionally overriding a REGISTRY_ONLY mesh-
+      wide default (a real, deliberate widening) vs. simply restating a mesh default
+      that was already ALLOW_ANY (less severe, redundant not novel). 2. Check which
+      specific workloads this Sidecar resource selects to scope the practical blast
+      radius.
 spec:
   failurePolicy: Fail
   matchConstraints:

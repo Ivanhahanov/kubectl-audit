@@ -18,6 +18,11 @@ metadata:
       (defaultAuthorizer)." Same underlying risk as
       temporal.authorization-not-configured, for clusters managed by the
       alexandrevilain/temporal-operator CRD instead of the raw Helm chart.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live TemporalCluster object genuinely has this empty/unset (kubectl
+      get temporalcluster <name> -o yaml). 2. Same underlying risk as
+      temporal.authorization-not-configured — if confirmed, treat as a true positive
+      with real no-access-control implications regardless of any other context.
 spec:
   failurePolicy: Fail
   matchConstraints:

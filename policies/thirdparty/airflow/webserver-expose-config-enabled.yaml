@@ -20,6 +20,12 @@ metadata:
   # text blob (verified against the chart's rendered output), not a
   # separate typed field or env var — a regex/contains check against that
   # key is the only way to observe it from a single Kubernetes object.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live airflow.cfg genuinely sets expose_config = True. 2. Per
+      Airflow's own docs, sensitive VALUES are always masked when this is enabled —
+      check what non-sensitive-but-still-useful-to-an-attacker information (hostnames,
+      paths, executor config) is actually exposed to judge real reconnaissance value
+      versus a purely theoretical finding.
 spec:
   failurePolicy: Fail
   matchConstraints:

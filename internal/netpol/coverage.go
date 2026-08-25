@@ -115,7 +115,15 @@ func Analyze(resources []loader.Resource, source string) ([]findings.Finding, er
 				"No NetworkPolicy in namespace %q selects this workload's pods (checked native Kubernetes NetworkPolicy; no Cilium/Calico policy was found for this namespace either): all ingress traffic is unrestricted.",
 				ns),
 			Remediation: "Add a NetworkPolicy (or namespace-wide default-deny policy) that selects this workload to restrict ingress/egress to what's actually needed.",
-			Source:      w.Source,
+			VerificationSteps: "1. Check the report's Detected Components table for Cilium/Calico — this " +
+				"check only confirms *presence* of a CiliumNetworkPolicy/Calico policy object in the namespace, " +
+				"not that it actually covers this workload; a cluster using either at a different scope than " +
+				"this scan observed could produce a false positive here. 2. Assess actual exposure: same-" +
+				"namespace-only traffic from trusted sibling workloads is materially lower risk than an " +
+				"ingress-exposed or cross-namespace-reachable one. 3. If genuinely uncovered and you have " +
+				"cluster access, confirm directly — from another Pod, attempt to reach this workload's Service " +
+				"(`kubectl exec` + curl/nc) to verify traffic really isn't restricted in practice.",
+			Source: w.Source,
 		})
 	}
 	return out, nil

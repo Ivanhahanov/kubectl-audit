@@ -15,6 +15,14 @@ metadata:
       report" — and "Defaults to Audit" when the field is omitted
       entirely, so an unset value is just as non-blocking as an explicit
       Audit.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm whether this policy is intentionally still in an Audit/rollout period
+      (common practice: run Audit first to avoid breaking existing workloads, then flip
+      to Enforce) — check how long it's been installed and whether a PolicyReport shows
+      accumulating violations that were never addressed. 2. Check what specific rule
+      this policy validates — a low-stakes policy left in Audit is lower priority than a
+      security-critical one (e.g. privileged-container blocking) never actually
+      enforced.
 spec:
   failurePolicy: Fail
   matchConstraints:

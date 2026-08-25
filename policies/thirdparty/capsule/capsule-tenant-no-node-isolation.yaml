@@ -14,6 +14,13 @@ metadata:
       clusters already taint control-plane nodes against ordinary
       workloads by default, so treat this as defense-in-depth on top of
       that — not proof tenant workloads are actually running there.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Check whether the cluster already taints control-plane nodes against ordinary
+      workloads (the common default) — per this policy's own annotation, this is
+      defense-in-depth on top of that, not proof tenant workloads are actually running
+      on control-plane nodes. 2. Confirm via kubectl get pods -A -o wide whether any
+      tenant workload is actually scheduled on a control-plane/master node before
+      treating as an active exposure rather than a hygiene gap.
 spec:
   failurePolicy: Fail
   matchConstraints:

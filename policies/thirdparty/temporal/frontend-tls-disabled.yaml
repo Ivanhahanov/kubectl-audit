@@ -15,6 +15,11 @@ metadata:
       plaintext by default, same "operator must explicitly opt in to TLS"
       posture as internode traffic (see
       temporal.internode-tls-disabled).
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live config genuinely has this set to false. 2. Check whether
+      frontend traffic stays within a trusted network boundary (same-cluster, no
+      untrusted hops) — that affects urgency but not whether the finding itself is
+      accurate, since this is Temporal's own default (plaintext) behavior.
 spec:
   failurePolicy: Fail
   matchConstraints:

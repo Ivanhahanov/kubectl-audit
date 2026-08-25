@@ -12,6 +12,15 @@ metadata:
       resource quotas, and ownership all meaningfully harder to reason
       about when every unrelated workload shares one namespace.
     audit.k8s-auditor.io/cis: "5.6.4"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the namespace is genuinely hardcoded in the manifest source,
+      not templated at apply time (e.g. via Helm's -n/.Release.Namespace or
+      Kustomize) — this check already avoids flagging an unset namespace for
+      exactly that reason, but double-check if in doubt. 2. Check whether
+      this is a standalone/example/debug resource vs. a real production
+      workload — low severity reflects this is mostly organizational hygiene
+      (RBAC/NetworkPolicy/quota scoping gets harder as "default" fills up),
+      not a direct security control.
 spec:
   failurePolicy: Fail
   matchConstraints:

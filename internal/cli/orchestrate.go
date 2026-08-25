@@ -629,7 +629,7 @@ func writeOutputs(cfg *config.AuditConfig, result report.Result) error {
 		}
 	}
 	if cfg.Output.Markdown != "" {
-		tplSource, err := loadReportTemplate(cfg.Output.Template)
+		tplSource, err := loadTemplateFile(cfg.Output.Template)
 		if err != nil {
 			return err
 		}
@@ -721,16 +721,19 @@ func toReportSuppressed(in []suppress.Suppressed) []report.SuppressedFinding {
 	return out
 }
 
-// loadReportTemplate reads a custom report.md.tpl if configured; an empty
-// path (the default) tells report.RenderMarkdown to use the embedded
-// default template instead.
-func loadReportTemplate(path string) (string, error) {
+// loadTemplateFile reads a custom template file if one's configured (a
+// report.md.tpl override, or a Jira summary/description template — see
+// resolveJiraConfig); an empty path (the default) tells the caller to fall
+// back to its own embedded default template instead. Read fresh from disk
+// on every call, so editing the file takes effect on the next run, never a
+// rebuild.
+func loadTemplateFile(path string) (string, error) {
 	if path == "" {
 		return "", nil
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return "", fmt.Errorf("reading report template %s: %w", path, err)
+		return "", fmt.Errorf("reading template %s: %w", path, err)
 	}
 	return string(data), nil
 }

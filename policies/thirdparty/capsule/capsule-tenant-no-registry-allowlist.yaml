@@ -13,6 +13,12 @@ metadata:
       example allow-list). Without it, tenant workloads can pull images
       from any registry, including ones the platform doesn't control or
       trust.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Check whether registry access is restricted through a different mechanism (an
+      admission webhook like Kyverno/OPA enforcing image provenance, or network-level
+      egress restriction to specific registry IPs) before treating this as the only
+      control. 2. Assess how much this tenant is trusted — a tenant run by the platform
+      team itself has different risk than an external/less-trusted tenant.
 spec:
   failurePolicy: Fail
   matchConstraints:

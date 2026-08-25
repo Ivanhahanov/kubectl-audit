@@ -9,6 +9,11 @@ metadata:
     audit.k8s-auditor.io/remediation: >-
       Remove --peer-auto-tls=true; use certificates issued by the cluster's own CA instead of self-signed ones.
     audit.k8s-auditor.io/cis: "2.6"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Inferred from command-line flags, not node/file access. 2. Same caveat as etcd-
+      auto-tls (client side): confirm this isn't paired with a proper --peer-cert-
+      file/--peer-key-file already covering peer connections before prioritizing
+      remediation.
 spec:
   failurePolicy: Fail
   matchConstraints:

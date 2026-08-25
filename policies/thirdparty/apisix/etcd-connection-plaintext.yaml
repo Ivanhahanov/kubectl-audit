@@ -27,6 +27,13 @@ metadata:
   # data-sensitivity argument above rests on etcd's own docs, the same
   # cross-project sourcing pattern used by istio.gateway-weak-tls-version
   # (which cites IETF RFC 8996 rather than an Istio-authored warning).
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Weaker-sourced check per its own annotation (APISIX's own examples/chart
+      default to plaintext) — check whether etcd is reachable only over a trusted,
+      isolated network path (same-cluster, no untrusted hops) before treating as urgent.
+      2. Check whether etcd itself has its own authentication configured
+      (etcd.user/password) independent of transport encryption — a separate,
+      complementary control worth checking alongside this one.
 spec:
   failurePolicy: Fail
   matchConstraints:

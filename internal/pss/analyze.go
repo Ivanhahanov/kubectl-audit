@@ -121,6 +121,15 @@ func finding(checkID, level string, result policy.AggregateCheckResult, ref find
 		Remediation: fmt.Sprintf(
 			"See https://kubernetes.io/docs/concepts/security/pod-security-standards/#%s for the full %s profile requirements.",
 			level, level),
+		VerificationSteps: "1. Read the specific forbidden reasons in the Message (e.g. \"privileged\", " +
+			"\"hostNetwork\", \"runAsNonRoot != true\") — each maps to one documented Pod Security Standards " +
+			"rule at the Remediation link; confirm which literal field in the Pod/container spec actually " +
+			"triggered it. 2. Check whether an admission controller (real Pod Security Admission with an " +
+			"enforce label, Kyverno, OPA/Gatekeeper) already blocks this in the live cluster — if so, this is " +
+			"an audit-only finding on a manifest that couldn't actually be applied as-is, still worth fixing " +
+			"but not an active running risk. 3. Check the report's Detected Components table for a documented, " +
+			"expected exception (e.g. a CNI/storage DaemonSet needing hostNetwork) before treating this as a " +
+			"straightforward app-team fix.",
 		Source: source,
 	}
 }

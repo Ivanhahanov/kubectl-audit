@@ -9,6 +9,15 @@ metadata:
     audit.k8s-auditor.io/remediation: >-
       Set spec.tls with at least one entry (hosts + secretName) so traffic
       to this Ingress is served over HTTPS instead of plaintext HTTP.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Check whether TLS is actually terminated upstream instead (e.g. a
+      cloud load balancer or CDN in front of this Ingress, or a service
+      mesh sidecar) — plaintext HTTP from the LB to the Ingress controller
+      is a common, sometimes-accepted internal-network pattern; confirm the
+      real network path before treating this as end-to-end plaintext
+      exposure to the public internet. 2. If genuinely serving public HTTP
+      without TLS anywhere in the path, check what data actually flows
+      through this Ingress to judge real confidentiality impact.
 spec:
   failurePolicy: Fail
   matchConstraints:

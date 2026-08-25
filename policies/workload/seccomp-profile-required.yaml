@@ -11,6 +11,15 @@ metadata:
       Localhost with a vetted profile) at the pod level or on every
       container. Unconfined containers have no syscall filtering.
     audit.k8s-auditor.io/cis: "5.6.2"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Same override-detection nuance as run-as-non-root — read the
+      Message to see whether this is a total absence of a seccomp profile
+      or an explicit dangerous override (e.g. Unconfined at the container
+      level despite a secure pod-level default). 2. Check whether the
+      workload genuinely needs the Unconfined profile (rare — mostly
+      debugging tools or software needing very unusual syscalls) vs. simply
+      never having been configured; the former needs a documented exception,
+      the latter is a straightforward fix.
   # Per-container evaluation, not "pod-level-ok OR every-container-ok": a
   # container's own securityContext.seccompProfile always overrides the
   # pod-level default for that one container (real Kubernetes semantics —

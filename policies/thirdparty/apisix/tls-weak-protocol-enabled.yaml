@@ -18,6 +18,12 @@ metadata:
   # "TLSv1.2"/"TLSv1.3" substrings that legitimately appear in the
   # default value, hence the explicit "TLSv1 followed by a space, quote,
   # or end of string" pattern rather than a plain contains('TLSv1').
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live config genuinely allows the deprecated version cited in the
+      Message. 2. Check whether any real client actually still needs the older protocol
+      (a legacy internal client, an IoT device) — if so, this needs coordinated
+      remediation (client upgrade first), not just a config flip; if not, it's a
+      straightforward fix.
 spec:
   failurePolicy: Fail
   matchConstraints:

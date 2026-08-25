@@ -16,6 +16,13 @@ metadata:
       Weaker-sourced than most checks in this repo (a documented
       safety-mechanism disable, not an explicit "insecure" warning from
       ArgoCD itself) — same tier as istio.gateway-weak-tls-version.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Check whether this was disabled for a genuine reason (e.g. a CRD not yet
+      registered at sync time, a known schema-validation false positive) vs. blanket
+      copy-paste. 2. Weaker-sourced per this policy's own annotation — assess whether
+      malformed manifests reaching this cluster is a realistic concern given the
+      Application's actual source (a tightly-controlled internal repo vs. one with
+      broader contributor access).
 spec:
   failurePolicy: Fail
   matchConstraints:

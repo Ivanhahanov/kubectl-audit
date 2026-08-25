@@ -15,6 +15,14 @@ metadata:
       Migrate this manifest to apiVersion: networking.k8s.io/v1. The
       extensions/v1beta1 and networking.k8s.io/v1beta1 Ingress APIs were
       removed in Kubernetes 1.22 and will be rejected by any current cluster.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Per this policy's own comment, this can only fire against a
+      static-manifest scan of stale YAML — a live 1.22+ cluster physically
+      cannot serve these API versions, so confirm you're looking at a
+      GitOps repo or CI artifact, not something already running. 2. Low
+      severity/urgency reflects that the practical risk is a broken
+      `kubectl apply` on the next attempt, not an active security exposure
+      — still worth fixing before someone hits it.
 spec:
   failurePolicy: Fail
   matchConstraints:

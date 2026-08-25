@@ -124,16 +124,17 @@ func evalPolicy(p *CompiledPolicy, res loader.Resource, gvk schema.GroupVersionK
 		}
 
 		out = append(out, findings.Finding{
-			ID:          findings.NewID(p.Meta.ID, ref, v.Expression),
-			PolicyID:    p.Meta.ID,
-			Title:       p.Meta.Title,
-			Severity:    p.Meta.Severity,
-			Category:    p.Meta.Category,
-			CIS:         p.Meta.CIS,
-			Resource:    ref,
-			Message:     message,
-			Remediation: p.Meta.Remediation,
-			Source:      res.Source,
+			ID:                findings.NewID(p.Meta.ID, ref, v.Expression),
+			PolicyID:          p.Meta.ID,
+			Title:             p.Meta.Title,
+			Severity:          p.Meta.Severity,
+			Category:          p.Meta.Category,
+			CIS:               p.Meta.CIS,
+			Resource:          ref,
+			Message:           message,
+			Remediation:       p.Meta.Remediation,
+			VerificationSteps: p.Meta.VerificationSteps,
+			Source:            res.Source,
 		})
 	}
 	return out

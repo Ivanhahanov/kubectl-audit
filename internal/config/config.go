@@ -224,6 +224,54 @@ type ExclusionRule struct {
 	Reason string `json:"reason"`
 }
 
+// JiraConfig points `kubectl audit triage jira-sync` at a Jira Server/Data
+// Center instance. Deliberately has no credential field: the Personal
+// Access Token comes from the --jira-token flag or the
+// KUBECTL_AUDIT_JIRA_TOKEN environment variable only — this file is the
+// same git-committable audit.yaml every other config in this package
+// lives in, and a secret has no business there.
+type JiraConfig struct {
+	// BaseURL is the Jira instance root, e.g. "https://jira.example.com"
+	// (no trailing /rest/... path — jira-sync appends that itself).
+	BaseURL string `json:"baseUrl,omitempty"`
+	// ProjectKey is the Jira project new issues are created in (e.g. "SEC").
+	ProjectKey string `json:"projectKey,omitempty"`
+	// IssueType is the Jira issue type name for created issues (e.g. "Bug",
+	// "Vulnerability" — whatever this Jira project's workflow expects).
+	IssueType string `json:"issueType,omitempty"`
+	// SummaryTemplate/DescriptionTemplate are paths to external Go
+	// text/template files that fully replace the built-in issue summary/
+	// description — e.g. to write them in a different language, or with
+	// your own structure. Empty uses the embedded default (see
+	// `kubectl-audit triage jira template dump`). Read fresh from disk on
+	// every run — editing the file takes effect immediately, no rebuild.
+	SummaryTemplate     string `json:"summaryTemplate,omitempty"`
+	DescriptionTemplate string `json:"descriptionTemplate,omitempty"`
+	// ExtraLabels are static labels added to every created issue beyond
+	// the ones this tool derives automatically (severity, category, your
+	// triage tags) — e.g. a team or queue label your Jira project expects.
+	ExtraLabels []string `json:"extraLabels,omitempty"`
+	// CustomFields are merged into every created issue's Jira fields,
+	// keyed by Jira field ID (e.g. "customfield_10050"). A string value is
+	// rendered as a Go template (same data as SummaryTemplate/
+	// DescriptionTemplate — see internal/triage.RenderCustomFields), so it
+	// can reference finding/triage data dynamically; any other
+	// JSON-shaped value (a number, bool, or an object like {value: Prod}
+	// for a Jira select-list field) is sent as-is. Like everything else in
+	// this file, audit.yaml is git-committable — nothing secret belongs
+	// in a custom field value.
+	CustomFields map[string]any `json:"customFields,omitempty"`
+}
+
+// TriageConfig configures `kubectl audit triage` — see docs/triage.md.
+type TriageConfig struct {
+	// StateFile is where triage decisions (status/notes/tags/Jira links)
+	// are persisted — a local, git-diffable YAML file, not a database. See
+	// internal/triage.State.
+	StateFile string     `json:"stateFile,omitempty"`
+	Jira      JiraConfig `json:"jira,omitempty"`
+}
+
 // ComponentsConfig lets a user extend this tool's built-in third-party
 // component inventory (see internal/thirdparty) without forking or
 // rebuilding — the same audit.yaml a krew-installed user already edits,
@@ -264,6 +312,8 @@ type AuditConfig struct {
 	// Components extends the built-in third-party component inventory —
 	// see ComponentsConfig.
 	Components ComponentsConfig `json:"components,omitempty"`
+	// Triage configures `kubectl audit triage` — see TriageConfig.
+	Triage TriageConfig `json:"triage,omitempty"`
 }
 
 // Default returns an AuditConfig with sane production defaults.
@@ -290,6 +340,9 @@ func Default() *AuditConfig {
 		},
 		Compliance: ComplianceConfig{
 			Frameworks: []string{"cis"},
+		},
+		Triage: TriageConfig{
+			StateFile: "triage-state.yaml",
 		},
 	}
 }

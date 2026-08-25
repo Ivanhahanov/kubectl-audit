@@ -12,6 +12,14 @@ metadata:
       typically grant far more than intended (e.g. "*" resources includes
       secrets).
     audit.k8s-auditor.io/cis: "5.1.3"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Check which specific verbs/resources/apiGroups the wildcard
+      actually expands to on this cluster — a wildcard resources grant on a
+      Role scoped to one narrow, non-sensitive apiGroup is materially
+      narrower in practice than it looks syntactically. 2. Cross-reference
+      with other rbac-analyzer findings for the same subject (escalation
+      verbs, broad Secrets access) — a wildcard combined with either of
+      those is a much higher-priority combination than the wildcard alone.
 spec:
   failurePolicy: Fail
   matchConstraints:

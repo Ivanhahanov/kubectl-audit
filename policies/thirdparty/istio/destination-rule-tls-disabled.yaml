@@ -18,6 +18,12 @@ metadata:
   # per-port/per-subset, same "evaluated independently, no merged-effective
   # policy" caveat as this tool's other istio.* checks (see the Scope
   # section and docs/istio.md).
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live object genuinely sets this at the top level — per this
+      policy's own annotation, portLevelSettings/subsets can override it independently,
+      so also check those before concluding the effective behavior. 2. Check whether
+      plaintext to this specific upstream is a deliberate, documented choice (e.g. a
+      legacy backend that can't do TLS) vs. an unreviewed default.
 spec:
   failurePolicy: Fail
   matchConstraints:

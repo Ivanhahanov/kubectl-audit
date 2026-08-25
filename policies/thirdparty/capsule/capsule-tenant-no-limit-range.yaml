@@ -12,6 +12,12 @@ metadata:
       individual containers in the tenant's namespaces have no default or
       maximum CPU/memory constraint (a per-namespace floor complementing
       workload.resource-limits-required's per-container check).
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Check whether the tenant's namespaces already have a LimitRange applied through
+      some other mechanism (a separately-managed GitOps object, not provisioned via this
+      Tenant field) before treating as a full gap. 2. Assess actual noisy-neighbor risk
+      on this specific tenant — a low-usage/dev tenant is lower priority than one
+      sharing nodes with production tenants.
 spec:
   failurePolicy: Fail
   matchConstraints:

@@ -12,6 +12,14 @@ metadata:
       bypassing normal API server admission control and authorization —
       equivalent to direct kubelet access on the node.
     audit.k8s-auditor.io/cis: "5.1.10"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Identify the subject bound and confirm a genuine need — legitimate
+      cases are rare, mostly monitoring/debugging tools that deliberately
+      proxy through nodes. 2. If unexpected, remember nodes/proxy is
+      equivalent to direct kubelet API access: confirm what the kubelet API
+      actually exposes on this cluster (container logs, exec, metrics,
+      depending on kubelet auth config) to scope the real, concrete impact
+      rather than treating it as abstractly "high".
 spec:
   failurePolicy: Fail
   matchConstraints:

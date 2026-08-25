@@ -11,6 +11,11 @@ metadata:
       ResourceQuota in every namespace it creates for this tenant. Without
       it, the tenant has no ceiling on aggregate CPU/memory/object-count
       consumption and can affect other tenants sharing the cluster.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Check whether the tenant's namespaces already have a ResourceQuota applied
+      through some other mechanism outside this Tenant field. 2. Assess actual cluster
+      capacity risk: a tenant on a cluster with abundant headroom and few tenants has
+      lower urgency than one on a tightly-packed, many-tenant shared cluster.
 spec:
   failurePolicy: Fail
   matchConstraints:

@@ -16,6 +16,13 @@ metadata:
       (which can contain secrets, tokens, or PII) can otherwise be
       intercepted or redirected via a MITM impersonating the log
       destination.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Identify which specific output type fired (named in the Message)
+      and confirm the destination is genuinely a remote/off-cluster
+      endpoint, not e.g. a loopback/sidecar collector where the practical
+      MITM risk is much lower. 2. Check what data actually flows through
+      this output — logs containing secrets, tokens, or PII make this a
+      higher-priority fix than a purely operational metrics/trace stream.
   # Covers http, es (Elasticsearch — json tag "es", not "elasticsearch"),
   # forward, splunk, loki, influxDB (json tag "influxDB"), opensearch
   # (json tag "opensearch", not "open_search"), opentelemetry (json tag

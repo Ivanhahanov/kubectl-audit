@@ -15,6 +15,13 @@ metadata:
       Skipping verification allows a man-in-the-middle to impersonate
       Vault and intercept or tamper with every secret this connection
       fetches.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm this is genuinely set on the live object (`kubectl get
+      vaultconnection <name> -o yaml`). 2. Check whether Vault is reachable
+      only over a trusted, isolated network path (e.g. same-cluster, no
+      untrusted hops) — that doesn't excuse the finding, but it affects how
+      urgently the MITM risk needs addressing versus a connection crossing
+      an untrusted network.
 spec:
   failurePolicy: Fail
   matchConstraints:

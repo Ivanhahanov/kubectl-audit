@@ -170,12 +170,13 @@ func parseFlags(command, args []string) flags {
 // check is one flag-based CIS control, evaluated against one component's
 // parsed flags.
 type check struct {
-	ID          string
-	Component   string
-	CIS         string // CIS Kubernetes Benchmark v2.0.1 control ID
-	Title       string
-	Severity    findings.Severity
-	Remediation string
+	ID                string
+	Component         string
+	CIS               string // CIS Kubernetes Benchmark v2.0.1 control ID
+	Title             string
+	Severity          findings.Severity
+	Remediation       string
+	VerificationSteps string
 	// Eval reports whether the flags pass the check (ok) and, when they
 	// don't, a sentence describing what was actually observed.
 	Eval func(f flags) (ok bool, detail string)
@@ -204,16 +205,17 @@ func (c check) evaluate(f flags, ref findings.ResourceRef, source string) (findi
 		"[indirect signal — inferred from the %s static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access] %s",
 		componentBinary(c.Component), detail)
 	return findings.Finding{
-		ID:          findings.NewID(c.ID, ref),
-		PolicyID:    c.ID,
-		Title:       c.Title,
-		Severity:    c.Severity,
-		Category:    "control-plane-config",
-		CIS:         []string{c.CIS},
-		Resource:    ref,
-		Message:     msg,
-		Remediation: c.Remediation,
-		Source:      source,
+		ID:                findings.NewID(c.ID, ref),
+		PolicyID:          c.ID,
+		Title:             c.Title,
+		Severity:          c.Severity,
+		Category:          "control-plane-config",
+		CIS:               []string{c.CIS},
+		Resource:          ref,
+		Message:           msg,
+		Remediation:       c.Remediation,
+		VerificationSteps: c.VerificationSteps,
+		Source:            source,
 	}, true
 }
 

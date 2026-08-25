@@ -9,6 +9,11 @@ metadata:
     audit.k8s-auditor.io/remediation: >-
       Set --etcd-cafile to the CA that issued etcd's serving certificate.
     audit.k8s-auditor.io/cis: "1.2.26"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Inferred from command-line flags, not node/file access. 2. If you can check
+      apiserver logs, confirm the apiserver's connection to etcd is actually performing
+      certificate validation (a TLS handshake error would appear there if the CA file
+      were missing/wrong) rather than relying on the flag's presence alone.
 spec:
   failurePolicy: Fail
   matchConstraints:

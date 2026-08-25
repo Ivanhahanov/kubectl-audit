@@ -9,6 +9,12 @@ metadata:
     audit.k8s-auditor.io/remediation: >-
       Set --root-ca-file to the cluster's root CA, which is distributed into every ServiceAccount's projected volume.
     audit.k8s-auditor.io/cis: "1.3.5"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Inferred from command-line flags, not node/file access. 2. Confirm the
+      practical symptom: check whether ServiceAccount token projected volumes on real
+      workloads actually contain a usable CA bundle for validating the apiserver's
+      certificate — a missing/wrong bundle is the concrete consequence of this being
+      misconfigured.
 spec:
   failurePolicy: Fail
   matchConstraints:

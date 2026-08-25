@@ -17,6 +17,13 @@ metadata:
       always hidden regardless, per Airflow's own docs — this only
       controls the extra-JSON keys and Variables).
   # Same ConfigMap-content pattern as airflow.webserver-expose-config-enabled.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live config (kubectl get configmap <name> -o yaml) genuinely sets
+      this to False. 2. Note that per Airflow's own docs, Connection passwords are
+      ALWAYS hidden regardless of this setting — check specifically what
+      Variables/Connection extra-JSON fields actually contain in this deployment before
+      assuming maximum severity; a Connection whose extra JSON holds no secrets has
+      lower real impact.
 spec:
   failurePolicy: Fail
   matchConstraints:

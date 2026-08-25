@@ -4,9 +4,10 @@
 // admissionregistration.k8s.io/v1 ValidatingAdmissionPolicy YAML, the exact
 // same files can be `kubectl apply -f`'d to enforce them in-cluster.
 //
-// Audit-specific metadata (severity, category, remediation, CIS control
-// refs) is stashed in metadata.annotations under the audit.k8s-auditor.io/
-// prefix, so it round-trips through a real apiserver untouched.
+// Audit-specific metadata (severity, category, remediation, verification
+// steps, CIS control refs) is stashed in metadata.annotations under the
+// audit.k8s-auditor.io/ prefix, so it round-trips through a real apiserver
+// untouched.
 package engine
 
 import (
@@ -23,22 +24,24 @@ import (
 )
 
 const (
-	AnnotationSeverity    = "audit.k8s-auditor.io/severity"
-	AnnotationCategory    = "audit.k8s-auditor.io/category"
-	AnnotationRemediation = "audit.k8s-auditor.io/remediation"
-	AnnotationCIS         = "audit.k8s-auditor.io/cis"
-	AnnotationTitle       = "audit.k8s-auditor.io/title"
+	AnnotationSeverity          = "audit.k8s-auditor.io/severity"
+	AnnotationCategory          = "audit.k8s-auditor.io/category"
+	AnnotationRemediation       = "audit.k8s-auditor.io/remediation"
+	AnnotationCIS               = "audit.k8s-auditor.io/cis"
+	AnnotationTitle             = "audit.k8s-auditor.io/title"
+	AnnotationVerificationSteps = "audit.k8s-auditor.io/verification-steps"
 )
 
 // PolicyMeta carries the audit-specific metadata read from a policy's
 // annotations.
 type PolicyMeta struct {
-	ID          string
-	Title       string
-	Severity    findings.Severity
-	Category    string
-	Remediation string
-	CIS         []string
+	ID                string
+	Title             string
+	Severity          findings.Severity
+	Category          string
+	Remediation       string
+	VerificationSteps string
+	CIS               []string
 }
 
 // ParsePolicyDocs decodes a (possibly multi-document) YAML/JSON byte stream
@@ -79,11 +82,12 @@ func ParsePolicyDocs(source string, data []byte) ([]*admissionregistrationv1.Val
 func ExtractMeta(policy *admissionregistrationv1.ValidatingAdmissionPolicy) PolicyMeta {
 	ann := policy.Annotations
 	meta := PolicyMeta{
-		ID:          policy.Name,
-		Title:       policy.Name,
-		Severity:    findings.ParseSeverity(ann[AnnotationSeverity]),
-		Category:    ann[AnnotationCategory],
-		Remediation: ann[AnnotationRemediation],
+		ID:                policy.Name,
+		Title:             policy.Name,
+		Severity:          findings.ParseSeverity(ann[AnnotationSeverity]),
+		Category:          ann[AnnotationCategory],
+		Remediation:       ann[AnnotationRemediation],
+		VerificationSteps: ann[AnnotationVerificationSteps],
 	}
 	if t, ok := ann[AnnotationTitle]; ok && t != "" {
 		meta.Title = t

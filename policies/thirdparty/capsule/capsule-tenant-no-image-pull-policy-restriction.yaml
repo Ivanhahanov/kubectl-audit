@@ -14,6 +14,13 @@ metadata:
       tenant's workload could reference an image tag already cached on a
       shared node from a different tenant's private-registry pull,
       bypassing registry access control entirely.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Check whether this cluster actually runs multiple tenants on shared nodes (vs.
+      dedicated node pools per tenant, via capsule-tenant-no-node-isolation) — the
+      image-cache-bypass risk this protects against only applies when tenants genuinely
+      share nodes. 2. Low severity reflects a narrow, specific attack requiring an
+      already-cached image and knowledge of its tag — deprioritize relative to broader
+      tenant-isolation gaps (RBAC, network) on the same tenant.
 spec:
   failurePolicy: Fail
   matchConstraints:

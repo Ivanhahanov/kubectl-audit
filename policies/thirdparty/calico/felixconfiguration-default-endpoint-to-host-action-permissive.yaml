@@ -16,6 +16,14 @@ metadata:
       processing, or RETURN to accept packets from workloads that pass
       through untouched." Setting this to Accept or Return is an explicit
       opt-out of Calico's own default workload-to-host traffic block.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Check whether this was set deliberately for a specific operational
+      reason (e.g. a monitoring agent needing to reach a host-local
+      service) vs. a blanket, unreviewed override. 2. Confirm the
+      practical exposure: what host-local services/ports are actually
+      listening and reachable if workload-to-host traffic is allowed — a
+      host with no sensitive local listeners has lower practical risk
+      despite the permissive setting.
   # FelixConfiguration is a cluster-wide singleton, same shape as the
   # existing wireguard-disabled check. Felix's own accepted-value CRD
   # pattern is case-insensitive (^(?i)(Drop|Accept|Return)?$), hence the

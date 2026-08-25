@@ -28,6 +28,13 @@ metadata:
   # of who's auditing it, and it staying in the chart's source at all is
   # exactly why this keeps mattering (`helm install` with no override
   # ships it as-is).
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Deliberately narrow, exact-literal match (see this policy's own annotation) —
+      false positives are essentially impossible. Confirm the live config still contains
+      one of these exact keys. 2. If confirmed, treat as an active compromise: these
+      keys are public knowledge (shipped in the chart's own docs), so anyone who found
+      this Admin API port already effectively has full control-plane access — rotate
+      immediately and audit for any unauthorized route/upstream/consumer changes.
 spec:
   failurePolicy: Fail
   matchConstraints:

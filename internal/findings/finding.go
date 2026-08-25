@@ -99,7 +99,14 @@ type Finding struct {
 	Resource    ResourceRef `json:"resource"`
 	Message     string      `json:"message"`
 	Remediation string      `json:"remediation,omitempty"`
-	Source      string      `json:"source,omitempty"`
+	// VerificationSteps tells a human triaging this finding how to confirm
+	// it's a true positive in their specific environment before acting on
+	// it (e.g. "check whether this Service is actually internet-reachable"
+	// rather than assuming the worst from the static manifest alone) — see
+	// docs/triage.md. Distinct from Remediation, which says how to fix a
+	// confirmed issue, not how to confirm it in the first place.
+	VerificationSteps string `json:"verificationSteps,omitempty"`
+	Source            string `json:"source,omitempty"`
 }
 
 // NewID computes a stable, content-addressed finding ID from the policy,

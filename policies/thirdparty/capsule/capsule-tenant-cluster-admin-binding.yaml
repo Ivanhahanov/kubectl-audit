@@ -12,6 +12,11 @@ metadata:
       need. A tenant subject with cluster-admin defeats tenant isolation
       entirely — the same concern as rbac.no-cluster-admin-binding, applied
       to bindings Capsule synchronizes for a tenant.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live Tenant object genuinely has this binding (kubectl get tenant
+      <name> -o yaml). 2. Identify who the actual bound subjects are — a small, audited
+      set of platform-team break-glass identities is a materially different finding than
+      a broad tenant-user group.
 spec:
   failurePolicy: Fail
   matchConstraints:

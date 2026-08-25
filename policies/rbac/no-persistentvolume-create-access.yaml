@@ -13,6 +13,15 @@ metadata:
       node's filesystem even when workload.no-hostpath-volumes blocks
       hostPath volumes at the Pod level directly.
     audit.k8s-auditor.io/cis: "5.1.9"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Identify the subject bound and confirm it's a trusted storage-
+      provisioning controller (e.g. the cluster's CSI provisioner) vs.
+      something else. 2. If unexpected, treat this as a hostPath-volume
+      risk via a different path: PersistentVolume create access can
+      reference a hostPath and reach the node's filesystem even on a
+      cluster where workload.no-hostpath-volumes already blocks hostPath at
+      the Pod level directly — check whether that Pod-level control is
+      actually being bypassed this way.
 spec:
   failurePolicy: Fail
   matchConstraints:

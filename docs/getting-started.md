@@ -59,6 +59,7 @@ kubectl audit scan --frameworks cis,fstec,nsa
 | `kubectl audit policy list` | List every policy that would load for a scan, with severity/category/CIS refs. |
 | `kubectl audit rbac analyze` | Standalone RBAC role-model + least-privilege report (no workload policies, no compliance scorecards). |
 | `kubectl audit template dump` | Write the built-in `report.md.tpl` to disk as a starting point for `--report-template` — see [Report Templates]({{ '/report-templates/' | relative_url }}). |
+| `kubectl audit triage` | Interactive TUI to review `findings.json`, record confirmed/false-positive/won't-fix decisions, and export or push confirmed findings to Jira — see [Triage]({{ '/triage/' | relative_url }}). |
 | `kubectl audit version` | Print the build version. |
 
 Run any command with `--help` for its full flag list — each command only shows the flags actually

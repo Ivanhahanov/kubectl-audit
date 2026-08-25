@@ -255,7 +255,13 @@ func checkStaleSecrets(resources []loader.Resource, source string, now time.Time
 				ageDays, ts.Time.Format("2006-01-02"),
 			),
 			Remediation: "Rotate this credential if it's used for authentication, and consider automated rotation for anything with a realistic compromise-and-reuse risk.",
-			Source:      source,
+			VerificationSteps: "1. Check whether this Secret is actually used for live authentication at all " +
+				"— some long-lived Secrets (root CA material, a one-time bootstrap token) genuinely don't need " +
+				"rotation, per the Message's own caveat. 2. If it is an active credential, ask the owning team " +
+				"whether it's already covered by an external rotation mechanism (Vault dynamic secrets, " +
+				"external-secrets sync, cert-manager) that simply doesn't update this object's " +
+				"creationTimestamp when it rotates the underlying value.",
+			Source: source,
 		})
 	}
 	return out
@@ -286,7 +292,19 @@ func checkWeakValues(values []secretValue, source string) []findings.Finding {
 				v.key, n, entropyOrZero(n, v.decoded),
 			),
 			Remediation: "Replace this value with a real, randomly-generated credential (e.g. 32+ random bytes from a CSPRNG) if it's genuinely in use for authentication.",
-			Source:      source,
+			VerificationSteps: fmt.Sprintf(
+				"1. This heuristic only ever sees length/entropy, never the value itself (see the package's own "+
+					"anti-leak guarantee) — as the person triaging, decode the value yourself in a secure "+
+					"terminal (`kubectl get secret <name> -n <ns> -o jsonpath='{.data.%s}' | base64 -d`) to "+
+					"confirm it's genuinely a short/low-entropy credential and not, say, a base64-encoded "+
+					"binary blob the heuristic simply misjudged. 2. Check whether this is a live, in-use value "+
+					"or a placeholder that gets overridden by an external-secrets/Vault sync before the "+
+					"workload ever reads it. 3. If confirmed real and weak, treat as urgent: check auth/audit "+
+					"logs for whether it's already been used to authenticate anywhere, to judge whether "+
+					"rotation alone suffices or a wider incident response is warranted.",
+				v.key,
+			),
+			Source: source,
 		})
 	}
 	return out
@@ -384,7 +402,14 @@ func checkReusedValues(values []secretValue, source string) []findings.Finding {
 					v.key, strings.Join(others, ", "),
 				),
 				Remediation: "Give each Secret its own independently-generated value — a shared credential turns a single leak into a multi-object compromise.",
-				Source:      source,
+				VerificationSteps: "1. Check whether the objects cited in the Message are siblings of the " +
+					"same application by design (e.g. a StatefulSet's replication password IS supposed to be " +
+					"identical across every replica's Secret) — that's an intentional, lower-risk pattern, not " +
+					"a leak. 2. If the objects belong to unrelated apps/teams, this is a genuine cross-blast-" +
+					"radius risk — trace which workloads actually mount each cited Secret " +
+					"(`kubectl get pods -A -o json | jq` filtering volumes/envFrom for the Secret name) to " +
+					"scope the true impact of a single leak before prioritizing remediation.",
+				Source: source,
 			})
 		}
 	}

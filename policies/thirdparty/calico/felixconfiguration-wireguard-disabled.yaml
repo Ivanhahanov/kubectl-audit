@@ -14,6 +14,14 @@ metadata:
       (verified against Felix's own source, config_params.go:
       WireguardEnabled bool `config:"bool;false"`). A dual-stack cluster
       should also set wireguardEnabledV6 for IPv6 traffic.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Check whether pod-to-pod traffic already crosses only a trusted,
+      physically-isolated network (e.g. all nodes in one private VPC with
+      no untrusted L2 access) — WireGuard protects against on-the-wire
+      interception, which matters less on a fully isolated network than a
+      shared/multi-tenant one. 2. If this is a dual-stack cluster, also
+      check wireguardEnabledV6 — IPv6 traffic isn't covered by this flag
+      alone.
   # FelixConfiguration is a cluster-wide singleton (conventionally named
   # "default"), so this check is really "is encryption enabled
   # cluster-wide," not per-workload — still a single object's field,

@@ -11,6 +11,15 @@ metadata:
       instead to expose the port; binding a hostPort ties the pod to a
       specific node and lets it claim a port on the host network namespace.
     audit.k8s-auditor.io/cis: "5.2.12"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Check whether this is a deliberate, documented pattern (rare, but
+      sometimes intentional for specific networking needs like a
+      node-local agent) vs. leftover/copy-pasted from an older manifest that
+      predates using a Service. 2. A hostPort pins the pod to a specific
+      node and can cause scheduling conflicts or an availability issue
+      between pods competing for the same port — check whether that's
+      already caused a real operational problem on this cluster as a
+      secondary signal of urgency.
 spec:
   failurePolicy: Fail
   matchConstraints:

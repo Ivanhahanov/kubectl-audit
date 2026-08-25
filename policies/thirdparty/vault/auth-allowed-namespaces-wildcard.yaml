@@ -18,6 +18,14 @@ metadata:
       namespace authenticate via this method's Vault role/policy — the
       same cross-tenant-authorization-boundary concern this tool's ArgoCD
       AppProject wildcard checks flag.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm whether this is genuinely a multi-tenant cluster where any
+      namespace being able to use this auth method matters, or a single-
+      tenant/platform-team-only cluster where the practical blast radius is
+      smaller. 2. Check what Vault role/policy this VaultAuth method
+      actually grants access to — a wildcard on a method scoped to a
+      narrow, low-sensitivity Vault path is materially lower risk than one
+      granting broad secret access.
 spec:
   failurePolicy: Fail
   matchConstraints:

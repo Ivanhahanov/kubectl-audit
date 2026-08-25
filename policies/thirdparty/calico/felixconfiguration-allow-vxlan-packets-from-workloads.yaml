@@ -17,6 +17,15 @@ metadata:
       malicious or compromised workload can encapsulate traffic in VXLAN
       to smuggle it past NetworkPolicy enforcement that only inspects the
       inner, unencapsulated packet.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Check whether this cluster actually runs VXLAN encapsulation mode
+      at all (the IPPool's encapsulation setting) — if it doesn't, this
+      flag has no practical effect regardless of its value. 2. If VXLAN is
+      genuinely in use, confirm whether any workload could plausibly craft
+      raw VXLAN-encapsulated packets (needs NET_RAW or a similar
+      capability) — a real bypass technique, but one that needs a specific
+      capability on the attacker's side, not something any pod can do by
+      default.
 spec:
   failurePolicy: Fail
   matchConstraints:

@@ -20,6 +20,14 @@ metadata:
       than a higher severity — treat this as "the auth/authz boundary is
       not configured," not a confirmed "requests are unauthenticated"
       claim.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Per this policy's own annotation, the operator's exact behavior
+      with no gateway deployed at all hasn't been independently confirmed
+      — verify directly by checking whether a lokistack-gateway Pod/Service
+      actually exists and enforces anything (`kubectl get pods -l
+      app.kubernetes.io/component=lokistack-gateway`). 2. Check whether
+      this is an OpenShift cluster using the openshift-logging tenant mode,
+      which has different defaults/behavior than static or dynamic mode.
 spec:
   failurePolicy: Fail
   matchConstraints:

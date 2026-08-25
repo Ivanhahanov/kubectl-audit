@@ -9,6 +9,12 @@ metadata:
     audit.k8s-auditor.io/remediation: >-
       Set --audit-log-path (and an --audit-policy-file) so API requests are logged.
     audit.k8s-auditor.io/cis: "1.2.16"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Inferred from command-line flags, not node/file access — cross-check if
+      possible. 2. Confirm whether audit logs are captured through an alternate
+      mechanism this check can't see (a managed control plane's own audit trail, a
+      sidecar/log-shipper reading a different path) before treating this as a full
+      logging gap.
 spec:
   failurePolicy: Fail
   matchConstraints:

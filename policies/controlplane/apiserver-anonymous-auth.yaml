@@ -9,6 +9,12 @@ metadata:
     audit.k8s-auditor.io/remediation: >-
       Set --anonymous-auth=false on kube-apiserver so unauthenticated requests are rejected.
     audit.k8s-auditor.io/cis: "1.2.1"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. This is inferred from the Pod's command-line flags via the Kubernetes API, not
+      confirmed via node/file access — cross-check the actual running process if you
+      have node access. 2. Test directly: `curl -k https://<apiserver-host>:6443/api`
+      with no credentials — a 401/403 confirms anonymous access is genuinely rejected in
+      practice, regardless of what the flag inference suggests.
 spec:
   failurePolicy: Fail
   matchConstraints:
