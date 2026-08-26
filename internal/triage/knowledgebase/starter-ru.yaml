@@ -1,7 +1,9 @@
 airflow.api-auth-backend-default-enabled:
-  description: airflow.cfg в секции [api] auth_backends содержит airflow.api.auth.backend.default
-    — в документации Airflow указано, что этот backend «допускает все запросы по историческим
-    причинам», то есть REST API принимает неаутентифицированные запросы.
+  description: В ConfigMap «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} файл airflow.cfg в
+    секции [api] auth_backends содержит airflow.api.auth.backend.default — в документации
+    Airflow указано, что этот backend «допускает все запросы по историческим причинам»,
+    то есть REST API принимает неаутентифицированные запросы.
   remediation: 'Удалите airflow.api.auth.backend.default из auth_backends в секции
     [api] файла airflow.cfg — оставьте только airflow.api.auth.backend.session (значение
     по умолчанию) или другой реальный backend аутентификации. В официальной документации
@@ -11,9 +13,11 @@ airflow.api-auth-backend-default-enabled:
     airflow.webserver-config-auth-role-public (обе означают «всё приложение/API открыто»).'
   title: REST API Airflow допускает неаутентифицированные запросы
 airflow.hide-sensitive-var-conn-fields-disabled:
-  description: В секции [core] файла airflow.cfg установлено hide_sensitive_var_conn_fields
-    = False — чувствительные Variables и дополнительные JSON-ключи Connection отображаются
-    в UI и логах задач вместо того, чтобы быть замаскированными.
+  description: В ConfigMap «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}}, в секции [core] файла
+    airflow.cfg, установлено hide_sensitive_var_conn_fields = False — чувствительные
+    Variables и дополнительные JSON-ключи Connection отображаются в UI и логах задач
+    вместо того, чтобы быть замаскированными.
   remediation: 'Удалите hide_sensitive_var_conn_fields = False из секции [core] файла
     airflow.cfg (или снимите соответствующее значение Helm) — в официальной справке
     по конфигурации Airflow сказано: «Hide sensitive Variables or Connection extra
@@ -24,9 +28,11 @@ airflow.hide-sensitive-var-conn-fields-disabled:
     — она затрагивает только дополнительные JSON-ключи и Variables).'
   title: Airflow раскрывает чувствительные поля Variable/Connection в UI и логах задач
 airflow.webserver-config-auth-role-public:
-  description: webserver_config.py устанавливает AUTH_ROLE_PUBLIC в непустую роль
-    — каждый неаутентифицированный посетитель обрабатывается как Anonymous с правами
-    этой роли, полностью минуя вход в систему.
+  description: В ConfigMap «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} webserver_config.py
+    устанавливает AUTH_ROLE_PUBLIC в непустую роль — каждый неаутентифицированный
+    посетитель обрабатывается как Anonymous с правами этой роли, полностью минуя вход
+    в систему.
   remediation: 'Удалите присвоение AUTH_ROLE_PUBLIC из webserver_config.py (безопасное
     значение по умолчанию — не задано/пусто, то есть анонимный доступ отсутствует).
     В документации Airflow сказано: «To deactivate the authentication and allow users
@@ -37,10 +43,12 @@ airflow.webserver-config-auth-role-public:
     роли Admin.'
   title: Airflow предоставляет роль неаутентифицированным пользователям через AUTH_ROLE_PUBLIC
 airflow.webserver-expose-config-enabled:
-  description: 'В airflow.cfg установлено expose_config = True — веб-интерфейс Airflow
-    раскрывает текущую конфигурацию (чувствительные значения замаскированы, но остаются
-    видны имена хостов, пути и другие настройки) любому аутентифицированному пользователю.
-    Документация Airflow: значение по умолчанию — False.'
+  description: 'В ConfigMap «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} в airflow.cfg установлено
+    expose_config = True — веб-интерфейс Airflow раскрывает текущую конфигурацию (чувствительные
+    значения замаскированы, но остаются видны имена хостов, пути и другие настройки)
+    любому аутентифицированному пользователю. Документация Airflow: значение по умолчанию
+    — False.'
   remediation: 'Удалите expose_config из секции [webserver] файла airflow.cfg (или
     снимите соответствующее значение config.webserver.expose_config в Helm-чарте)
     — в официальной справке по конфигурации Airflow expose_config описан так: «Expose
@@ -49,10 +57,14 @@ airflow.webserver-expose-config-enabled:
     значение по умолчанию — False.'
   title: Веб-сервер Airflow раскрывает свою текущую конфигурацию
 apideprecations.removed-api:
+  remediation: Обновите apiVersion объекта {{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}»
+    (сейчас {{.Finding.Resource.APIVersion}}) на актуальную версию — точная замена
+    указана в Message.
   title: Манифест использует удалённую версию Kubernetes API
 apisix.admin-allow-wide-open:
-  description: В config.yaml параметр allow_admin включает 0.0.0.0/0 (или ::/0) —
-    Admin API доступен с любого IP-адреса.
+  description: В ConfigMap «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}}, в config.yaml, параметр
+    allow_admin включает 0.0.0.0/0 (или ::/0) — Admin API доступен с любого IP-адреса.
   remediation: 'Ограничьте allow_admin конкретными CIDR управляющей сети, которым
     действительно нужен доступ к Admin API, вместо 0.0.0.0/0 (или ::/0). Официальный
     эталонный конфиг (github.com/apache/apisix/blob/master/conf/config.yaml.example):
@@ -64,11 +76,13 @@ apisix.admin-allow-wide-open:
     регулярно ротируемый ключ доступен отовсюду без этого ограничения.'
   title: Admin API APISIX доступен с любого IP-адреса
 apisix.admin-api-default-key:
-  description: 'В config.yaml admin_key всё ещё содержит один из общеизвестных ключей
-    Admin API по умолчанию, поставляемых в собственном values.yaml Helm-чарта apisix/apisix
-    (admin: edd1c9f034335f136f87ad84b625c8f1, viewer: 4054f7cf07e344346cd3f287985e76a2)
-    — эти ключи публично известны и предоставляют полный доступ к control-plane (настройка
-    route/upstream/consumer) любому, кто может достучаться до порта Admin API.'
+  description: 'В ConfigMap «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}}, в config.yaml, admin_key
+    всё ещё содержит один из общеизвестных ключей Admin API по умолчанию, поставляемых
+    в собственном values.yaml Helm-чарта apisix/apisix (admin: edd1c9f034335f136f87ad84b625c8f1,
+    viewer: 4054f7cf07e344346cd3f287985e76a2) — эти ключи публично известны и предоставляют
+    полный доступ к control-plane (настройка route/upstream/consumer) любому, кто
+    может достучаться до порта Admin API.'
   remediation: 'Установите admin.credentials.admin/viewer (или admin.credentials.secretName)
     в уникальное, сгенерированное значение перед развёртыванием — никогда не используйте
     значение по умолчанию, зафиксированное в самом чарте. Официальный Helm-чарт apisix/apisix
@@ -77,8 +91,10 @@ apisix.admin-api-default-key:
     item means that the Admin API does not require any authentication.»'
   title: Admin API APISIX использует общеизвестный ключ по умолчанию
 apisix.admin-auth-disabled:
-  description: 'В config.yaml установлено admin_key_required: false — аутентификация
-    Admin API полностью отключена, независимо от того, какой admin_key настроен.'
+  description: 'В ConfigMap «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}}, в config.yaml, установлено
+    admin_key_required: false — аутентификация Admin API полностью отключена, независимо
+    от того, какой admin_key настроен.'
   remediation: 'Удалите admin_key_required: false (или установите значение true —
     значение по умолчанию) из config.yaml. Официальный эталонный конфиг (github.com/apache/apisix/blob/master/conf/config.yaml.example):
     `` admin_key_required: true # Enable Admin API authentication by default for security.
@@ -88,9 +104,10 @@ apisix.admin-auth-disabled:
     без ключа.'
   title: Аутентификация Admin API APISIX явно отключена
 apisix.etcd-connection-plaintext:
-  description: В config.yaml параметр etcd.host использует http:// — соединение, по
-    которому передаётся вся конфигурация маршрутов/плагинов/consumer'ов APISIX к etcd
-    и обратно, не зашифровано.
+  description: В ConfigMap «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}}, в config.yaml, параметр
+    etcd.host использует http:// — соединение, по которому передаётся вся конфигурация
+    маршрутов/плагинов/consumer'ов APISIX к etcd и обратно, не зашифровано.
   remediation: 'Измените записи etcd.host на https:// и настройте etcd.tls (а также
     etcd.user/password или взаимный TLS на стороне etcd) — в документации APISIX для
     «decoupled»-режима развёртывания (https://apisix.apache.org/docs/apisix/deployment-modes/)
@@ -103,9 +120,10 @@ apisix.etcd-connection-plaintext:
     etcd открыт наружу.'
   title: APISIX подключается к etcd по незашифрованному HTTP
 apisix.tls-skip-mtls-uri-regex-wildcard:
-  description: spec.client.skip_mtls_uri_regex содержит паттерн, соответствующий всем
-    URI — проверка взаимного TLS пропускается для каждого URI, а не только для конкретных
-    путей.
+  description: 'ApisixTls «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}}: spec.client.skip_mtls_uri_regex
+    содержит паттерн, соответствующий всем URI — проверка взаимного TLS пропускается
+    для каждого URI, а не только для конкретных путей.'
   remediation: 'Ограничьте spec.client.skip_mtls_uri_regex конкретными путями health-check
     или публичными URI, которым действительно нужно обходить mTLS, вместо паттерна,
     соответствующего всему. Проверено напрямую по CRD apisix-ingress-controller (config/crd/bases/apisix.apache.org_apisixtlses.yaml):
@@ -115,8 +133,10 @@ apisix.tls-skip-mtls-uri-regex-wildcard:
     что и в victoriametrics.vmauth-unauthorized-access- wildcard-path.'
   title: ApisixTls пропускает проверку взаимного TLS для всех URI
 apisix.tls-weak-protocol-enabled:
-  description: В config.yaml параметр ssl_protocols включает устаревшую версию TLS/SSL
-    (одна из TLSv1, TLSv1.1, SSLv3) — принимается небезопасная версия TLS/SSL.
+  description: В ConfigMap «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}}, в config.yaml, параметр
+    ssl_protocols включает устаревшую версию TLS/SSL (одна из TLSv1, TLSv1.1, SSLv3)
+    — принимается небезопасная версия TLS/SSL.
   remediation: Удалите TLSv1, TLSv1.1 и SSLv3 из apisix.ssl.ssl_protocols в config.yaml
     — оставьте только TLSv1.2 и TLSv1.3. В документации APISIX (apisix.apache.org/docs/apisix/ssl-protocol/)
     указано, что значение по умолчанию — «TLSv1.2 TLSv1.3» и «For security reasons,
@@ -125,8 +145,10 @@ apisix.tls-weak-protocol-enabled:
     так и набора шифров относительно этого безопасного значения по умолчанию.
   title: APISIX ssl_protocols явно допускает устаревшую версию TLS/SSL
 argocd.application-sync-validate-disabled:
-  description: spec.syncPolicy.syncOptions этого Application включает «Validate=false»
-    — проверка схемы ресурсов kubectl при синхронизации пропускается.
+  description: spec.syncPolicy.syncOptions Application «{{.Finding.Resource.Name}}»{{if
+    .Finding.Resource.Namespace}} в пространстве имён {{.Finding.Resource.Namespace}}{{end}}
+    включает «Validate=false» — проверка схемы ресурсов kubectl при синхронизации
+    пропускается.
   remediation: Удалите Validate=false из spec.syncPolicy.syncOptions. В документации
     ArgoCD по опциям синхронизации это описывается как пропуск проверки схемы ресурсов
     kubectl (эквивалент `kubectl apply --validate=false`) при синхронизации — явный
@@ -137,22 +159,24 @@ argocd.application-sync-validate-disabled:
     предупреждение «небезопасно» от самой ArgoCD) — тот же уровень, что и istio.gateway-weak-tls-version.
   title: ArgoCD Application отключает проверку схемы kubectl при синхронизации
 argocd.application-uses-default-project:
-  description: spec.project этого Application не задан или равен «default» — он наследует
-    все права, которые в данный момент предоставляет AppProject default, вместо выделенного,
-    ограниченного проекта.
+  description: spec.project Application «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} не задан или равен
+    «default» — оно наследует все права, которые в данный момент предоставляет AppProject
+    default, вместо выделенного, ограниченного проекта.
   remediation: 'Установите spec.project в выделенный AppProject, ограниченный реальными
-    репозиториями источников/назначениями/ресурсами этого Application, вместо «default».
-    В документации ArgoCD указано: «The `default` project can be modified, but not
-    deleted. The project is useful for initial testing, but it is recommended to create
-    dedicated projects with explicit source, destination, and resource permissions.»
-    Application в проекте default наследует всё, что в данный момент разрешает объект
-    AppProject этого проекта — а из коробки это неограниченная конфигурация с подстановочными
-    знаками, которую отмечают другие проверки этого инструмента argocd.appproject-wildcard-*.'
+    репозиториями источников/назначениями/ресурсами Application «{{.Finding.Resource.Name}}»,
+    вместо «default». В документации ArgoCD указано: «The `default` project can be
+    modified, but not deleted. The project is useful for initial testing, but it is
+    recommended to create dedicated projects with explicit source, destination, and
+    resource permissions.» Application в проекте default наследует всё, что в данный
+    момент разрешает объект AppProject этого проекта — а из коробки это неограниченная
+    конфигурация с подстановочными знаками, которую отмечают другие проверки этого
+    инструмента argocd.appproject-wildcard-*.'
   title: ArgoCD Application использует AppProject default
 argocd.appproject-wildcard-cluster-resources:
-  description: 'AppProject.spec.clusterResourceWhitelist содержит запись {group: «*»,
-    kind: «*»}, позволяя Application этого проекта создавать произвольные ресурсы
-    уровня кластера.'
+  description: 'AppProject «{{.Finding.Resource.Name}}».spec.clusterResourceWhitelist
+    содержит запись {group: «*», kind: «*»}, позволяя Application этого проекта создавать
+    произвольные ресурсы уровня кластера.'
   remediation: Замените запись с подстановочным знаком в spec.clusterResourceWhitelist
     на конкретные пары group/kind ресурсов уровня кластера, которые реально нужны
     Application этого проекта (или удалите поле, чтобы не разрешать ни одного). Подстановочный
@@ -161,9 +185,9 @@ argocd.appproject-wildcard-cluster-resources:
     конфигурация AppProject «default» из коробки в ArgoCD.
   title: ArgoCD AppProject разрешает создание произвольных ресурсов уровня кластера
 argocd.appproject-wildcard-destinations:
-  description: AppProject.spec.destinations содержит запись с namespace «*» и кластером
-    (server или name) «*», позволяя Application этого проекта развёртываться в любой
-    namespace на любом зарегистрированном кластере.
+  description: AppProject «{{.Finding.Resource.Name}}».spec.destinations содержит
+    запись с namespace «*» и кластером (server или name) «*», позволяя Application
+    этого проекта развёртываться в любой namespace на любом зарегистрированном кластере.
   remediation: Замените запись назначения с подстановочным знаком на конкретные пары
     кластер/namespace, в которые реально развёртываются Application этого проекта.
     Это собственная конфигурация AppProject «default» из коробки в ArgoCD — если вы
@@ -171,16 +195,17 @@ argocd.appproject-wildcard-destinations:
     развёртывания.
   title: ArgoCD AppProject разрешает развёртывание в любой namespace на любом кластере
 argocd.appproject-wildcard-source-repos:
-  description: AppProject.spec.sourceRepos содержит «*», позволяя Application этого
-    проекта синхронизироваться из любого Git-репозитория.
+  description: AppProject «{{.Finding.Resource.Name}}».spec.sourceRepos содержит «*»,
+    позволяя Application этого проекта синхронизироваться из любого Git-репозитория.
   remediation: Замените запись «*» в spec.sourceRepos на конкретные URL репозиториев,
     которые реально нужны Application этого проекта. Это собственная конфигурация
     AppProject «default» из коробки в ArgoCD — если вы не создали для своих Application
     ограниченный проект, они наследуют эту неограниченную область репозиториев-источников.
   title: ArgoCD AppProject разрешает синхронизацию из любого Git-репозитория
 argocd.cmd-params-cm-disable-auth:
-  description: 'argocd-cmd-params-cm устанавливает server.disable.auth: «true» — собственная
-    аутентификация ArgoCD полностью отключена.'
+  description: 'ConfigMap «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} устанавливает server.disable.auth:
+    «true» — собственная аутентификация ArgoCD полностью отключена.'
   remediation: 'Удалите server.disable.auth (или верните значение «false» — значение
     по умолчанию) из argocd-cmd-params-cm. Проверено напрямую по официальному эталону
     (docs/operator-manual/argocd-cmd-params-cm.yaml в argoproj/argo-cd): `` # Disable
@@ -191,10 +216,11 @@ argocd.cmd-params-cm-disable-auth:
     безопасности.'
   title: Сервер ArgoCD отключает клиентскую аутентификацию
 argocd.cmd-params-cm-internal-tls-disabled:
-  description: argocd-cmd-params-cm отключает TLS для соединения между внутренними
-    компонентами (один из ключей reposerver.disable.tls, dexserver.disable.tls, *.repo.server.plaintext,
-    server.dex.server.plaintext установлен в «true») — трафик между собственными компонентами
-    ArgoCD не зашифрован.
+  description: ConfigMap «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} отключает TLS для соединения
+    между внутренними компонентами (один из ключей reposerver.disable.tls, dexserver.disable.tls,
+    *.repo.server.plaintext, server.dex.server.plaintext установлен в «true») — трафик
+    между собственными компонентами ArgoCD не зашифрован.
   remediation: 'Удалите сработавший ключ plaintext/disable.tls (или верните значение
     «false» — значение по умолчанию) в argocd-cmd-params-cm. Проверено напрямую по
     официальному эталону (docs/operator-manual/argocd-cmd-params-cm.yaml в argoproj/argo-cd):
@@ -207,7 +233,8 @@ argocd.cmd-params-cm-internal-tls-disabled:
     от TLS между двумя компонентами ArgoCD, взаимодействующими внутри кластера.'
   title: ArgoCD отключает TLS для соединения между внутренними компонентами
 argocd.cmd-params-cm-repo-server-oob-symlinks-allowed:
-  description: 'argocd-cmd-params-cm устанавливает reposerver.allow.oob.symlinks:
+  description: 'ConfigMap «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} устанавливает reposerver.allow.oob.symlinks:
     «true» — символические ссылки, выходящие за границы синхронизируемого репозитория,
     пропускаются, если не заблокированы отдельно другой проверкой.'
   remediation: 'Удалите reposerver.allow.oob.symlinks (или верните значение «false»
@@ -221,9 +248,11 @@ argocd.cmd-params-cm-repo-server-oob-symlinks-allowed:
     он синхронизирует.'
   title: ArgoCD repo-server разрешает символические ссылки за пределами репозитория
 argocd.cmd-params-cm-server-insecure:
-  description: 'argocd-cmd-params-cm устанавливает server.insecure: «true» — argocd-server
-    работает без TLS. Безопасно только если перед ним действительно стоит TLS-терминирующий
-    прокси/ingress; этот инструмент не может подтвердить это по одному данному объекту.'
+  description: 'ConfigMap «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} устанавливает server.insecure:
+    «true» — argocd-server работает без TLS. Безопасно только если перед ним действительно
+    стоит TLS-терминирующий прокси/ingress; этот инструмент не может подтвердить это
+    по одному данному объекту.'
   remediation: Убедитесь, что перед argocd-server действительно стоит TLS-терминирующий
     ingress/балансировщик нагрузки, прежде чем принимать это как норму. В документации
     ArgoCD server.insecure («Run server without TLS») описан как документированный,
@@ -234,9 +263,10 @@ argocd.cmd-params-cm-server-insecure:
     на сети.
   title: Сервер ArgoCD работает без TLS
 argocd.rbac-cm-default-admin-policy:
-  description: У argocd-rbac-cm значение policy.default равно «role:admin» — каждый
-    аутентифицированный пользователь ArgoCD получает полный доступ администратора
-    по умолчанию, и это нельзя переопределить правилом запрета.
+  description: У ConfigMap «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} значение policy.default
+    равно «role:admin» — каждый аутентифицированный пользователь ArgoCD получает полный
+    доступ администратора по умолчанию, и это нельзя переопределить правилом запрета.
   remediation: 'Установите data[''policy.default''] в минимальную кастомную роль вместо
     role:admin — в документации ArgoCD по RBAC указано: «When a user is authenticated
     in Argo CD, it will be granted the role specified in policy.default[.] ... All
@@ -246,12 +276,13 @@ argocd.rbac-cm-default-admin-policy:
   title: ArgoCD предоставляет права admin каждому аутентифицированному пользователю
     по умолчанию
 argocd.redis-requirepass-missing:
-  description: У Deployment argocd-redis в контейнере redis отсутствует флаг --requirepass
-    — этот экземпляр Redis принимает неаутентифицированные подключения из любой точки
-    сети, откуда он достижим (CVE-2024-31989).
+  description: У Deployment «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} в контейнере redis
+    отсутствует флаг --requirepass — этот экземпляр Redis принимает неаутентифицированные
+    подключения из любой точки сети, откуда он достижим (CVE-2024-31989).
   remediation: 'Верните флаг --requirepass $(REDIS_PASSWORD) (значение берётся из
     ключа auth Secret''а argocd-redis) в аргументы контейнера redis Deployment''а
-    argocd-redis. Это CVE-2024-31989 / GHSA-9766-5277-j5hr (github.com/argoproj/argo-cd/security/advisories/GHSA-9766-5277-j5hr):
+    «{{.Finding.Resource.Name}}». Это CVE-2024-31989 / GHSA-9766-5277-j5hr (github.com/argoproj/argo-cd/security/advisories/GHSA-9766-5277-j5hr):
     «By default, the Redis database server is not password-protected, allowing an
     attacker with access to the Redis server to gain read/write access to the data
     in Redis» — злоумышленник, получивший доступ к неаутентифицированному argocd-redis,
@@ -262,13 +293,13 @@ argocd.redis-requirepass-missing:
     manifests/base/redis/argocd-redis-deployment.yaml: аргументы контейнера redis
     теперь всегда включают "--requirepass $(REDIS_PASSWORD)", значение которого берётся
     из ключа auth Secret''а argocd-redis через init-контейнер). Эта проверка отмечает
-    Deployment argocd-redis, у которого этот флаг полностью отсутствует — неисправленную
-    версию ArgoCD либо кастомный манифест, из которого его убрали.'
+    Deployment «{{.Finding.Resource.Name}}», у которого этот флаг полностью отсутствует
+    — неисправленную версию ArgoCD либо кастомный манифест, из которого его убрали.'
   title: У Redis-кэша ArgoCD не задан пароль
 calico.felixconfiguration-allow-ipip-packets-from-workloads:
-  description: FelixConfiguration.spec.allowIPIPPacketsFromWorkloads установлен в
-    true — workload'ы могут отправлять IPIP-инкапсулированный трафик, обходящий применение
-    NetworkPolicy на внутреннем пакете.
+  description: FelixConfiguration «{{.Finding.Resource.Name}}».spec.allowIPIPPacketsFromWorkloads
+    установлен в true — workload'ы могут отправлять IPIP-инкапсулированный трафик,
+    обходящий применение NetworkPolicy на внутреннем пакете.
   remediation: 'Удалите spec.allowIPIPPacketsFromWorkloads (или верните значение false
     — значение по умолчанию) в FelixConfiguration. Проверено напрямую по исходному
     коду Felix (felixconfig.go, комментарий к полю AllowIPIPPacketsFromWorkloads):
@@ -279,9 +310,9 @@ calico.felixconfiguration-allow-ipip-packets-from-workloads:
   title: Calico разрешает IPIP-инкапсулированный трафик от workload'ов — известная
     техника обхода NetworkPolicy
 calico.felixconfiguration-allow-vxlan-packets-from-workloads:
-  description: FelixConfiguration.spec.allowVXLANPacketsFromWorkloads установлен в
-    true — workload'ы могут отправлять VXLAN-инкапсулированный трафик, обходящий применение
-    NetworkPolicy на внутреннем пакете.
+  description: FelixConfiguration «{{.Finding.Resource.Name}}».spec.allowVXLANPacketsFromWorkloads
+    установлен в true — workload'ы могут отправлять VXLAN-инкапсулированный трафик,
+    обходящий применение NetworkPolicy на внутреннем пакете.
   remediation: 'Удалите spec.allowVXLANPacketsFromWorkloads (или верните значение
     false — значение по умолчанию) в FelixConfiguration. Проверено напрямую по исходному
     коду Felix (felixconfig.go, комментарий к полю AllowVXLANPacketsFromWorkloads):
@@ -293,9 +324,9 @@ calico.felixconfiguration-allow-vxlan-packets-from-workloads:
   title: Calico разрешает VXLAN-инкапсулированный трафик от workload'ов — известная
     техника обхода NetworkPolicy
 calico.felixconfiguration-default-endpoint-to-host-action-permissive:
-  description: FelixConfiguration.spec.defaultEndpointToHostAction установлен в Accept
-    или Return — трафик от workload'ов к самому хосту по умолчанию разрешён вместо
-    того, чтобы отбрасываться.
+  description: FelixConfiguration «{{.Finding.Resource.Name}}».spec.defaultEndpointToHostAction
+    установлен в Accept или Return — трафик от workload'ов к самому хосту по умолчанию
+    разрешён вместо того, чтобы отбрасываться.
   remediation: 'Удалите spec.defaultEndpointToHostAction (или верните значение «Drop»
     — значение по умолчанию) в FelixConfiguration. Проверено напрямую по исходному
     коду Felix (felixconfig.go, комментарий к полю DefaultEndpointToHostAction): «By
@@ -306,8 +337,8 @@ calico.felixconfiguration-default-endpoint-to-host-action-permissive:
     workload → хост, действующей в Calico по умолчанию.'
   title: Calico по умолчанию разрешает трафику workload'ов достигать хоста
 calico.felixconfiguration-wireguard-disabled:
-  description: FelixConfiguration.spec.wireguardEnabled не установлен в true — трафик
-    между подами внутри кластера не шифруется на сети.
+  description: FelixConfiguration «{{.Finding.Resource.Name}}».spec.wireguardEnabled
+    не установлен в true — трафик между подами внутри кластера не шифруется на сети.
   remediation: 'Установите spec.wireguardEnabled: true в FelixConfiguration (обычно
     с именем «default»), чтобы шифровать трафик между подами внутри кластера на сети
     — в документации Calico указано: «Enable WireGuard to secure on-the-wire, in-cluster
@@ -317,9 +348,10 @@ calico.felixconfiguration-wireguard-disabled:
     IPv6.'
   title: Шифрование pod-to-pod трафика WireGuard в Calico не включено
 cnpg.cluster-monitoring-tls-disabled:
-  description: Cluster.spec.monitoring.tls.enabled не равен true — экспортёр метрик
-    отдаёт статистику Postgres по обычному HTTP вместо того же сертификата TLS, которым
-    защищён порт 5432.
+  description: Cluster «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}}.spec.monitoring.tls.enabled
+    не равен true — экспортёр метрик отдаёт статистику Postgres по обычному HTTP вместо
+    того же сертификата TLS, которым защищён порт 5432.
   remediation: 'Установите spec.monitoring.tls.enabled: true. В документации CNPG
     по мониторингу (https://cloudnative-pg.io/docs/devel/monitoring/) указано: «To
     enable TLS communication on the metrics port, configure the .spec.monitoring.tls.enabled
@@ -330,8 +362,10 @@ cnpg.cluster-monitoring-tls-disabled:
     Postgres, не учётные данные) по умолчанию отдаётся в открытом виде по HTTP.'
   title: Экспортёр метрик CloudNativePG отдаёт данные по незашифрованному HTTP
 cnpg.cluster-superuser-access-enabled:
-  description: Cluster.spec.enableSuperuserAccess равен true, сохраняя активный пароль
-    суперпользователя postgres, позволяющий удалённую аутентификацию по паролю.
+  description: Cluster «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}}.spec.enableSuperuserAccess
+    равен true, сохраняя активный пароль суперпользователя postgres, позволяющий удалённую
+    аутентификацию по паролю.
   remediation: Удалите spec.enableSuperuserAccess (или установите значение false),
     если нет конкретной, обоснованной необходимости. В документации CNPG по безопасности
     указано, что при значении false (по умолчанию) «the operator removes generated
@@ -580,23 +614,26 @@ controlplane.scheduler.profiling:
   title: Профилирование kube-scheduler не отключено
 fluentbit.output-tls-not-verified:
   remediation: 'Установите tls.verify: true (и настройте CA, если эндпоинт использует
-    приватный удостоверяющий центр) для назначения этого Output/ClusterOutput. В документации
-    Fluent Bit по транспортной безопасности прямо указано: «always keep [TLS] verification
-    ON in production.» Каждый из этих типов output по умолчанию использует обычный
-    текст без какого-либо TLS, если не задан собственный блок tls, а непроверенный
-    TLS лишь незначительно лучше — данные логов (которые могут содержать секреты,
-    токены или персональные данные) в противном случае можно перехватить или перенаправить
-    через MITM, выдающий себя за назначение логов.'
+    приватный удостоверяющий центр) для {{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}»{{if
+    .Finding.Resource.Namespace}} в пространстве имён {{.Finding.Resource.Namespace}}{{end}}.
+    В документации Fluent Bit по транспортной безопасности прямо указано: «always
+    keep [TLS] verification ON in production.» Каждый из этих типов output по умолчанию
+    использует обычный текст без какого-либо TLS, если не задан собственный блок tls,
+    а непроверенный TLS лишь незначительно лучше — данные логов (которые могут содержать
+    секреты, токены или персональные данные) в противном случае можно перехватить
+    или перенаправить через MITM, выдающий себя за назначение логов.'
   title: Output Fluent Bit не проверяет TLS-сертификаты
 istio.authorization-policy-no-source-restriction:
   description: '[ALPHA] AuthorizationPolicy содержит правило ALLOW без ограничения
     "from" (источник) — оно соответствует запросам от любого источника (любого principal,
     namespace или IP), ограниченным только "to"/"when", если они заданы.'
   remediation: Добавьте ограничение from.source (principals, namespaces или serviceAccounts)
-    к этому правилу, чтобы оно предоставляло доступ только конкретным вызывающим сторонам,
-    а не любому источнику, доступному выбранным workload'ам. Если это намеренно публичное/
-    неаутентифицированное правило, максимально сузьте область через "to" (конкретные
-    пути/методы) и подумайте, действительно ли оно необходимо.
+    к правилу в AuthorizationPolicy «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}}, чтобы оно предоставляло
+    доступ только конкретным вызывающим сторонам, а не любому источнику, доступному
+    выбранным workload'ам. Если это намеренно публичное/ неаутентифицированное правило,
+    максимально сузьте область через "to" (конкретные пути/методы) и подумайте, действительно
+    ли оно необходимо.
   title: '[ALPHA] Правило ALLOW в AuthorizationPolicy не имеет ограничения по источнику'
 istio.authorization-policy-wildcard-path:
   description: '[ALPHA] Поле to.operation.paths правила ALLOW в AuthorizationPolicy
@@ -631,8 +668,10 @@ istio.destination-rule-tls-insecure-skip-verify:
     проверяется, что делает соединение тривиально уязвимым к MITM-атаке.'
   title: '[ALPHA] DestinationRule пропускает проверку TLS-сертификата upstream'
 istio.gateway-weak-tls-version:
-  description: '[ALPHA] У Gateway есть server с tls.minProtocolVersion, установленным
-    в TLSV1_0 или TLSV1_1 — обе версии формально устарели (IETF RFC 8996).'
+  description: '[ALPHA] У Gateway «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} есть server с tls.minProtocolVersion,
+    установленным в TLSV1_0 или TLSV1_1 — обе версии формально устарели (IETF RFC
+    8996).'
   remediation: Установите spec.servers[].tls.minProtocolVersion в TLSV1_2 или TLSV1_3
     (либо уберите это поле, чтобы использовать значение по умолчанию самого Istio,
     которое исключает 1.0/1.1). Значения TLSV1_0/TLSV1_1 — реальные, всё ещё допустимые
@@ -644,9 +683,11 @@ istio.gateway-weak-tls-version:
     там, где нет отдельных рекомендаций от вендора.
   title: '[ALPHA] Istio Gateway допускает TLS 1.0/1.1'
 istio.mesh-config-outbound-traffic-policy-allow-any:
-  description: '[ALPHA] Конфигурация mesh в ConfigMap istio не устанавливает outboundTrafficPolicy.mode
-    в REGISTRY_ONLY (по умолчанию в Istio — ALLOW_ANY, если не задано) — любой pod
-    в mesh может обращаться к любому внешнему адресу без явного ServiceEntry.'
+  description: '[ALPHA] Конфигурация mesh в ConfigMap «{{.Finding.Resource.Name}}»{{if
+    .Finding.Resource.Namespace}} в пространстве имён {{.Finding.Resource.Namespace}}{{end}}
+    не устанавливает outboundTrafficPolicy.mode в REGISTRY_ONLY (по умолчанию в Istio
+    — ALLOW_ANY, если не задано) — любой pod в mesh может обращаться к любому внешнему
+    адресу без явного ServiceEntry.'
   remediation: 'Установите meshConfig.outboundTrafficPolicy.mode: REGISTRY_ONLY и
     явно объявляйте внешние адреса через ServiceEntry. Собственный справочник API
     Istio (istio.mesh.v1alpha1, OutboundTrafficPolicy): "The default is ALLOW_ANY,
@@ -663,49 +704,55 @@ istio.peer-authentication-permissive-mtls:
     который переопределяет mesh-уровневый объект "default" в корневом namespace) —
     эта проверка оценивает каждый объект независимо и не вычисляет итоговый эффективный
     режим для всего кластера, поэтому убедитесь, что более специфичный объект уже
-    не применяет STRICT и что этот объект непреднамеренно не ослабляет его. В режиме
-    Istio ambient DISABLE не поддерживается, и именно STRICT реально гарантирует,
-    что трафик mesh не может обойти ztunnel — см. раздел Scope с оговорками для режима
-    ambient.
+    не применяет STRICT и что PeerAuthentication «{{.Finding.Resource.Name}}»{{if
+    .Finding.Resource.Namespace}} в пространстве имён {{.Finding.Resource.Namespace}}{{end}}
+    непреднамеренно не ослабляет его. В режиме Istio ambient DISABLE не поддерживается,
+    и именно STRICT реально гарантирует, что трафик mesh не может обойти ztunnel —
+    см. раздел Scope с оговорками для режима ambient.
   title: '[ALPHA] PeerAuthentication допускает открытый (не-mTLS) трафик'
 istio.sidecar-outbound-traffic-policy-allow-any:
-  description: Этот ресурс Sidecar устанавливает spec.outboundTrafficPolicy.mode в
-    "ALLOW_ANY" — workload'ы, к которым он применяется, могут обращаться к любому
+  description: Sidecar «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} устанавливает spec.outboundTrafficPolicy.mode
+    в "ALLOW_ANY" — workload'ы, к которым он применяется, могут обращаться к любому
     исходящему адресу, а не только к сервисам в service registry Istio.
   remediation: 'Уберите spec.outboundTrafficPolicy.mode: ALLOW_ANY (либо установите
-    REGISTRY_ONLY) на этом ресурсе Sidecar. Собственный справочник API Istio (networking/v1alpha3/sidecar.proto,
-    перечисление OutboundTrafficPolicy.Mode): "ALLOW_ANY - outbound traffic to unknown
-    destinations will be allowed" в противовес "REGISTRY_ONLY - outbound traffic will
-    be restricted to services defined in the service registry." Эта проверка срабатывает
-    только на явном ALLOW_ANY здесь — неустановленное значение наследует mesh-wide
-    значение по умолчанию, уже покрытое istio.mesh-config-outbound-traffic-policy-allow-any.
-    Ресурс Sidecar, явно и для конкретного workload устанавливающий это значение,
-    намеренно переопределяет то, каким бы ни было значение mesh-wide по умолчанию
-    (включая REGISTRY_ONLY на уровне mesh) — та же логика "оператор может явно отключить
-    что-то", что и у других проверок отказа (opt-out) в этом инструменте.'
+    REGISTRY_ONLY) на Sidecar «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}}. Собственный справочник
+    API Istio (networking/v1alpha3/sidecar.proto, перечисление OutboundTrafficPolicy.Mode):
+    "ALLOW_ANY - outbound traffic to unknown destinations will be allowed" в противовес
+    "REGISTRY_ONLY - outbound traffic will be restricted to services defined in the
+    service registry." Эта проверка срабатывает только на явном ALLOW_ANY здесь —
+    неустановленное значение наследует mesh-wide значение по умолчанию, уже покрытое
+    istio.mesh-config-outbound-traffic-policy-allow-any. Ресурс Sidecar, явно и для
+    конкретного workload устанавливающий это значение, намеренно переопределяет то,
+    каким бы ни было значение mesh-wide по умолчанию (включая REGISTRY_ONLY на уровне
+    mesh) — та же логика "оператор может явно отключить что-то", что и у других проверок
+    отказа (opt-out) в этом инструменте.'
   title: Ресурс Istio Sidecar явно разрешает неограниченный исходящий трафик
 k8supdates.end-of-active-support:
-  remediation: Спланируйте переход на полностью поддерживаемую minor-версию.
+  remediation: Спланируйте переход с версии {{.Finding.Resource.Name}} на полностью
+    поддерживаемую minor-версию.
   title: Версия Kubernetes кластера вышла за пределы активной поддержки (только исправления
     безопасности или не поддерживается)
 k8supdates.end-of-life:
-  remediation: Спланируйте переход на поддерживаемую minor-версию, либо подтвердите,
-    что этот кластер находится на платном треке расширенной поддержки вендора, который
-    всё ещё портирует исправления.
+  remediation: Спланируйте переход с версии {{.Finding.Resource.Name}} на поддерживаемую
+    minor-версию, либо подтвердите, что этот кластер находится на платном треке расширенной
+    поддержки вендора, который всё ещё портирует исправления.
   title: Кластер работает на версии Kubernetes с истёкшим сроком поддержки (end-of-life)
 k8supdates.newer-minor-available:
-  remediation: Не срочно само по себе (в отличие от находок выше, отставание от новейшей
-    minor-версии не является проблемой безопасности само по себе) — учитывайте это
-    при обычном планировании обновлений.
+  remediation: Не срочно само по себе (в отличие от находок выше, отставание версии
+    {{.Finding.Resource.Name}} от новейшей minor-версии не является проблемой безопасности
+    само по себе) — учитывайте это при обычном планировании обновлений.
   title: Доступен более новый цикл minor-версии Kubernetes
 k8supdates.patch-available:
-  remediation: Обновитесь до последнего patch-релиза в этом цикле, чтобы получить
-    любые портированные исправления безопасности.
+  remediation: Обновите {{.Finding.Resource.Name}} до последнего patch-релиза в этом
+    цикле, чтобы получить любые портированные исправления безопасности.
   title: Доступен более новый patch-релиз для этой minor-версии Kubernetes
 kubevirt.containerpath-volume-exposes-sa-token:
-  description: У этой VM есть том containerPath, указывающий на /var/run/secrets/kubernetes.io/serviceaccount
-    — он передаёт непроверенной гостевой ОС собственные учётные данные Kubernetes
-    API пода virt-launcher.
+  description: У VM «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} есть том containerPath,
+    указывающий на /var/run/secrets/kubernetes.io/serviceaccount — он передаёт непроверенной
+    гостевой ОС собственные учётные данные Kubernetes API пода virt-launcher.
   remediation: 'Не указывайте путь тома containerPath на /var/run/secrets/kubernetes.io/serviceaccount
     — это передаёт непроверенной гостевой ОС собственные учётные данные Kubernetes
     API пода virt-launcher. Собственная документация KubeVirt (docs/storage/containerpath_volumes.md,
@@ -720,11 +767,14 @@ kubevirt.containerpath-volume-exposes-sa-token:
   title: Том containerPath виртуальной машины передаёт гостю собственный токен Kubernetes
     ServiceAccount пода
 kubevirt.hook-sidecar-annotation-present:
-  description: Эта VM устанавливает аннотацию hooks.kubevirt.io/hookSidecars — она
-    внедряет hook sidecar, который может выполнять произвольный код в контексте virt-launcher
-    (задокументированный самим KubeVirt риск).
-  remediation: 'Уберите аннотацию hooks.kubevirt.io/hookSidecars, если этой конкретной
-    VM действительно не нужно кастомизировать свой libvirt domain XML через hook sidecar.
+  description: VM «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}} в
+    пространстве имён {{.Finding.Resource.Namespace}}{{end}} устанавливает аннотацию
+    hooks.kubevirt.io/hookSidecars — она внедряет hook sidecar, который может выполнять
+    произвольный код в контексте virt-launcher (задокументированный самим KubeVirt
+    риск).
+  remediation: 'Уберите аннотацию hooks.kubevirt.io/hookSidecars, если VM «{{.Finding.Resource.Name}}»{{if
+    .Finding.Resource.Namespace}} в пространстве имён {{.Finding.Resource.Namespace}}{{end}}
+    действительно не нужно кастомизировать свой libvirt domain XML через hook sidecar.
     Собственная документация KubeVirt (cmd/sidecars/README.md): "Once enabled, every
     VM owner may use it to run arbitrary code in the context of virt-launcher which
     may have unexpected effects." Эта проверка отмечает фактическое использование
@@ -735,9 +785,10 @@ kubevirt.hook-sidecar-annotation-present:
     она подействовала на создаваемый VMI — здесь проверяются оба места.'
   title: VM внедряет hook sidecar в virt-launcher
 kubevirt.host-disk-volume:
-  description: У этой VM есть том с установленным hostDisk — он работает как том hostPath
-    в Kubernetes, предоставляя VM файл образа диска на локальной файловой системе
-    узла.
+  description: У VM «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} есть том с установленным
+    hostDisk — он работает как том hostPath в Kubernetes, предоставляя VM файл образа
+    диска на локальной файловой системе узла.
   remediation: 'Замените том hostDisk на PersistentVolumeClaim/DataVolume, обеспеченный
     корректным provisioning через storage class, вместо файла образа диска на локальной
     файловой системе узла. Собственное [руководство пользователя KubeVirt](https://kubevirt.io/user-guide/storage/disks_and_volumes/):
@@ -808,7 +859,8 @@ kyverno.admission-controller-force-failure-policy-ignore:
     Ignore), если Kyverno станет недоступен, независимо от собственной настройки failurePolicy
     у каждой политики.'
   remediation: 'Уберите --forceFailurePolicyIgnore=true (либо установите config.forceFailurePolicyIgnore.enabled:
-    false в Helm-чарте) из Deployment admission-controller. Собственная документация
+    false в Helm-чарте) из Deployment «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}}. Собственная документация
     Kyverno по установке/настройке: этот флаг "Set to force Failure Policy to Ignore"
     — переопределяя собственное значение spec.failurePolicy (по умолчанию Fail) каждой
     отдельной политики на уровне всего кластера. Если сам Kyverno когда-либо окажется
@@ -816,21 +868,25 @@ kyverno.admission-controller-force-failure-policy-ignore:
     полностью без проверки вместо блокировки.'
   title: Kyverno принудительно переводит все webhook'и в режим fail open
 kyverno.cluster-policy-admission-disabled:
-  description: 'Эта политика устанавливает spec.admission: false — она не применяется
-    на этапе admission control, независимо от того, как выглядят её правила.'
+  description: 'Политика {{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}»{{if
+    .Finding.Resource.Namespace}} в пространстве имён {{.Finding.Resource.Namespace}}{{end}}
+    устанавливает spec.admission: false — она не применяется на этапе admission control,
+    независимо от того, как выглядят её правила.'
   remediation: 'Уберите spec.admission: false (либо верните значение true, значение
-    по умолчанию), если эта политика не предназначена намеренно только для фонового
-    сканирования (background scan). Проверено непосредственно по собственному исходному
-    коду Kyverno (api/kyverno/v1/spec_types.go): `` // Admission controls if rules
-    are applied during admission. Optional. Default value is "true". `` Политика с
-    admission: false по-прежнему существует и отображается как "установленная", но
-    полностью бездействует на этапе admission — та же ситуация "выглядит активной,
+    по умолчанию), если политика «{{.Finding.Resource.Name}}» не предназначена намеренно
+    только для фонового сканирования (background scan). Проверено непосредственно
+    по собственному исходному коду Kyverno (api/kyverno/v1/spec_types.go): `` // Admission
+    controls if rules are applied during admission. Optional. Default value is "true".
+    `` Политика с admission: false по-прежнему существует и отображается как "установленная",
+    но полностью бездействует на этапе admission — та же ситуация "выглядит активной,
     но тихо не является таковой", что и у kubevirt.root-feature-gate-enabled.'
   title: Политика Kyverno тихо отключена на этапе admission
 kyverno.cluster-policy-failure-policy-ignore:
-  description: 'Эта политика устанавливает failurePolicy: Ignore — если webhook Kyverno
-    недоступен в момент, когда должна была применяться эта политика, запрос пропускается
-    без проверки вместо блокировки.'
+  description: 'Политика {{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}»{{if
+    .Finding.Resource.Namespace}} в пространстве имён {{.Finding.Resource.Namespace}}{{end}}
+    устанавливает failurePolicy: Ignore — если webhook Kyverno недоступен в момент,
+    когда должна была применяться эта политика, запрос пропускается без проверки вместо
+    блокировки.'
   remediation: 'Уберите failurePolicy: Ignore (будь то устаревшее, но всё ещё работающее
     spec.failurePolicy, либо актуальное spec.webhookConfiguration.failurePolicy),
     если эта конкретная политика не предназначена намеренно быть best-effort. Проверено
@@ -847,16 +903,17 @@ kyverno.policy-validation-not-enforced:
     в policy report и не блокирует несоответствующие ресурсы. Kyverno по умолчанию
     использует Audit, если это поле не задано.
   remediation: 'Установите spec.validationFailureAction: Enforce после того, как политика
-    достаточно долго проработала в режиме Audit и подтверждено, что она не ломает
-    легитимные workload''ы. Собственная документация Kyverno: validationFailureAction
+    «{{.Finding.Resource.Name}}» достаточно долго проработала в режиме Audit и подтверждено,
+    что она не ломает легитимные workload''ы. Собственная документация Kyverno: validationFailureAction
     "should block the admission review request (Enforce) or allow (Audit) the admission
     review request and report the policy failure in a policy report" — и "Defaults
     to Audit", если поле полностью не задано, то есть неустановленное значение так
     же не блокирует, как и явный Audit.'
   title: Политика Kyverno не блокирует несоответствующие ресурсы
 loki.auth-disabled:
-  description: 'config.yaml этого ConfigMap устанавливает auth_enabled: false — Loki
-    вообще не выполняет аутентификацию по tenant ID; каждый запрос обрабатывается
+  description: 'config.yaml ConfigMap «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} устанавливает auth_enabled:
+    false — Loki вообще не выполняет аутентификацию по tenant ID; каждый запрос обрабатывается
     как один и тот же неявный tenant "fake".'
   remediation: 'Уберите auth_enabled: false (либо верните значение true, значение
     по умолчанию) в отрендеренном config.yaml. Собственный справочник конфигурации
@@ -873,24 +930,29 @@ loki.auth-disabled:
     по себе он не является аутентификацией.'
   title: Loki явно отключает собственную аутентификацию по tenant ID
 loki.lokistack-tenants-not-configured:
-  description: У этого LokiStack нет spec.tenants — аутентификация/авторизация по
-    tenant для компонента lokistack-gateway не настроена.
-  remediation: 'Установите spec.tenants на этом LokiStack (режим static или dynamic
-    с реальной настройкой аутентификации/авторизации, либо openshift-logging на OpenShift).
-    Проверено непосредственно по собственному исходному коду Loki Operator на Go (operator/api/loki/v1/lokistack_types.go,
-    комментарий к полю Tenants): "Tenants defines the per-tenant authentication and
-    authorization spec for the lokistack-gateway component." Это поле — единственная
-    точка конфигурации оператора для его аутентифицирующего шлюза перед Loki; точное
-    поведение оператора при полном отсутствии развёрнутого шлюза/gate не подтверждено
-    независимо на живом кластере, отсюда Medium, а не более высокая серьёзность —
-    рассматривайте это как "граница аутентификации/авторизации не настроена", а не
-    как подтверждённое утверждение "запросы неаутентифицированы".'
+  description: У LokiStack «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} нет spec.tenants —
+    аутентификация/авторизация по tenant для компонента lokistack-gateway не настроена.
+  remediation: 'Установите spec.tenants на LokiStack «{{.Finding.Resource.Name}}»{{if
+    .Finding.Resource.Namespace}} в пространстве имён {{.Finding.Resource.Namespace}}{{end}}
+    (режим static или dynamic с реальной настройкой аутентификации/авторизации, либо
+    openshift-logging на OpenShift). Проверено непосредственно по собственному исходному
+    коду Loki Operator на Go (operator/api/loki/v1/lokistack_types.go, комментарий
+    к полю Tenants): "Tenants defines the per-tenant authentication and authorization
+    spec for the lokistack-gateway component." Это поле — единственная точка конфигурации
+    оператора для его аутентифицирующего шлюза перед Loki; точное поведение оператора
+    при полном отсутствии развёрнутого шлюза/gate не подтверждено независимо на живом
+    кластере, отсюда Medium, а не более высокая серьёзность — рассматривайте это как
+    "граница аутентификации/авторизации не настроена", а не как подтверждённое утверждение
+    "запросы неаутентифицированы".'
   title: У LokiStack не настроены tenants — шлюзу аутентификации/авторизации нечего
     применять
 metabase.encryption-secret-key-missing:
-  description: У этого контейнера Metabase нет переменной окружения MB_ENCRYPTION_SECRET_KEY
-    — данные подключения к источникам данных, которые Metabase хранит в собственной
-    базе метаданных, не зашифрованы на диске.
+  description: У контейнера Metabase в {{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}»{{if
+    .Finding.Resource.Namespace}} в пространстве имён {{.Finding.Resource.Namespace}}{{end}}
+    нет переменной окружения MB_ENCRYPTION_SECRET_KEY — данные подключения к источникам
+    данных, которые Metabase хранит в собственной базе метаданных, не зашифрованы
+    на диске.
   remediation: 'Установите MB_ENCRYPTION_SECRET_KEY (напрямую либо через valueFrom.secretKeyRef
     — эта проверка ищет только наличие имени переменной окружения, а не её значение,
     поэтому подходит любой из этих способов), чтобы Metabase шифровала детали подключения
@@ -906,9 +968,11 @@ metabase.encryption-secret-key-missing:
   title: У Metabase не установлена MB_ENCRYPTION_SECRET_KEY — учётные данные подключения
     к базе данных хранятся незашифрованными
 metabase.public-sharing-enabled:
-  description: У этого контейнера Metabase нет переменной окружения MB_ENABLE_PUBLIC_SHARING=false
-    — публичный общий доступ остаётся включённым по умолчанию, позволяя администратору
-    создавать неаутентифицированные публичные ссылки на любой Question/Dashboard.
+  description: У контейнера Metabase в {{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}»{{if
+    .Finding.Resource.Namespace}} в пространстве имён {{.Finding.Resource.Namespace}}{{end}}
+    нет переменной окружения MB_ENABLE_PUBLIC_SHARING=false — публичный общий доступ
+    остаётся включённым по умолчанию, позволяя администратору создавать неаутентифицированные
+    публичные ссылки на любой Question/Dashboard.
   remediation: 'Установите MB_ENABLE_PUBLIC_SHARING=false на контейнере Metabase,
     если публичные ссылки действительно не нужны. Собственный справочник переменных
     окружения Metabase: MB_ENABLE_PUBLIC_SHARING — "Enable admins to create publicly
@@ -920,8 +984,9 @@ metabase.public-sharing-enabled:
     на этапе admission для этого объекта).'
   title: Публичный общий доступ Metabase включён (значение по умолчанию)
 multitenancy.capsule-tenant-cluster-admin-binding:
-  description: spec.additionalRoleBindings у Tenant предоставляет ClusterRole cluster-admin
-    субъектам арендатора, что полностью нарушает изоляцию арендаторов.
+  description: spec.additionalRoleBindings у Tenant «{{.Finding.Resource.Name}}» предоставляет
+    ClusterRole cluster-admin субъектам арендатора, что полностью нарушает изоляцию
+    арендаторов.
   remediation: Удалите запись cluster-admin из spec.additionalRoleBindings и привяжите
     владельцев арендатора к более узкой роли, ограниченной реальными потребностями.
     Субъект арендатора с правами cluster-admin полностью нарушает изоляцию арендаторов
@@ -929,10 +994,10 @@ multitenancy.capsule-tenant-cluster-admin-binding:
     синхронизируемым Capsule для арендатора.
   title: Capsule Tenant предоставляет ClusterRole cluster-admin субъектам арендатора
 multitenancy.capsule-tenant-no-image-pull-policy-restriction:
-  description: Tenant не ограничивает spec.imagePullPolicies значением ["Always"]
-    — workload'ы на общих узлах могут ссылаться на уже закэшированный образ, загруженный
-    по учётным данным приватного реестра другого арендатора, без повторной аутентификации
-    в реестре.
+  description: Tenant «{{.Finding.Resource.Name}}» не ограничивает spec.imagePullPolicies
+    значением ["Always"] — workload'ы на общих узлах могут ссылаться на уже закэшированный
+    образ, загруженный по учётным данным приватного реестра другого арендатора, без
+    повторной аутентификации в реестре.
   remediation: 'Установите spec.imagePullPolicies в ["Always"]. В руководстве Capsule
     по лучшим практикам указано: «it''s recommended to use the ImagePullPolicy `Always`
     for private registries on shared nodes. This ensures that no images can be used
@@ -942,8 +1007,9 @@ multitenancy.capsule-tenant-no-image-pull-policy-restriction:
     к реестру.'
   title: Capsule Tenant не ограничивает imagePullPolicy контейнеров значением Always
 multitenancy.capsule-tenant-no-limit-range:
-  description: Tenant не устанавливает spec.limitRanges.items, поэтому контейнеры
-    в его namespace'ах не имеют ограничений CPU/памяти по умолчанию или максимума.
+  description: Tenant «{{.Finding.Resource.Name}}» не устанавливает spec.limitRanges.items,
+    поэтому контейнеры в его namespace'ах не имеют ограничений CPU/памяти по умолчанию
+    или максимума.
   remediation: Установите spec.limitRanges.items у Tenant, чтобы Capsule создавал
     LimitRange в каждом namespace, который он создаёт для этого арендатора. Без этого
     отдельные контейнеры в namespace'ах арендатора не имеют ограничения по умолчанию
@@ -951,8 +1017,8 @@ multitenancy.capsule-tenant-no-limit-range:
     на уровне контейнера workload.resource-limits-required).
   title: У Capsule Tenant нет ограничений ресурсов контейнеров по умолчанию
 multitenancy.capsule-tenant-no-network-policies:
-  description: Tenant не устанавливает spec.networkPolicies.items, поэтому его namespace'ы
-    не получают от Capsule встроенной изоляции NetworkPolicy.
+  description: Tenant «{{.Finding.Resource.Name}}» не устанавливает spec.networkPolicies.items,
+    поэтому его namespace'ы не получают от Capsule встроенной изоляции NetworkPolicy.
   remediation: Установите spec.networkPolicies.items у Tenant, чтобы Capsule создавал
     NetworkPolicy по умолчанию в каждом namespace, который он создаёт для этого арендатора.
     Без этого namespace'ы арендатора изначально не имеют изоляции ни друг от друга,
@@ -960,8 +1026,9 @@ multitenancy.capsule-tenant-no-network-policies:
     но на уровне определения арендатора, а не отдельного workload'а).
   title: У Capsule Tenant нет встроенной изоляции NetworkPolicy
 multitenancy.capsule-tenant-no-node-isolation:
-  description: Tenant не устанавливает spec.nodeSelector, поэтому его workload'ы могут
-    планироваться на любой узел кластера, включая узлы control-plane.
+  description: Tenant «{{.Finding.Resource.Name}}» не устанавливает spec.nodeSelector,
+    поэтому его workload'ы могут планироваться на любой узел кластера, включая узлы
+    control-plane.
   remediation: 'Установите spec.nodeSelector (в руководстве Capsule по лучшим практикам
     в качестве примера указано «node-role.kubernetes.io/worker: ''''»), чтобы workload''ы
     этого арендатора были ограничены worker-узлами вместо права быть запланированными
@@ -971,9 +1038,9 @@ multitenancy.capsule-tenant-no-node-isolation:
     того, что workload''ы арендатора реально там выполняются.'
   title: Capsule Tenant не ограничивает узлы, на которые могут планироваться его workload'ы
 multitenancy.capsule-tenant-no-psa-enforcement:
-  description: Tenant не требует метку pod-security.kubernetes.io/enforce в spec.namespaceOptions.requiredMetadata.labels,
-    поэтому его namespace'ы не имеют встроенного применения Pod Security Standards,
-    зафиксированного Capsule.
+  description: Tenant «{{.Finding.Resource.Name}}» не требует метку pod-security.kubernetes.io/enforce
+    в spec.namespaceOptions.requiredMetadata.labels, поэтому его namespace'ы не имеют
+    встроенного применения Pod Security Standards, зафиксированного Capsule.
   remediation: Добавьте метку pod-security.kubernetes.io/enforce в spec.namespaceOptions.requiredMetadata.labels
     у Tenant, чтобы каждый namespace, создаваемый Capsule для него, был обязан нести
     применение Pod Security Admission (тот же базовый пробел, что и в psa-analyzer.no-active-enforcement,
@@ -981,8 +1048,8 @@ multitenancy.capsule-tenant-no-psa-enforcement:
     это из своих namespace'ов при самообслуживании).
   title: Capsule Tenant не фиксирует применение Pod Security Standards
 multitenancy.capsule-tenant-no-registry-allowlist:
-  description: Tenant не устанавливает spec.containerRegistries.allowed, поэтому его
-    workload'ы могут загружать образы контейнеров из любого реестра.
+  description: Tenant «{{.Finding.Resource.Name}}» не устанавливает spec.containerRegistries.allowed,
+    поэтому его workload'ы могут загружать образы контейнеров из любого реестра.
   remediation: Установите spec.containerRegistries.allowed в конкретные реестры, из
     которых реально загружают образы workload'ы этого арендатора (в руководстве Capsule
     по лучшим практикам в качестве примера allow-листа приведены docker.io/public.ecr.aws/quay.io/mcr.microsoft.com).
@@ -990,17 +1057,17 @@ multitenancy.capsule-tenant-no-registry-allowlist:
     те, что платформа не контролирует и которым не доверяет.
   title: Capsule Tenant не ограничивает реестры контейнеров
 multitenancy.capsule-tenant-no-resource-quota:
-  description: Tenant не устанавливает spec.resourceQuotas.items, поэтому его namespace'ы
-    не имеют верхней границы квоты ресурсов — этот арендатор может потреблять неограниченные
-    ресурсы кластера.
+  description: Tenant «{{.Finding.Resource.Name}}» не устанавливает spec.resourceQuotas.items,
+    поэтому его namespace'ы не имеют верхней границы квоты ресурсов — этот арендатор
+    может потреблять неограниченные ресурсы кластера.
   remediation: Установите spec.resourceQuotas.items у Tenant, чтобы Capsule создавал
     ResourceQuota в каждом namespace, который он создаёт для этого арендатора. Без
     этого у арендатора нет верхней границы совокупного потребления CPU/памяти/количества
     объектов, что может влиять на других арендаторов, делящих кластер.
   title: У Capsule Tenant нет верхней границы квоты ресурсов
 multitenancy.capsule-tenant-owner-cluster-admin-role:
-  description: spec.owners у Tenant предоставляет владельцу ClusterRole cluster-admin,
-    что полностью нарушает изоляцию арендаторов.
+  description: spec.owners у Tenant «{{.Finding.Resource.Name}}» предоставляет владельцу
+    ClusterRole cluster-admin, что полностью нарушает изоляцию арендаторов.
   remediation: 'Удалите cluster-admin из clusterRoles этого владельца (собственное
     значение Capsule по умолчанию — {admin, capsule-namespace-deleter}) и предоставьте
     более узкую роль, ограниченную реальными потребностями владельца. Проверено напрямую
@@ -1013,36 +1080,42 @@ multitenancy.capsule-tenant-owner-cluster-admin-role:
     полностью нарушает изоляцию арендаторов.'
   title: Capsule Tenant предоставляет владельцу ClusterRole cluster-admin
 netpol-analyzer.broad-namespace-selector-rule:
-  remediation: Добавьте podSelector вместе с namespaceSelector, чтобы ограничить правило
-    конкретными pod'ами, либо убедитесь, что разрешение для всех pod'ов в выбранных
-    namespace действительно задумано.
+  remediation: Добавьте podSelector в NetworkPolicy «{{.Finding.Resource.Name}}» в
+    пространстве имён {{.Finding.Resource.Namespace}} вместе с namespaceSelector,
+    чтобы ограничить правило конкретными pod'ами, либо убедитесь, что разрешение для
+    всех pod'ов в выбранных namespace действительно задумано.
   title: Правило NetworkPolicy задаёт namespaceSelector без podSelector
 netpol-analyzer.no-egress-restriction:
-  remediation: 'Добавьте NetworkPolicy с policyTypes: [Egress], выбирающую этот workload,
+  remediation: 'Добавьте NetworkPolicy с policyTypes: [Egress], выбирающую {{.Finding.Resource.Kind}}
+    «{{.Finding.Resource.Name}}» в пространстве имён {{.Finding.Resource.Namespace}},
     ограничив исходящий трафик только реально необходимыми направлениями.'
   title: У workload'а нет NetworkPolicy, ограничивающей egress
 netpol-analyzer.no-network-policy-coverage:
   remediation: Добавьте NetworkPolicy (или политику default-deny на уровне namespace),
-    выбирающую этот workload, чтобы ограничить ingress/egress только тем, что реально
-    необходимо.
+    выбирающую {{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}» в пространстве
+    имён {{.Finding.Resource.Namespace}}, чтобы ограничить ingress/egress только тем,
+    что реально необходимо.
   title: У workload'а нет применимой NetworkPolicy
 network.ingress-tls-required:
-  description: Ingress не задаёт spec.tls; трафик обслуживается по незашифрованному
-    HTTP.
+  description: Ingress «{{.Finding.Resource.Name}}» в пространстве имён {{.Finding.Resource.Namespace}}
+    не задаёт spec.tls; трафик обслуживается по незашифрованному HTTP.
   remediation: Задайте spec.tls хотя бы с одной записью (hosts + secretName), чтобы
-    трафик к этому Ingress обслуживался по HTTPS, а не по незашифрованному HTTP.
+    трафик к Ingress «{{.Finding.Resource.Name}}» в пространстве имён {{.Finding.Resource.Namespace}}
+    обслуживался по HTTPS, а не по незашифрованному HTTP.
   title: Ingress не настраивает TLS
 network.no-deprecated-ingress-api-version:
-  description: Ingress использует удалённую apiVersion (extensions/v1beta1 или networking.k8s.io/v1beta1);
+  description: Ingress «{{.Finding.Resource.Name}}» в пространстве имён {{.Finding.Resource.Namespace}}
+    использует удалённую apiVersion (extensions/v1beta1 или networking.k8s.io/v1beta1);
     перейдите на networking.k8s.io/v1.
-  remediation: 'Переведите этот манифест на apiVersion: networking.k8s.io/v1. API
+  remediation: 'Переведите манифест Ingress «{{.Finding.Resource.Name}}» в пространстве
+    имён {{.Finding.Resource.Namespace}} на apiVersion: networking.k8s.io/v1. API
     extensions/v1beta1 и networking.k8s.io/v1beta1 для Ingress были удалены в Kubernetes
     1.22 и будут отклонены любым актуальным кластером.'
   title: Ingress использует удалённую версию API
 psa-analyzer.no-active-enforcement:
   remediation: Установите метку pod-security.kubernetes.io/enforce на пространство
-    имён (baseline или restricted), либо настройте кластерные значения PodSecurityConfiguration
-    по умолчанию через --admission-control-config-file.
+    имён {{.Finding.Resource.Name}} (baseline или restricted), либо настройте кластерные
+    значения PodSecurityConfiguration по умолчанию через --admission-control-config-file.
   title: У пространства имён нет активного применения Pod Security Admission
 pss-analyzer.baseline:
   remediation: См. https://kubernetes.io/docs/concepts/security/pod-security-standards/#baseline
@@ -1053,117 +1126,148 @@ pss-analyzer.restricted:
     для полных требований профиля restricted.
   title: Нагрузка не соответствует профилю Pod Security Standards "restricted"
 rbac-analyzer.automount-with-sensitive-access:
-  remediation: 'Установите automountServiceAccountToken: false на ServiceAccount (или
-    в спецификации pod''а), если workload''у по существу не нужно обращаться к API-серверу.'
+  remediation: 'Установите automountServiceAccountToken: false на ServiceAccount «{{.Finding.Resource.Name}}»
+    в пространстве имён {{.Finding.Resource.Namespace}} (или в спецификации pod''а),
+    если workload''у по существу не нужно обращаться к API-серверу.'
   title: Автомонтирование токена ServiceAccount не отключено при наличии чувствительного
     доступа RBAC
 rbac-analyzer.broad-secrets-access:
-  remediation: Ограничьте доступ к секретам одним namespace и, где возможно, конкретными
-    resourceNames вместо доступа ко всем Secret.
+  remediation: Ограничьте доступ {{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}»{{if
+    .Finding.Resource.Namespace}} в пространстве имён {{.Finding.Resource.Namespace}}{{end}}
+    к секретам одним namespace и, где возможно, конкретными resourceNames вместо доступа
+    ко всем Secret.
   title: Широкий доступ на чтение Secrets
 rbac-analyzer.default-serviceaccount-bound:
   remediation: Создайте отдельный ServiceAccount для каждого workload'а и привязывайте
-    роли к нему, а не к ServiceAccount default этого namespace.
+    роли к нему, а не к ServiceAccount default пространства имён {{.Finding.Resource.Namespace}}.
   title: У ServiceAccount default привязаны права RBAC
 rbac-analyzer.escalation-verb:
-  remediation: 'Уберите escalate/bind/impersonate из ролей, привязанных к {{.Finding.Resource.Kind}}
-    "{{.Finding.Resource.Name}}"{{if .Finding.Resource.Namespace}} в пространстве имён {{.Finding.Resource.Namespace}}{{end}},
-    если субъект не является доверенным, контролируемым контроллером, которому этот verb действительно необходим.'
+  remediation: Уберите escalate/bind/impersonate из ролей, привязанных к {{.Finding.Resource.Kind}}
+    "{{.Finding.Resource.Name}}"{{if .Finding.Resource.Namespace}} в пространстве
+    имён {{.Finding.Resource.Namespace}}{{end}}, если субъект не является доверенным,
+    контролируемым контроллером, которому этот verb действительно необходим.
   title: У субъекта есть verb для эскалации привилегий RBAC
 rbac-analyzer.pod-exec-access:
   remediation: Ограничьте pods/exec, pods/attach и pods/portforward небольшим, контролируемым
     набором субъектов, в идеале — с ограничением через resourceNames.
   title: Субъект может выполнять exec/attach/port-forward в pod'ы
 rbac-analyzer.rbac-self-modification:
-  remediation: Уберите доступ на запись к ресурсам RBAC из этой роли, если субъект
-    не является доверенным контроллером управления RBAC.
+  remediation: Уберите доступ на запись к ресурсам RBAC из ролей, привязанных к {{.Finding.Resource.Kind}}
+    «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}} в пространстве
+    имён {{.Finding.Resource.Namespace}}{{end}}, если субъект не является доверенным
+    контроллером управления RBAC.
   title: Субъект может изменять объекты RBAC
 rbac-analyzer.system-masters-usage:
   remediation: Убедитесь, что этот binding — ожидаемый bootstrap-binding кластера
     (обычно называемый «cluster-admin»), а не дополнительный, избыточный грант system:masters.
   title: Группа system:masters привязана к роли
 rbac.no-anonymous-binding:
-  description: Binding предоставляет роль группе system:anonymous или system:unauthenticated.
-  remediation: Удалите system:anonymous / system:unauthenticated из subjects этого
-    binding'а. Любые права, выданные здесь, может использовать кто угодно, кто способен
-    обратиться к API-серверу без учётных данных.
+  description: '{{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} предоставляет роль
+    группе system:anonymous или system:unauthenticated.'
+  remediation: Удалите system:anonymous / system:unauthenticated из subjects {{.Finding.Resource.Kind}}
+    «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}} в пространстве
+    имён {{.Finding.Resource.Namespace}}{{end}}. Любые права, выданные здесь, может
+    использовать кто угодно, кто способен обратиться к API-серверу без учётных данных.
   title: Роль привязана к анонимному или неаутентифицированному субъекту
 rbac.no-cluster-admin-binding:
-  description: Binding предоставляет субъекту ClusterRole cluster-admin.
-  remediation: Привяжите субъект к более узкой роли, ограниченной реально необходимыми
-    правами, вместо cluster-admin. Оставьте cluster-admin для небольшого, контролируемого
-    набора учётных записей для экстренного доступа (break-glass).
+  description: '{{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} предоставляет субъекту
+    ClusterRole cluster-admin.'
+  remediation: Привяжите субъект {{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}»
+    к более узкой роли, ограниченной реально необходимыми правами, вместо cluster-admin.
+    Оставьте cluster-admin для небольшого, контролируемого набора учётных записей
+    для экстренного доступа (break-glass).
   title: Субъект привязан к роли cluster-admin
 rbac.no-csr-approval-access:
-  description: Role/ClusterRole предоставляет доступ update/patch к суб-ресурсу certificatesigningrequests/approval.
-  remediation: Уберите доступ update/patch к certificatesigningrequests/approval,
-    если субъект не является доверенным, контролируемым контроллером одобрения сертификатов.
-    Этот доступ позволяет одобрять произвольные CertificateSigningRequests, что даёт
-    возможность выпускать новые доверенные клиентские учётные данные для кластера.
+  description: '{{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} предоставляет доступ
+    update/patch к суб-ресурсу certificatesigningrequests/approval.'
+  remediation: Уберите доступ update/patch к certificatesigningrequests/approval из
+    {{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}», если субъект не является
+    доверенным, контролируемым контроллером одобрения сертификатов. Этот доступ позволяет
+    одобрять произвольные CertificateSigningRequests, что даёт возможность выпускать
+    новые доверенные клиентские учётные данные для кластера.
   title: Role/ClusterRole предоставляет доступ к суб-ресурсу certificatesigningrequests/approval
 rbac.no-node-proxy-access:
-  description: Role/ClusterRole предоставляет доступ get/list/watch/create к суб-ресурсу
-    nodes/proxy.
-  remediation: Уберите доступ get/list/watch/create к nodes/proxy, если субъекту он
-    не нужен по существу. Этот доступ маршрутизирует запросы через kubelet API, минуя
-    обычный admission control и авторизацию API-сервера — по сути это эквивалентно
-    прямому доступу к kubelet на узле.
+  description: '{{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} предоставляет доступ
+    get/list/watch/create к суб-ресурсу nodes/proxy.'
+  remediation: Уберите доступ get/list/watch/create к nodes/proxy из {{.Finding.Resource.Kind}}
+    «{{.Finding.Resource.Name}}», если субъекту он не нужен по существу. Этот доступ
+    маршрутизирует запросы через kubelet API, минуя обычный admission control и авторизацию
+    API-сервера — по сути это эквивалентно прямому доступу к kubelet на узле.
   title: Role/ClusterRole предоставляет доступ к суб-ресурсу nodes/proxy
 rbac.no-persistentvolume-create-access:
-  description: Role/ClusterRole предоставляет доступ create на ресурс persistentvolumes.
-  remediation: Уберите доступ create к persistentvolumes, если субъект не является
-    доверенным контроллером предоставления хранилища. PersistentVolume может ссылаться
-    на hostPath, поэтому доступ create здесь можно использовать для доступа к файловой
-    системе узла даже там, где workload.no-hostpath-volumes напрямую блокирует hostPath-тома
-    на уровне Pod.
+  description: '{{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} предоставляет доступ
+    create на ресурс persistentvolumes.'
+  remediation: Уберите доступ create к persistentvolumes из {{.Finding.Resource.Kind}}
+    «{{.Finding.Resource.Name}}», если субъект не является доверенным контроллером
+    предоставления хранилища. PersistentVolume может ссылаться на hostPath, поэтому
+    доступ create здесь можно использовать для доступа к файловой системе узла даже
+    там, где workload.no-hostpath-volumes напрямую блокирует hostPath-тома на уровне
+    Pod.
   title: Role/ClusterRole предоставляет доступ create на PersistentVolumes
 rbac.no-serviceaccount-token-create-access:
-  description: Role/ClusterRole предоставляет доступ create к суб-ресурсу serviceaccounts/token.
-  remediation: Уберите доступ create к serviceaccounts/token, если субъект не является
-    доверенным, контролируемым контроллером выпуска токенов. Этот доступ позволяет
-    выпускать новые, потенциально долгоживущие токены для любого ServiceAccount в
-    области действия, независимо от собственных прав этого ServiceAccount.
+  description: '{{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} предоставляет доступ
+    create к суб-ресурсу serviceaccounts/token.'
+  remediation: Уберите доступ create к serviceaccounts/token из {{.Finding.Resource.Kind}}
+    «{{.Finding.Resource.Name}}», если субъект не является доверенным, контролируемым
+    контроллером выпуска токенов. Этот доступ позволяет выпускать новые, потенциально
+    долгоживущие токены для любого ServiceAccount в области действия, независимо от
+    собственных прав этого ServiceAccount.
   title: Role/ClusterRole предоставляет доступ create к суб-ресурсу serviceaccounts/token
 rbac.no-webhook-config-write-access:
-  description: Role/ClusterRole предоставляет доступ на запись к validatingwebhookconfigurations/mutatingwebhookconfigurations.
-  remediation: Уберите доступ create/update/patch/delete к validatingwebhookconfigurations/mutatingwebhookconfigurations,
-    если субъект не является доверенным, контролируемым контроллером управления webhook'ами.
-    Доступ на запись здесь позволяет установить webhook, перехватывающий или обходящий
-    admission control в масштабе всего кластера.
+  description: '{{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} предоставляет доступ
+    на запись к validatingwebhookconfigurations/mutatingwebhookconfigurations.'
+  remediation: Уберите доступ create/update/patch/delete к validatingwebhookconfigurations/mutatingwebhookconfigurations
+    из {{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}», если субъект не является
+    доверенным, контролируемым контроллером управления webhook'ами. Доступ на запись
+    здесь позволяет установить webhook, перехватывающий или обходящий admission control
+    в масштабе всего кластера.
   title: Role/ClusterRole предоставляет доступ на запись к объектам конфигурации webhook
 rbac.no-wildcard-rules:
-  description: Role/ClusterRole содержит правило с подстановочным знаком ("*") в verb,
-    resource или apiGroup.
-  remediation: Замените подстановочный знак ("*") в verbs, resources или apiGroups
-    на точный набор, который реально нужен субъекту. Подстановочные знаки нарушают
-    принцип минимальных привилегий и обычно дают гораздо больше прав, чем требуется
-    (например, "*" в resources включает secrets).
+  description: '{{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} содержит правило с
+    подстановочным знаком ("*") в verb, resource или apiGroup.'
+  remediation: В {{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}» замените
+    подстановочный знак ("*") в verbs, resources или apiGroups на точный набор, который
+    реально нужен субъекту. Подстановочные знаки нарушают принцип минимальных привилегий
+    и обычно дают гораздо больше прав, чем требуется (например, "*" в resources включает
+    secrets).
   title: Правило RBAC содержит подстановочный знак в verbs, resources или apiGroups
 secrets-analyzer.not-rotated-recently:
-  remediation: Обновите эти учётные данные, если они используются для аутентификации,
+  remediation: Обновите учётные данные в Secret «{{.Finding.Resource.Name}}» в пространстве
+    имён {{.Finding.Resource.Namespace}}, если они используются для аутентификации,
     и рассмотрите автоматическую ротацию для всего, что несёт реальный риск компрометации
     и повторного использования.
   title: Secret не обновлялся более года
 secrets-analyzer.value-reused-across-objects:
-  remediation: Дайте каждому Secret собственное, независимо сгенерированное значение
-    — общие учётные данные превращают одну утечку в компрометацию сразу нескольких
-    объектов.
+  remediation: Дайте Secret «{{.Finding.Resource.Name}}» в пространстве имён {{.Finding.Resource.Namespace}}
+    собственное, независимо сгенерированное значение — общие учётные данные превращают
+    одну утечку в компрометацию сразу нескольких объектов.
   title: Значение Secret дословно повторяется в нескольких объектах Secret
 secrets-analyzer.weak-credential-value:
-  remediation: Замените это значение реальными, случайно сгенерированными учётными
+  remediation: Замените значение в Secret «{{.Finding.Resource.Name}}» в пространстве
+    имён {{.Finding.Resource.Namespace}} реальными, случайно сгенерированными учётными
     данными (например, 32+ случайных байта из CSPRNG), если оно действительно используется
     для аутентификации.
   title: Значение Secret выглядит слабым (короткое и/или с низкой энтропией)
 secrets.configmap-no-embedded-credentials:
-  remediation: Перенесите это значение в Secret (в идеале — на основе внешнего менеджера
+  remediation: Перенесите значение из ConfigMap «{{.Finding.Resource.Name}}» в пространстве
+    имён {{.Finding.Resource.Namespace}} в Secret (в идеале — на основе внешнего менеджера
     секретов, а не обычного Kubernetes Secret) вместо ConfigMap. ConfigMap'ы по умолчанию
     не шифруются в состоянии покоя и доступны для чтения любому, у кого есть доступ
     get/list к ним.
   title: ConfigMap, по-видимому, содержит встроенные учётные данные
 secrets.known-weak-placeholder-value:
-  description: Данные этого Secret содержат значение, равное известному слабому/placeholder-литералу
-    (например, "changeme", "changeit", "password", "admin", "secret", "guest", "root",
-    "123456", "letmein", "qwerty") — это не настоящие учётные данные.
+  description: Данные Secret «{{.Finding.Resource.Name}}» в пространстве имён {{.Finding.Resource.Namespace}}
+    содержат значение, равное известному слабому/placeholder-литералу (например, "changeme",
+    "changeit", "password", "admin", "secret", "guest", "root", "123456", "letmein",
+    "qwerty") — это не настоящие учётные данные.
   remediation: 'Замените это значение реальными, случайно сгенерированными учётными
     данными. NIST SP 800-63B §5.1.1.2 (Memorized Secret Verifiers) предписывает верификаторам
     отклонять секреты, найденные в «корпусах утечек», словарные слова и «контекстно-специфичные
@@ -1183,8 +1287,9 @@ secrets.known-weak-placeholder-value:
   title: Значение Secret — известный слабый/placeholder-литерал, а не реальные учётные
     данные
 secrets.no-secrets-via-env:
-  description: Контейнер читает данные Secret через env/envFrom (secretKeyRef или
-    secretRef) вместо смонтированного тома.
+  description: Контейнер в {{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}»
+    в пространстве имён {{.Finding.Resource.Namespace}} читает данные Secret через
+    env/envFrom (secretKeyRef или secretRef) вместо смонтированного тома.
   remediation: 'Смонтируйте Secret как том и читайте его с файловой системы вместо
     env/envFrom. Переменные окружения с большей вероятностью приводят к утечке: они
     видны в `kubectl describe pod`/дампах падений, наследуются каждым дочерним процессом
@@ -1193,39 +1298,45 @@ secrets.no-secrets-via-env:
   title: Контейнер получает данные Secret через переменные окружения вместо смонтированного
     тома
 superset.secret-key-default-value:
-  description: SUPERSET_SECRET_KEY этого Secret всё ещё равен известному примерному
-    значению из собственного исходного кода/документации Superset (CVE-2023-27524)
+  description: SUPERSET_SECRET_KEY Secret «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} всё ещё равен известному
+    примерному значению из собственного исходного кода/документации Superset (CVE-2023-27524)
     — сессионные cookie можно подделать, обходя аутентификацию.
   remediation: 'Сгенерируйте настоящий случайный SUPERSET_SECRET_KEY и замените значение
-    этого Secret — никогда не используйте буквальную примерную строку из собственной
-    документации Superset. Проверено непосредственно по собственному исходному коду
-    Superset: superset/constants.py определяет CHANGE_ME_SECRET_KEY = "CHANGE_ME_TO_A_COMPLEX_RANDOM_SECRET",
-    а superset/config.py откатывается к этому значению: SECRET_KEY = os.environ.get("SUPERSET_SECRET_KEY")
-    or CHANGE_ME_SECRET_KEY. Это CVE-2023-27524: известный/дефолтный SECRET_KEY позволяет
-    злоумышленнику подделать валидный сессионный cookie, обойти аутентификацию и получить
-    доступ к SQL Lab — в некоторых конфигурациях это ведёт к удалённому выполнению
-    кода. Собственный официальный Helm-чарт apache/superset в values.yaml показывает
-    именно эту строку как пример документации для extraSecretEnv.SUPERSET_SECRET_KEY
-    — реальная, правдоподобная ловушка copy-paste.'
+    Secret «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}} в пространстве
+    имён {{.Finding.Resource.Namespace}}{{end}} — никогда не используйте буквальную
+    примерную строку из собственной документации Superset. Проверено непосредственно
+    по собственному исходному коду Superset: superset/constants.py определяет CHANGE_ME_SECRET_KEY
+    = "CHANGE_ME_TO_A_COMPLEX_RANDOM_SECRET", а superset/config.py откатывается к
+    этому значению: SECRET_KEY = os.environ.get("SUPERSET_SECRET_KEY") or CHANGE_ME_SECRET_KEY.
+    Это CVE-2023-27524: известный/дефолтный SECRET_KEY позволяет злоумышленнику подделать
+    валидный сессионный cookie, обойти аутентификацию и получить доступ к SQL Lab
+    — в некоторых конфигурациях это ведёт к удалённому выполнению кода. Собственный
+    официальный Helm-чарт apache/superset в values.yaml показывает именно эту строку
+    как пример документации для extraSecretEnv.SUPERSET_SECRET_KEY — реальная, правдоподобная
+    ловушка copy-paste.'
   title: SECRET_KEY у Superset оставлен со значением из примера документации
 superset.talisman-disabled:
   description: Контейнер устанавливает TALISMAN_ENABLED в ложное значение — промежуточный
     слой безопасности заголовков Flask-Talisman у Superset (CSP, HSTS, X-Frame-Options,
     ...) отключён.
   remediation: 'Уберите TALISMAN_ENABLED=false (либо верните значение true, значение
-    по умолчанию) из переменных окружения контейнера Superset. Проверено непосредственно
-    по собственному исходному коду Superset (superset/config.py): TALISMAN_ENABLED
-    = utils.cast_to_boolean(os.environ.get("TALISMAN_ENABLED", True)) — прямое переопределение
-    через переменную окружения, по умолчанию true. Talisman — это промежуточный слой
-    Flask-Talisman у Superset, отвечающий за заголовки ответа, связанные с безопасностью
-    (Content-Security-Policy, HSTS, X-Frame-Options и подобные). Источник слабее,
-    чем у большинства проверок этого репозитория (нет отдельного предупреждения "небезопасно"
-    помимо самого назначения механизма — тот же уровень, что и istio.gateway-weak-tls-version).'
+    по умолчанию) из переменных окружения контейнера Superset в {{.Finding.Resource.Kind}}
+    «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}} в пространстве
+    имён {{.Finding.Resource.Namespace}}{{end}}. Проверено непосредственно по собственному
+    исходному коду Superset (superset/config.py): TALISMAN_ENABLED = utils.cast_to_boolean(os.environ.get("TALISMAN_ENABLED",
+    True)) — прямое переопределение через переменную окружения, по умолчанию true.
+    Talisman — это промежуточный слой Flask-Talisman у Superset, отвечающий за заголовки
+    ответа, связанные с безопасностью (Content-Security-Policy, HSTS, X-Frame-Options
+    и подобные). Источник слабее, чем у большинства проверок этого репозитория (нет
+    отдельного предупреждения "небезопасно" помимо самого назначения механизма — тот
+    же уровень, что и istio.gateway-weak-tls-version).'
   title: Superset отключает заголовки безопасности Talisman (CSP, HSTS, ...)
 tempo.receiver-tls-not-configured:
-  description: 'tempo.yaml этого ConfigMap имеет включённый receiver otlp, но нигде
-    в файле нет конфигурации tls: — данные трассировки, вероятно, принимаются в открытом
-    виде.'
+  description: 'tempo.yaml ConfigMap «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} имеет включённый receiver
+    otlp, но нигде в файле нет конфигурации tls: — данные трассировки, вероятно, принимаются
+    в открытом виде.'
   remediation: 'Добавьте блок tls: под distributor.receivers.otlp.protocols.grpc (и/или
     .http) — собственная документация Tempo по TLS подтверждает именно эти пути конфигурации
     (distributor.receivers.otlp.protocols.grpc.tls, .http.tls и аналогичные для receiver''ов
@@ -1244,9 +1355,10 @@ tempo.receiver-tls-not-configured:
     где-то ещё в конфигурации, не связанной с receiver''ом.'
   title: У Tempo включён receiver OTLP без настроенного где-либо в конфигурации TLS
 temporal.authorization-not-configured:
-  description: 'У config_template.yaml этого ConfigMap нет блока authorization: под
-    global: — Authorizer по умолчанию в Temporal (noopAuthorizer) разрешает любой
-    API-запрос без аутентификации и контроля доступа.'
+  description: 'У config_template.yaml ConfigMap «{{.Finding.Resource.Name}}»{{if
+    .Finding.Resource.Namespace}} в пространстве имён {{.Finding.Resource.Namespace}}{{end}}
+    нет блока authorization: под global: — Authorizer по умолчанию в Temporal (noopAuthorizer)
+    разрешает любой API-запрос без аутентификации и контроля доступа.'
   remediation: 'Настройте server.config.authorization (authorizer/claimMapper) в values.yaml
     официального чарта temporalio/helm-charts, чтобы в отрендеренном config_template.yaml
     появился настоящий блок authorization:. Собственная [документация Temporal по
@@ -1256,12 +1368,13 @@ temporal.authorization-not-configured:
     — и явно: "This is not secure for production or for any environment that is accessible
     to untrusted clients... your deployment is effectively open to anyone with network
     access." Проверено непосредственно по собственному шаблону чарта (charts/temporal/templates/server-configmap.yaml):
-    весь блок authorization: рендерится только `{{- with $server.config.authorization
-    }}...{{- end }}` — полностью опускается, если пользователь явно его не задал,
-    а собственный values.yaml чарта поставляет его полностью закомментированным.'
+    весь блок authorization: рендерится только когда в values.yaml явно задан server.config.authorization
+    — по умолчанию values.yaml чарта поставляет этот блок полностью закомментированным,
+    и тогда блок authorization: в отрендеренном конфиге отсутствует целиком.'
   title: У сервера Temporal не настроен Authorizer — разрешён любой API-запрос
 temporal.frontend-tls-disabled:
-  description: 'config_template.yaml этого ConfigMap устанавливает global.tls.frontend.enabled:
+  description: 'config_template.yaml ConfigMap «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} устанавливает global.tls.frontend.enabled:
     false — клиентский (frontend) трафик не зашифрован TLS.'
   remediation: 'Установите server.config.tls.frontend.enabled: true в values.yaml
     официального чарта temporalio/helm-charts. Проверено непосредственно по собственному
@@ -1271,7 +1384,8 @@ temporal.frontend-tls-disabled:
     явно включить TLS", что и у internode-трафика (см. temporal.internode-tls-disabled).'
   title: Клиентский (frontend) трафик Temporal не зашифрован TLS
 temporal.internode-tls-disabled:
-  description: 'config_template.yaml этого ConfigMap устанавливает global.tls.internode.enabled:
+  description: 'config_template.yaml ConfigMap «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} устанавливает global.tls.internode.enabled:
     false — межсерверный (internode) трафик не зашифрован TLS.'
   remediation: 'Установите server.config.tls.internode.enabled: true (и выпустите
     сертификаты от CA, которому доверяет каждый компонент сервера) в values.yaml официального
@@ -1288,8 +1402,9 @@ temporal.operator-authorizer-empty:
     откатывается к no-operation authorizer, который разрешает любой API-запрос без
     контроля доступа.
   remediation: 'Установите spec.authorization.authorizer в "default" (либо в реальный
-    кастомный authorizer) на этом TemporalCluster. Проверено непосредственно по собственной
-    схеме CRD temporal-operator (config/crd/bases/temporal.io_temporalclusters.yaml,
+    кастомный authorizer) на TemporalCluster «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}}. Проверено непосредственно
+    по собственной схеме CRD temporal-operator (config/crd/bases/temporal.io_temporalclusters.yaml,
     описание поля spec.authorization.authorizer): "Authorizer defines the authorization
     mechanism to be used. It can be left as an empty string to use a no-operation
     authorizer (noopAuthorizer), or set to \"default\" to use the temporal''s default
@@ -1297,8 +1412,10 @@ temporal.operator-authorizer-empty:
     для кластеров, управляемых CRD alexandrevilain/temporal-operator, а не сырым Helm-чартом.'
   title: У TemporalCluster не настроен authorizer — разрешён любой API-запрос
 temporal.web-auth-not-enabled:
-  description: У контейнера temporalio/ui этого Deployment нет переменной окружения
-    TEMPORAL_AUTH_ENABLED=true — Web UI Temporal работает без включённой аутентификации.
+  description: У контейнера temporalio/ui в Deployment «{{.Finding.Resource.Name}}»{{if
+    .Finding.Resource.Namespace}} в пространстве имён {{.Finding.Resource.Namespace}}{{end}}
+    нет переменной окружения TEMPORAL_AUTH_ENABLED=true — Web UI Temporal работает
+    без включённой аутентификации.
   remediation: 'Установите TEMPORAL_AUTH_ENABLED=true (и настройте соответствующие
     переменные окружения SSO-провайдера) на контейнере Web UI. Собственная документация
     Temporal по безопасности об интеграции SSO для Web UI указывает, что для её включения
@@ -1309,8 +1426,10 @@ temporal.web-auth-not-enabled:
     если пользователь не добавит их через web.additionalEnv.'
   title: Web UI Temporal работает без включённой аутентификации
 vault.auth-allowed-namespaces-wildcard:
-  description: VaultAuth.spec.allowedNamespaces содержит "*", позволяя любому namespace
-    в кластере аутентифицироваться через этот метод, а не только своему собственному.
+  description: У VaultAuth «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} в spec.allowedNamespaces
+    содержит "*", позволяя любому namespace в кластере аутентифицироваться через этот
+    метод, а не только своему собственному.
   remediation: 'Замените запись "*" в spec.allowedNamespaces конкретным namespace(ами),
     которым это действительно необходимо, либо полностью уберите это поле, чтобы вернуться
     к безопасному значению по умолчанию. Собственный справочник CRD VaultAuth от Vault
@@ -1323,8 +1442,9 @@ vault.auth-allowed-namespaces-wildcard:
     у ArgoCD в этом инструменте.'
   title: VaultAuth разрешает аутентификацию любому namespace
 vault.connection-skip-tls-verify:
-  description: VaultConnection.spec.skipTLSVerify равен true, отключая проверку TLS-сертификата
-    сервера Vault.
+  description: У VaultConnection «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} spec.skipTLSVerify
+    равен true, отключая проверку TLS-сертификата сервера Vault.
   remediation: 'Уберите spec.skipTLSVerify (либо установите его в false) и настройте
     spec.caCertSecretRef с доверенным CA. Собственная модель угроз Vault Secrets Operator
     явно документирует это: "Use TLS negotiated by a well-secured certificate authority
@@ -1333,13 +1453,16 @@ vault.connection-skip-tls-verify:
     или подделывать каждый секрет, получаемый через это соединение.'
   title: VaultConnection отключает проверку TLS-сертификата
 version-analyzer.cluster.outside-support-window:
-  remediation: Спланируйте переход на поддерживаемую minor-версию, либо подтвердите,
-    что этот кластер намеренно находится на треке расширенной поддержки вендора.
+  remediation: Спланируйте переход с версии {{.Finding.Resource.Name}} на поддерживаемую
+    minor-версию, либо подтвердите, что этот кластер намеренно находится на треке
+    расширенной поддержки вендора.
   title: Кластер работает на версии Kubernetes, вероятно находящейся за пределами
     окна поддержки upstream
 victoriametrics.no-delete-auth-key:
-  description: spec.extraArgs не устанавливает deleteAuthKey, поэтому /api/v1/admin/tsdb/delete_series
-    доступен без ключа (если не смягчено proxy vmauth/vmgateway или NetworkPolicy).
+  description: У {{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} spec.extraArgs не устанавливает
+    deleteAuthKey, поэтому /api/v1/admin/tsdb/delete_series доступен без ключа (если
+    не смягчено proxy vmauth/vmgateway или NetworkPolicy).
   remediation: Добавьте deleteAuthKey в spec.extraArgs (со ссылкой на значение, хранящееся
     в Secret, а не открытым текстом в манифесте), чтобы /api/v1/admin/tsdb/delete_series
     требовал ключ. Собственная документация VictoriaMetrics по безопасности описывает
@@ -1351,8 +1474,10 @@ victoriametrics.no-delete-auth-key:
     не как к доказательству, что эндпоинт реально доступен злоумышленнику.
   title: У компонента VictoriaMetrics нет deleteAuthKey, защищающего его API удаления
 victoriametrics.vmagent-remotewrite-tls-insecure-skip-verify:
-  description: 'У этого VMAgent есть цель remoteWrite с tlsConfig.insecureSkipVerify:
-    true — TLS-сертификат целевого адреса remote write не проверяется.'
+  description: 'У VMAgent «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} есть цель remoteWrite
+    с tlsConfig.insecureSkipVerify: true — TLS-сертификат целевого адреса remote write
+    не проверяется.'
   remediation: 'Уберите insecureSkipVerify: true (либо установите false, значение
     по умолчанию) в tlsConfig этой цели remoteWrite. Проверено непосредственно по
     собственному исходному коду оператора VictoriaMetrics на Go (api/operator/v1beta1/vmextra_types.go,
@@ -1362,11 +1487,13 @@ victoriametrics.vmagent-remotewrite-tls-insecure-skip-verify:
     VMAgent собирает и пересылает.'
   title: remoteWrite у VMAgent пропускает проверку TLS-сертификата
 victoriametrics.vmauth-select-all-by-default-enabled:
-  description: VMAuth.spec.selectAllByDefault равен true — этому VMAuth доверяет каждый
-    VMUser в кластере, а не только VMUser'ы, соответствующие явному userSelector/userNamespaceSelector.
+  description: У VMAuth «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} spec.selectAllByDefault
+    равен true — этому VMAuth доверяет каждый VMUser в кластере, а не только VMUser'ы,
+    соответствующие явному userSelector/userNamespaceSelector.
   remediation: 'Уберите selectAllByDefault: true и ограничьте userSelector/userNamespaceSelector
-    конкретными VMUser''ами, которым этот VMAuth должен доверять. Собственный комментарий
-    в документации оператора VictoriaMetrics (api/operator/v1beta1/vmauth_types.go):
+    конкретными VMUser''ами, которым VMAuth «{{.Finding.Resource.Name}}» должен доверять.
+    Собственный комментарий в документации оператора VictoriaMetrics (api/operator/v1beta1/vmauth_types.go):
     "changes default behavior for empty CRD selectors, such userSelector. with selectAllByDefault:
     true and empty userSelector and userNamespaceSelector Operator selects all exist
     users." Явный отказ от границ доверия по namespace/меткам — та же ситуация, что
@@ -1375,9 +1502,10 @@ victoriametrics.vmauth-select-all-by-default-enabled:
     тот же уровень, что и istio.gateway-weak-tls-version).'
   title: VMAuth доверяет каждому VMUser в кластере, а не только явному селектору
 victoriametrics.vmauth-unauthorized-access-wildcard-path:
-  description: VMAuth.spec.unauthorizedUserAccessSpec.url_map содержит запись src_paths,
-    соответствующую всему (например, ".*") — каждый неаутентифицированный запрос направляется
-    на backend этого правила.
+  description: У VMAuth «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
+    в пространстве имён {{.Finding.Resource.Namespace}}{{end}} spec.unauthorizedUserAccessSpec.url_map
+    содержит запись src_paths, соответствующую всему (например, ".*") — каждый неаутентифицированный
+    запрос направляется на backend этого правила.
   remediation: 'Ограничьте spec.unauthorizedUserAccessSpec.url_map[].src_paths конкретными
     путями, которым действительно нужен неаутентифицированный доступ (health check
     и т.п.), либо полностью уберите unauthorizedUserAccessSpec. Собственная документация
@@ -1390,48 +1518,54 @@ victoriametrics.vmauth-unauthorized-access-wildcard-path:
     по пользователям задана в другом месте.'
   title: VMAuth направляет подстановочный путь на неаутентифицированные запросы
 workload.drop-all-capabilities:
-  description: Container не сбрасывает все Linux capabilities (securityContext.capabilities.drop
-    должен включать "ALL").
+  description: Container в {{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}»
+    (пространство имён {{.Finding.Resource.Namespace}}) не сбрасывает все Linux capabilities
+    (securityContext.capabilities.drop должен включать "ALL").
   remediation: 'Установите securityContext.capabilities.drop: ["ALL"] для каждого
     контейнера и добавляйте обратно только те конкретные capabilities, которые реально
     нужны нагрузке.'
   title: Контейнеры должны сбрасывать все Linux capabilities
 workload.no-default-namespace:
-  description: metadata.namespace нагрузки явно установлен в "default".
-  remediation: Создайте для этой нагрузки выделенный namespace с осмысленным именем
-    вместо использования "default" — это заметно усложняет разграничение RBAC, значения
-    NetworkPolicy по умолчанию, квоты ресурсов и определение владельца, когда все
-    несвязанные нагрузки делят один namespace.
+  description: metadata.namespace {{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}»
+    явно установлен в "default".
+  remediation: Создайте для {{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}»
+    выделенный namespace с осмысленным именем вместо использования "default" — это
+    заметно усложняет разграничение RBAC, значения NetworkPolicy по умолчанию, квоты
+    ресурсов и определение владельца, когда все несвязанные нагрузки делят один namespace.
   title: Нагрузка развёрнута в namespace "default"
 workload.no-default-serviceaccount:
-  description: Нагрузка не устанавливает spec.serviceAccountName в выделенный ServiceAccount
-    (использует неявный или явный ServiceAccount "default").
-  remediation: Создайте для этой нагрузки выделенный ServiceAccount и укажите его
-    в spec.serviceAccountName, вместо того чтобы оставлять поле пустым (что неявно
-    использует "default") или указывать "default" явно.
+  description: '{{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}» в пространстве
+    имён {{.Finding.Resource.Namespace}} не устанавливает spec.serviceAccountName
+    в выделенный ServiceAccount (использует неявный или явный ServiceAccount "default").'
+  remediation: Создайте для {{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}»
+    выделенный ServiceAccount и укажите его в spec.serviceAccountName, вместо того
+    чтобы оставлять поле пустым (что неявно использует "default") или указывать "default"
+    явно.
   title: Нагрузка не использует выделенный ServiceAccount
 workload.no-host-namespaces:
-  remediation: Удалите hostNetwork, hostPID и hostIPC из спецификации pod'а (или установите
-    их в false). Совместное использование host-пространств имён позволяет скомпрометированному
-    контейнеру наблюдать за host-процессами и сетевым трафиком или вмешиваться в них.
+  remediation: Удалите hostNetwork, hostPID и hostIPC из спецификации {{.Finding.Resource.Kind}}
+    «{{.Finding.Resource.Name}}» (или установите их в false). Совместное использование
+    host-пространств имён позволяет скомпрометированному контейнеру наблюдать за host-процессами
+    и сетевым трафиком или вмешиваться в них.
   title: Совместное использование host-пространств имён network/PID/IPC
 workload.no-hostpath-volumes:
-  description: Pod spec монтирует том hostPath, открывая контейнеру доступ к файловой
-    системе узла.
+  description: '{{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}» монтирует
+    том hostPath, открывая контейнеру доступ к файловой системе узла.'
   remediation: Избегайте томов hostPath; используйте вместо них PersistentVolumeClaim,
     ConfigMap или Secret. hostPath открывает контейнеру доступ к файловой системе
     узла и может использоваться для выхода на хост.
   title: Монтирование томов hostPath
 workload.no-hostports:
-  description: Container объявляет containerPort.hostPort, привязывая его к конкретному
-    порту в сетевом пространстве имён узла.
+  description: Container в {{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}»
+    объявляет containerPort.hostPort, привязывая его к конкретному порту в сетевом
+    пространстве имён узла.
   remediation: Уберите containerPort.hostPort (или установите его в 0) и используйте
     вместо этого Service для публикации порта; привязка hostPort закрепляет pod за
     конкретным узлом и позволяет ему занять порт в сетевом пространстве имён узла.
   title: Контейнеры не должны привязывать hostPort
 workload.no-latest-tag:
-  description: Образ контейнера не закреплён за явным тегом или digest'ом (неявный
-    или явный тег ":latest" невоспроизводим).
+  description: Образ контейнера в {{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}»
+    не закреплён за явным тегом или digest'ом (неявный или явный тег ":latest" невоспроизводим).
   remediation: Закрепите образ за явным тегом версии или, предпочтительно, за digest'ом
     содержимого (image@sha256:...) вместо ":latest" или неявного тега, чтобы развёртывания
     были воспроизводимыми и не менялись незаметно "из-под вас".
@@ -1442,31 +1576,33 @@ workload.no-privileged-containers:
     имеют практически неограниченный доступ к хосту.
   title: Privileged-контейнеры и эскалация привилегий
 workload.read-only-root-fs:
-  description: 'Container не устанавливает securityContext.readOnlyRootFilesystem:
-    true.'
+  description: 'Container в {{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}»
+    не устанавливает securityContext.readOnlyRootFilesystem: true.'
   remediation: 'Установите securityContext.readOnlyRootFilesystem: true для каждого
     контейнера и смонтируйте том emptyDir для любого каталога, которому действительно
     нужна запись во время выполнения.'
   title: Контейнеры должны использовать корневую файловую систему только для чтения
 workload.resource-limits-required:
-  description: Container не объявляет одновременно resources.limits.cpu и resources.limits.memory.
+  description: Container в {{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}»
+    не объявляет одновременно resources.limits.cpu и resources.limits.memory.
   remediation: Установите resources.limits.cpu и resources.limits.memory для каждого
     контейнера, чтобы одна нагрузка не могла исчерпать ресурсы узла и повлиять на
     другие нагрузки.
   title: Контейнеры должны объявлять лимиты CPU и памяти
 workload.run-as-non-root:
-  description: 'Ни pod, ни все контейнеры не устанавливают securityContext.runAsNonRoot:
-    true — либо ничего не задано вовсе, либо контейнер явно переопределяет безопасное
-    значение по умолчанию уровня pod''а обратно на false; контейнер может выполняться
-    от UID 0.'
-  remediation: 'Установите securityContext.runAsNonRoot: true на уровне pod''а или
-    для каждого контейнера, чтобы контейнеру было отказано в запуске, если его образ
-    иначе выполнялся бы от UID 0.'
+  description: 'Ни {{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}», ни все
+    его контейнеры не устанавливают securityContext.runAsNonRoot: true — либо ничего
+    не задано вовсе, либо контейнер явно переопределяет безопасное значение по умолчанию
+    уровня pod''а обратно на false; контейнер может выполняться от UID 0.'
+  remediation: 'Установите securityContext.runAsNonRoot: true на уровне {{.Finding.Resource.Kind}}
+    «{{.Finding.Resource.Name}}» или для каждого контейнера, чтобы контейнеру было
+    отказано в запуске, если его образ иначе выполнялся бы от UID 0.'
   title: Контейнеры не должны запускаться от root
 workload.seccomp-profile-required:
-  description: Ни к одному контейнеру не применяется профиль seccomp RuntimeDefault/Localhost
-    — либо ничего не задано вовсе, либо контейнер явно переопределяет безопасное значение
-    по умолчанию уровня pod'а чем-то другим (например, Unconfined).
+  description: В {{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}» ни к одному
+    контейнеру не применяется профиль seccomp RuntimeDefault/Localhost — либо ничего
+    не задано вовсе, либо контейнер явно переопределяет безопасное значение по умолчанию
+    уровня pod'а чем-то другим (например, Unconfined).
   remediation: Установите securityContext.seccompProfile.type в RuntimeDefault (или
     Localhost с проверенным профилем) на уровне pod'а или для каждого контейнера.
     Контейнеры без ограничений (Unconfined) не имеют фильтрации системных вызовов.
