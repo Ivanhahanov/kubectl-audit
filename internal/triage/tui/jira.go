@@ -44,19 +44,23 @@ func (c JiraConfig) configured() bool {
 // per-target render-then-create sequence reads as one straight-line list
 // of steps instead of a nested error-check chain.
 func (a *app) createOneIssue(ctx context.Context, client triage.JiraClient, r triage.Row) (key, url string, err error) {
-	summary, err := triage.RenderIssueSummary(*r.Finding, r.Entry, a.jira.SummaryTemplate)
+	f := *r.Finding
+	summary, err := triage.RenderIssueSummary(f, a.knowledgeBase, r.Entry, a.jira.SummaryTemplate)
 	if err != nil {
 		return "", "", err
 	}
-	description, err := triage.RenderIssueDescription(*r.Finding, r.Entry, a.jira.DescriptionTemplate)
+	description, err := triage.RenderIssueDescription(f, a.knowledgeBase, r.Entry, a.jira.DescriptionTemplate)
 	if err != nil {
 		return "", "", err
 	}
-	customFields, err := triage.RenderCustomFields(a.jira.CustomFields, *r.Finding, r.Entry)
+	customFields, err := triage.RenderCustomFields(a.jira.CustomFields, f, a.knowledgeBase, r.Entry)
 	if err != nil {
 		return "", "", err
 	}
-	labels := triage.IssueLabels(*r.Finding, r.Entry, a.jira.ExtraLabels)
+	// Labels use the finding's own severity/category, not the knowledge
+	// base — Jira labels are conventionally short ASCII slugs, not free
+	// text worth overriding per organization.
+	labels := triage.IssueLabels(f, r.Entry, a.jira.ExtraLabels)
 	return client.CreateIssue(ctx, summary, description, labels, customFields)
 }
 

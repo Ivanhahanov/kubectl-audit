@@ -1,8 +1,10 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/ivanhahanov/kubectl-audit/internal/findings"
 	"github.com/ivanhahanov/kubectl-audit/internal/triage"
 )
 
@@ -25,5 +27,40 @@ func TestConfirmBulkAction_SingleTargetProceedsWithoutDialog(t *testing.T) {
 	a.confirmBulkAction("prompt", []triage.Row{sel}, func() { called = true })
 	if !called {
 		t.Error("expected proceed to run immediately for exactly 1 target")
+	}
+}
+
+// TestDetailText_NoVerificationStepsSection guards against verification
+// steps creeping back into the detail view — dropped deliberately (see
+// docs/triage.md), the view now shows only what a filed ticket would
+// contain (Title/Description/Remediation).
+func TestDetailText_NoVerificationStepsSection(t *testing.T) {
+	r := dedupRow("1", "policy.a", "the message", "ns", "app")
+	r.Finding.VerificationSteps = "1. Do this. 2. Do that."
+	a := &app{}
+
+	out := a.detailText(r)
+	if strings.Contains(out, "Verification") || strings.Contains(out, "Do this") {
+		t.Errorf("expected no verification-steps content in the detail view, got:\n%s", out)
+	}
+}
+
+// TestDetailText_NoKnowledgeBaseLabelSuffix guards the "clean output, no
+// '(org knowledge base)' noise" fix: a knowledge-base override should
+// blend in under the same plain labels as the default content, not be
+// flagged inline every time it applies.
+func TestDetailText_NoKnowledgeBaseLabelSuffix(t *testing.T) {
+	r := dedupRow("1", "policy.a", "the message", "ns", "app")
+	r.Finding.Remediation = "default remediation"
+	a := &app{knowledgeBase: map[string]findings.KnowledgeBaseEntry{
+		"policy.a": {Title: "Наш заголовок", Remediation: "Наша рекомендация"},
+	}}
+
+	out := a.detailText(r)
+	if strings.Contains(out, "org knowledge base") || strings.Contains(out, "(org") {
+		t.Errorf("expected clean labels with no parenthetical source annotation, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Наш заголовок") || !strings.Contains(out, "Наша рекомендация") {
+		t.Errorf("expected the knowledge-base override content to still render, got:\n%s", out)
 	}
 }

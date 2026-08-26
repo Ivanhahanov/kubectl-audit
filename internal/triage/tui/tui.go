@@ -46,6 +46,7 @@ type app struct {
 	target         string
 	findingsPath   string
 	jira           JiraConfig
+	knowledgeBase  map[string]findings.KnowledgeBaseEntry
 	dedupThreshold int
 
 	merged       []triage.Row            // full merge, unfiltered — source of truth for header totals
@@ -56,15 +57,28 @@ type app struct {
 	sortAsc   bool
 	filter    string
 
+	// policySortField/policySortAsc are the 'p' policy stats picker's own
+	// sort state — separate from sortField/sortAsc (the main table's),
+	// persisted across opens the same way the main table's is.
+	policySortField policyStatSortField
+	policySortAsc   bool
+
 	collapse     bool   // whether dedup collapsing (see dedupGroups) is applied at all — toggled by 'r'
 	expandGroup  string // non-empty: drill into this one dedupKey's individual members — toggled by 'g'
 	systemFilter string // non-empty: isolate to this namespace (or Name for cluster-scoped) across every policy/kind — toggled by 's'
+	policyFilter string // non-empty: only show rows for this PolicyID — set via the 'p' policy stats picker
 
 	showSuppressed bool
 	marked         map[string]bool // keyed by Entry.FindingID
 
 	saveErr    error
 	statusLine string // last-action feedback shown in the footer (Jira result, errors, ...)
+
+	// termWidth is the terminal width as of the last redrawTable — tracked
+	// so the SetBeforeDrawFunc hook in Run only recomputes/redraws the
+	// table's column widths when the terminal has actually been resized,
+	// not on every single frame.
+	termWidth int
 }
 
 // Config is everything Run needs beyond the findings/state themselves.
@@ -73,6 +87,12 @@ type Config struct {
 	FindingsPath string
 	StatePath    string
 	Jira         JiraConfig // may be zero-value; the 'j' action reports a clear error if so
+	// KnowledgeBase (triage.knowledgeBaseFile, already loaded) overrides a
+	// finding's Title/Description/Remediation with an organization's own
+	// ticket wording — see triage.Resolve. Used both for Jira issue
+	// content and the detail view (enter), so it's independent of Jira
+	// even being configured.
+	KnowledgeBase map[string]findings.KnowledgeBaseEntry
 	// DedupThreshold is the same "collapse a repeated finding once it hits
 	// this many near-identical instances" knob as
 	// config.OutputConfig.NamespaceGroupThreshold — one dial shared with
@@ -88,8 +108,10 @@ func Run(all []findings.Finding, suppressed []report.SuppressedFinding, state *t
 		all: all, suppressed: suppressed, state: state,
 		statePath: cfg.StatePath, target: cfg.Target, findingsPath: cfg.FindingsPath,
 		jira:           cfg.Jira,
+		knowledgeBase:  cfg.KnowledgeBase,
 		dedupThreshold: cfg.DedupThreshold,
 		sortField:      sortSeverity, sortAsc: false,
+		policySortField: policySortCount, policySortAsc: false,
 		// Off by default: collapsing changes what you're looking at
 		// without being asked, and a bulk action on a collapsed row
 		// affects every finding it stands for — someone who hasn't
@@ -106,13 +128,21 @@ func Run(all []findings.Finding, suppressed []report.SuppressedFinding, state *t
 	a.footer = tview.NewTextView().SetDynamicColors(true)
 	a.footer.SetBorder(true).SetBorderColor(theme.borderFg)
 
+	// tview's InputField defaults its field AND placeholder background to
+	// Styles.ContrastBackgroundColor (blue) independently — SetFieldText/
+	// BackgroundColor only touches the field's style, leaving the
+	// placeholder (shown whenever the search is empty, i.e. almost always)
+	// on that default blue unless its style is set too. SetFieldStyle/
+	// SetPlaceholderStyle set both fg+bg together so neither can silently
+	// keep tview's default. ColorDefault (not a solid color) lets the
+	// terminal's own background — including a transparent one — show
+	// through here the same as everywhere else in this UI.
 	a.search = tview.NewInputField().
 		SetLabel(" 🔍 ").
 		SetLabelColor(theme.accent).
-		SetFieldBackgroundColor(tcell.ColorBlack).
-		SetFieldTextColor(tcell.ColorWhite).
-		SetPlaceholder("press / to search — live filter over title/policy/resource/message").
-		SetPlaceholderTextColor(theme.dim)
+		SetFieldStyle(tcell.StyleDefault.Background(tcell.ColorDefault).Foreground(tcell.ColorWhite)).
+		SetPlaceholderStyle(tcell.StyleDefault.Background(tcell.ColorDefault).Foreground(theme.dim)).
+		SetPlaceholder("press / to search — live filter over title/policy/resource/message")
 	a.search.SetChangedFunc(func(text string) {
 		a.filter = text
 		a.refresh()
@@ -142,6 +172,24 @@ func Run(all []findings.Finding, suppressed []report.SuppressedFinding, state *t
 	a.pages = tview.NewPages().AddPage("main", root, true, true)
 	a.redraw()
 
+	// SetRoot's fullscreen=true already stretches the layout to the
+	// terminal's current size on every draw; what it does NOT do is widen
+	// our own fixed-width table columns (see columns.go's columnWidths) to
+	// use the extra space on a wide terminal, since we pad every cell's
+	// text to an exact width ourselves rather than letting tview.Table
+	// auto-size columns. This hook re-measures the terminal on every draw
+	// (cheap — SetBeforeDrawFunc runs before each frame regardless) and
+	// only redraws the table when the width actually changed, growing the
+	// NAMESPACE/NAME column to fill whatever's left over.
+	a.tv.SetBeforeDrawFunc(func(screen tcell.Screen) bool {
+		w, _ := screen.Size()
+		if w != a.termWidth {
+			a.termWidth = w
+			a.redrawTable()
+		}
+		return false
+	})
+
 	a.tv.SetRoot(a.pages, true).SetFocus(a.table)
 	return a.tv.Run()
 }
@@ -151,8 +199,13 @@ func Run(all []findings.Finding, suppressed []report.SuppressedFinding, state *t
 // state change, since Merge is the single source of truth for StatusNew
 // vs. a saved decision vs. StatusResolved.
 //
+// policyFilter (set via the 'p' policy stats picker) is a plain narrowing
+// step, composable with everything else — unlike systemFilter/expandGroup
+// below, picking a policy doesn't change how collapsing or the system
+// isolate view behave, it just restricts which rows they see.
+//
 // Exactly one of two "focus" modes narrows the row set beyond the plain
-// suppressed/text filters, and they're mutually exclusive (see
+// suppressed/policy/text filters, and they're mutually exclusive (see
 // toggleSystemFilter/toggleExpandGroup, which each clear the other):
 //   - systemFilter: bypass collapsing, show every finding in one namespace
 //     across every policy/Kind — the "study this tenant end-to-end" view.
@@ -171,6 +224,15 @@ func (a *app) refresh() {
 			}
 		}
 		rows = visible
+	}
+	if a.policyFilter != "" {
+		narrowed := make([]triage.Row, 0, len(rows))
+		for _, r := range rows {
+			if r.Entry.PolicyID == a.policyFilter {
+				narrowed = append(narrowed, r)
+			}
+		}
+		rows = narrowed
 	}
 
 	a.dedupMembers = map[string][]triage.Row{}
@@ -494,6 +556,21 @@ func (a *app) toggleSystemFilter() {
 	a.redraw()
 }
 
+// togglePolicyFilter clears policyFilter if it's already set (same on/off
+// convention as 'g'/'s'); otherwise opens the policy stats picker (see
+// openPolicyStats) to choose one — 'p' never guesses which policy from the
+// current selection the way 'g'/'s' do, since the whole point is seeing
+// every policy's stats side by side before picking.
+func (a *app) togglePolicyFilter() {
+	if a.policyFilter != "" {
+		a.policyFilter = ""
+		a.refresh()
+		a.redraw()
+		return
+	}
+	a.openPolicyStats()
+}
+
 func (a *app) handleKey(event *tcell.EventKey) *tcell.EventKey {
 	switch event.Key() {
 	case tcell.KeyEnter:
@@ -502,6 +579,10 @@ func (a *app) handleKey(event *tcell.EventKey) *tcell.EventKey {
 	case tcell.KeyEscape:
 		if len(a.marked) > 0 {
 			a.clearMarks()
+			return nil
+		}
+		if a.policyFilter != "" {
+			a.togglePolicyFilter()
 			return nil
 		}
 		if a.expandGroup != "" {
@@ -532,6 +613,9 @@ func (a *app) handleKey(event *tcell.EventKey) *tcell.EventKey {
 			return nil
 		case r == 's':
 			a.toggleSystemFilter()
+			return nil
+		case r == 'p':
+			a.togglePolicyFilter()
 			return nil
 		case r == 'u':
 			a.showSuppressed = !a.showSuppressed

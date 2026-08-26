@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ivanhahanov/kubectl-audit/internal/findings"
 	"github.com/ivanhahanov/kubectl-audit/internal/triage"
 )
 
@@ -147,7 +148,7 @@ func TestIssueLabels_ExtraLabelsMergeAndDedup(t *testing.T) {
 
 func TestRenderIssueSummary_EmptyTemplateUsesDefault(t *testing.T) {
 	f := mustFinding("f1")
-	summary, err := triage.RenderIssueSummary(f, triage.Entry{}, "")
+	summary, err := triage.RenderIssueSummary(f, nil, triage.Entry{}, "")
 	if err != nil {
 		t.Fatalf("RenderIssueSummary: %v", err)
 	}
@@ -156,9 +157,21 @@ func TestRenderIssueSummary_EmptyTemplateUsesDefault(t *testing.T) {
 	}
 }
 
+func TestRenderIssueSummary_KnowledgeBaseOverridesTitle(t *testing.T) {
+	f := mustFinding("f1")
+	kb := map[string]findings.KnowledgeBaseEntry{f.PolicyID: {Title: "Наш заголовок"}}
+	summary, err := triage.RenderIssueSummary(f, kb, triage.Entry{}, "")
+	if err != nil {
+		t.Fatalf("RenderIssueSummary: %v", err)
+	}
+	if !strings.Contains(summary, "Наш заголовок") {
+		t.Errorf("expected the knowledge-base title to appear in the summary, got %q", summary)
+	}
+}
+
 func TestRenderIssueSummary_CustomTemplateOverrides(t *testing.T) {
 	f := mustFinding("f1")
-	summary, err := triage.RenderIssueSummary(f, triage.Entry{}, "Найдено: {{.Finding.Title}}")
+	summary, err := triage.RenderIssueSummary(f, nil, triage.Entry{}, "Найдено: {{.Content.Title}}")
 	if err != nil {
 		t.Fatalf("RenderIssueSummary: %v", err)
 	}
@@ -167,25 +180,46 @@ func TestRenderIssueSummary_CustomTemplateOverrides(t *testing.T) {
 	}
 }
 
-func TestRenderIssueDescription_EmbedsBackLinkAndVerificationSteps(t *testing.T) {
+func TestRenderIssueDescription_EmbedsBackLink(t *testing.T) {
 	f := mustFinding("f1")
-	f.VerificationSteps = "1. check this 2. check that"
 	f.Remediation = "fix it"
-	desc, err := triage.RenderIssueDescription(f, triage.Entry{Note: "looks real"}, "")
+	desc, err := triage.RenderIssueDescription(f, nil, triage.Entry{Note: "looks real"}, "")
 	if err != nil {
 		t.Fatalf("RenderIssueDescription: %v", err)
 	}
 
-	for _, want := range []string{"kubectl-audit finding: f1", "check this", "fix it", "looks real"} {
+	for _, want := range []string{"kubectl-audit finding: f1", "fix it", "looks real"} {
 		if !strings.Contains(desc, want) {
 			t.Errorf("expected description to contain %q, got:\n%s", want, desc)
 		}
+	}
+	if strings.Contains(desc, "Verification") {
+		t.Errorf("expected no verification-steps section in the ticket description, got:\n%s", desc)
+	}
+}
+
+// TestRenderIssueDescription_KnowledgeBaseShowsTechnicalDetail is the
+// "don't silently hide the tool's own precise detail behind an org
+// explanation" guarantee — see triage.ResolvedContent.Technical.
+func TestRenderIssueDescription_KnowledgeBaseShowsTechnicalDetail(t *testing.T) {
+	f := mustFinding("f1")
+	f.Message = "ServiceAccount x can do y"
+	kb := map[string]findings.KnowledgeBaseEntry{f.PolicyID: {Description: "Наше объяснение уязвимости."}}
+	desc, err := triage.RenderIssueDescription(f, kb, triage.Entry{}, "")
+	if err != nil {
+		t.Fatalf("RenderIssueDescription: %v", err)
+	}
+	if !strings.Contains(desc, "Наше объяснение уязвимости.") {
+		t.Errorf("expected the knowledge-base description, got:\n%s", desc)
+	}
+	if !strings.Contains(desc, "ServiceAccount x can do y") {
+		t.Errorf("expected the original technical message to still appear, got:\n%s", desc)
 	}
 }
 
 func TestRenderIssueDescription_CustomTemplateOverrides(t *testing.T) {
 	f := mustFinding("f1")
-	desc, err := triage.RenderIssueDescription(f, triage.Entry{}, "Сообщение: {{.Finding.Message}}")
+	desc, err := triage.RenderIssueDescription(f, nil, triage.Entry{}, "Сообщение: {{.Content.Description}}")
 	if err != nil {
 		t.Fatalf("RenderIssueDescription: %v", err)
 	}
@@ -202,7 +236,7 @@ func TestRenderCustomFields(t *testing.T) {
 		"customfield_10010": "severity is {{.Finding.Severity}}",
 		"customfield_10020": map[string]any{"value": "Prod"},
 		"customfield_10030": float64(42),
-	}, f, triage.Entry{})
+	}, f, nil, triage.Entry{})
 	if err != nil {
 		t.Fatalf("RenderCustomFields: %v", err)
 	}
@@ -218,7 +252,7 @@ func TestRenderCustomFields(t *testing.T) {
 }
 
 func TestRenderCustomFields_EmptyMapReturnsNil(t *testing.T) {
-	out, err := triage.RenderCustomFields(nil, mustFinding("f1"), triage.Entry{})
+	out, err := triage.RenderCustomFields(nil, mustFinding("f1"), nil, triage.Entry{})
 	if err != nil {
 		t.Fatalf("RenderCustomFields: %v", err)
 	}

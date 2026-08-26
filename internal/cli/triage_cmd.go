@@ -47,6 +47,7 @@ func newTriageCmd() *cobra.Command {
 	cmd.AddCommand(newTriageExportCmd())
 	cmd.AddCommand(newTriageJiraSyncCmd())
 	cmd.AddCommand(newTriageJiraCmd())
+	cmd.AddCommand(newTriageKnowledgeBaseCmd())
 	return cmd
 }
 
@@ -114,6 +115,19 @@ func resolveJiraConfig(cmd *cobra.Command) (tui.JiraConfig, error) {
 	return jc, nil
 }
 
+// resolveKnowledgeBase loads triage.knowledgeBaseFile (see
+// config.TriageConfig) — the same empty-path-means-nothing convention as
+// loadTemplateFile. Independent of Jira: the triage TUI's detail view
+// applies it too, so it's resolved regardless of whether Jira is even
+// configured.
+func resolveKnowledgeBase(cmd *cobra.Command) (map[string]findings.KnowledgeBaseEntry, error) {
+	cfg, err := loadEffectiveConfig(cmd)
+	if err != nil {
+		return nil, err
+	}
+	return triage.ResolveKnowledgeBase(cfg.Triage.KnowledgeBaseFile)
+}
+
 func loadFindingsAndState(cmd *cobra.Command) (target string, all []findings.Finding, suppressed []report.SuppressedFinding, state *triage.State, statePath string, err error) {
 	findingsPath, statePath, err := resolveTriagePaths(cmd)
 	if err != nil {
@@ -143,6 +157,10 @@ func runTriageOpen(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	kb, err := resolveKnowledgeBase(cmd)
+	if err != nil {
+		return err
+	}
 	cfg, err := loadEffectiveConfig(cmd)
 	if err != nil {
 		return err
@@ -162,6 +180,7 @@ func runTriageOpen(cmd *cobra.Command, args []string) error {
 		FindingsPath:   findingsPath,
 		StatePath:      statePath,
 		Jira:           jiraCfg,
+		KnowledgeBase:  kb,
 		DedupThreshold: cfg.Output.NamespaceGroupThreshold,
 	})
 }
@@ -235,6 +254,10 @@ func newTriageJiraSyncCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			kb, err := resolveKnowledgeBase(cmd)
+			if err != nil {
+				return err
+			}
 			if jiraCfg.BaseURL == "" || jiraCfg.ProjectKey == "" || jiraCfg.IssueType == "" {
 				return fmt.Errorf("jira-sync needs a Jira base URL, project key, and issue type — set them via --jira-url/--project/--issue-type or triage.jira in audit.yaml")
 			}
@@ -254,7 +277,7 @@ func newTriageJiraSyncCmd() *cobra.Command {
 			if dryRun {
 				fmt.Printf("Dry run: would create %d Jira issue(s) in project %s (issue type %q):\n", len(targets), jiraCfg.ProjectKey, jiraCfg.IssueType)
 				for _, r := range targets {
-					summary, err := triage.RenderIssueSummary(*r.Finding, r.Entry, jiraCfg.SummaryTemplate)
+					summary, err := triage.RenderIssueSummary(*r.Finding, kb, r.Entry, jiraCfg.SummaryTemplate)
 					if err != nil {
 						return fmt.Errorf("rendering summary for %s: %w", r.Finding.ID, err)
 					}
@@ -270,19 +293,19 @@ func newTriageJiraSyncCmd() *cobra.Command {
 			client := triage.JiraClient{BaseURL: jiraCfg.BaseURL, Token: jiraCfg.Token, ProjectKey: jiraCfg.ProjectKey, IssueType: jiraCfg.IssueType}
 			var created, failed int
 			for _, r := range targets {
-				summary, err := triage.RenderIssueSummary(*r.Finding, r.Entry, jiraCfg.SummaryTemplate)
+				summary, err := triage.RenderIssueSummary(*r.Finding, kb, r.Entry, jiraCfg.SummaryTemplate)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "warning: failed to render summary for %s: %v\n", r.Finding.ID, err)
 					failed++
 					continue
 				}
-				description, err := triage.RenderIssueDescription(*r.Finding, r.Entry, jiraCfg.DescriptionTemplate)
+				description, err := triage.RenderIssueDescription(*r.Finding, kb, r.Entry, jiraCfg.DescriptionTemplate)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "warning: failed to render description for %s: %v\n", r.Finding.ID, err)
 					failed++
 					continue
 				}
-				customFields, err := triage.RenderCustomFields(jiraCfg.CustomFields, *r.Finding, r.Entry)
+				customFields, err := triage.RenderCustomFields(jiraCfg.CustomFields, *r.Finding, kb, r.Entry)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "warning: failed to render custom fields for %s: %v\n", r.Finding.ID, err)
 					failed++
@@ -323,6 +346,46 @@ func newTriageJiraCmd() *cobra.Command {
 		Short: "Jira issue template utilities.",
 	}
 	cmd.AddCommand(newTriageJiraTemplateCmd())
+	return cmd
+}
+
+// newTriageKnowledgeBaseCmd is a sibling of export/jira-sync, not nested
+// under jira — the knowledge base overrides ticket content but also drives
+// the triage TUI's detail view independent of Jira being configured at
+// all (see resolveKnowledgeBase).
+func newTriageKnowledgeBaseCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "knowledge-base",
+		Short: "Knowledge base utilities.",
+	}
+	cmd.AddCommand(newTriageKnowledgeBaseDumpCmd())
+	return cmd
+}
+
+func newTriageKnowledgeBaseDumpCmd() *cobra.Command {
+	var out string
+	cmd := &cobra.Command{
+		Use:   "dump",
+		Short: "Write a ready-made knowledge base to disk, as a starting point for triage.knowledgeBaseFile customization.",
+		Long: "A starting point for your organization's own ticket wording: dump it, edit whichever " +
+			"entries you want (your own title/description/remediation for a check, in your own words " +
+			"or language), save as your own (possibly smaller) file, and point triage.knowledgeBaseFile " +
+			"at it. Entries you don't touch simply aren't used — you don't need to keep every one. No " +
+			"rebuild needed: the file is read fresh on every `triage jira-sync`/TUI 'j'/'enter' run.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			src := triage.StarterKnowledgeBase()
+			if out == "" {
+				fmt.Print(src)
+				return nil
+			}
+			if err := os.WriteFile(out, []byte(src), 0o644); err != nil {
+				return fmt.Errorf("writing %s: %w", out, err)
+			}
+			fmt.Printf("Wrote starter knowledge base to %s\n", out)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&out, "out", "", "file to write (default: stdout)")
 	return cmd
 }
 

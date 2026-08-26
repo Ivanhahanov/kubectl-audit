@@ -33,10 +33,14 @@ func DefaultDescriptionTemplate() string { return defaultDescriptionTemplateSour
 
 // IssueTemplateData is what every Jira issue template (summary,
 // description, and each triage.jira.customFields string value) renders
-// against.
+// against. Content is the resolved (knowledge-base-aware) text — templates
+// should generally prefer {{.Content.Title}}/.Description/.Remediation
+// over the raw {{.Finding.Title}}/etc. so a custom template automatically
+// reflects a knowledge-base override the same way the default one does.
 type IssueTemplateData struct {
 	Finding findings.Finding
 	Entry   Entry
+	Content ResolvedContent
 }
 
 func issueTemplateFuncs() template.FuncMap {
@@ -46,10 +50,10 @@ func issueTemplateFuncs() template.FuncMap {
 }
 
 // renderIssueTemplate parses and executes tplSource (falling back to def
-// when tplSource is empty) against an IssueTemplateData built from f/e —
+// when tplSource is empty) against an IssueTemplateData built from f/kb/e —
 // the shared mechanism behind RenderIssueSummary, RenderIssueDescription,
 // and RenderCustomFields.
-func renderIssueTemplate(name, tplSource, def string, f findings.Finding, e Entry) (string, error) {
+func renderIssueTemplate(name, tplSource, def string, f findings.Finding, kb map[string]findings.KnowledgeBaseEntry, e Entry) (string, error) {
 	if tplSource == "" {
 		tplSource = def
 	}
@@ -57,42 +61,46 @@ func renderIssueTemplate(name, tplSource, def string, f findings.Finding, e Entr
 	if err != nil {
 		return "", fmt.Errorf("parsing %s template: %w", name, err)
 	}
+	content, err := Resolve(f, kb)
+	if err != nil {
+		return "", fmt.Errorf("resolving knowledge base content: %w", err)
+	}
 	var buf bytes.Buffer
-	if err := tpl.Execute(&buf, IssueTemplateData{Finding: f, Entry: e}); err != nil {
+	if err := tpl.Execute(&buf, IssueTemplateData{Finding: f, Entry: e, Content: content}); err != nil {
 		return "", fmt.Errorf("executing %s template: %w", name, err)
 	}
 	return buf.String(), nil
 }
 
 // RenderIssueSummary and RenderIssueDescription build a Jira issue's
-// summary/description for a confirmed finding. An empty tplSource uses the
-// embedded default (DefaultSummaryTemplate/DefaultDescriptionTemplate); a
-// non-empty one (loaded from triage.jira.summaryTemplate/
-// descriptionTemplate — see docs/triage.md) fully replaces it, e.g. for a
-// different language or structure. The default description embeds a
-// back-link ("kubectl-audit finding: <id>") purely for a human reader
-// tracing the issue back to its source — idempotency itself (never
-// double-creating on a re-run) is handled by the caller checking
-// Entry.JiraIssueKey, not by searching Jira for this text.
-func RenderIssueSummary(f findings.Finding, e Entry, tplSource string) (string, error) {
-	s, err := renderIssueTemplate("summary", tplSource, defaultSummaryTemplateSource, f, e)
+// summary/description for a confirmed finding, applying kb (see Resolve)
+// first. An empty tplSource uses the embedded default
+// (DefaultSummaryTemplate/DefaultDescriptionTemplate); a non-empty one
+// (loaded from triage.jira.summaryTemplate/descriptionTemplate — see
+// docs/triage.md) fully replaces it, e.g. for your own structure. The
+// default description embeds a back-link ("kubectl-audit finding: <id>")
+// purely for a human reader tracing the issue back to its source —
+// idempotency itself (never double-creating on a re-run) is handled by the
+// caller checking Entry.JiraIssueKey, not by searching Jira for this text.
+func RenderIssueSummary(f findings.Finding, kb map[string]findings.KnowledgeBaseEntry, e Entry, tplSource string) (string, error) {
+	s, err := renderIssueTemplate("summary", tplSource, defaultSummaryTemplateSource, f, kb, e)
 	return strings.TrimSpace(s), err
 }
 
-func RenderIssueDescription(f findings.Finding, e Entry, tplSource string) (string, error) {
-	return renderIssueTemplate("description", tplSource, defaultDescriptionTemplateSource, f, e)
+func RenderIssueDescription(f findings.Finding, kb map[string]findings.KnowledgeBaseEntry, e Entry, tplSource string) (string, error) {
+	return renderIssueTemplate("description", tplSource, defaultDescriptionTemplateSource, f, kb, e)
 }
 
 // RenderCustomFields renders triage.jira.customFields into the shape a
 // Jira create-issue request's `fields` object expects: a string value is
 // rendered as a Go template against the same IssueTemplateData as the
-// summary/description (so e.g. "{{.Finding.Severity}}" works); any other
+// summary/description (so e.g. "{{.Content.Title}}" works); any other
 // JSON-shaped value (number, bool, or a nested object/array — e.g.
 // {"value": "Prod"} for a Jira select-list field) passes through
 // unchanged, since there's nothing to template. Returns nil for an empty
 // map, so callers can omit "fields" merging entirely when there's nothing
 // configured.
-func RenderCustomFields(fields map[string]any, f findings.Finding, e Entry) (map[string]any, error) {
+func RenderCustomFields(fields map[string]any, f findings.Finding, kb map[string]findings.KnowledgeBaseEntry, e Entry) (map[string]any, error) {
 	if len(fields) == 0 {
 		return nil, nil
 	}
@@ -103,7 +111,7 @@ func RenderCustomFields(fields map[string]any, f findings.Finding, e Entry) (map
 			out[k] = v
 			continue
 		}
-		rendered, err := renderIssueTemplate("customFields."+k, s, s, f, e)
+		rendered, err := renderIssueTemplate("customFields."+k, s, s, f, kb, e)
 		if err != nil {
 			return nil, fmt.Errorf("customFields[%s]: %w", k, err)
 		}

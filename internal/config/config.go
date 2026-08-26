@@ -270,6 +270,19 @@ type TriageConfig struct {
 	// internal/triage.State.
 	StateFile string     `json:"stateFile,omitempty"`
 	Jira      JiraConfig `json:"jira,omitempty"`
+	// KnowledgeBaseFile is a path to a YAML file (PolicyID -> {title,
+	// description, remediation}) merged on top of the tool's bundled
+	// knowledge base (see internal/triage.ResolveKnowledgeBase — the
+	// bundle applies automatically, no config needed) — for correcting a
+	// bundled entry or adding your organization's own wording/standards
+	// for a check the bundle doesn't cover. Applied both when filing a
+	// Jira ticket and in the triage TUI's detail view (so what you
+	// preview is what gets filed — see internal/triage.Resolve). Not
+	// nested under Jira: the detail view uses it independent of Jira
+	// being configured at all. See `kubectl audit triage knowledge-base
+	// dump` to inspect the bundle. Read fresh from disk on every run, no
+	// rebuild.
+	KnowledgeBaseFile string `json:"knowledgeBaseFile,omitempty"`
 }
 
 // ComponentsConfig lets a user extend this tool's built-in third-party

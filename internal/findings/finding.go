@@ -107,6 +107,34 @@ type Finding struct {
 	// confirmed issue, not how to confirm it in the first place.
 	VerificationSteps string `json:"verificationSteps,omitempty"`
 	Source            string `json:"source,omitempty"`
+	// KnowledgeBase is an organization's own ticket-facing content for this
+	// finding's check — Title/Description/Remediation written to match
+	// internal standards, house style, or just a clearer explanation than
+	// the tool's own default — populated for a VAP policy that sets
+	// kb-title/kb-description/kb-remediation annotations directly (see
+	// docs/writing-policies.md), so a custom policy's author writes the
+	// check and its ticket wording in one file. Nil if the policy sets
+	// none. This is deliberately not about language/translation: Message
+	// (the tool's own, sometimes per-resource, technical text) is never
+	// overridden here — see internal/triage.Resolve, which layers this
+	// on top of a separate external knowledge-base file and decides what
+	// a Jira ticket (and the triage TUI's detail view) actually shows.
+	KnowledgeBase *KnowledgeBaseEntry `json:"knowledgeBase,omitempty"`
+}
+
+// KnowledgeBaseEntry is an organization's own ticket-facing content for one
+// check, overriding the tool's default Title/Description/Remediation. A
+// field left empty here leaves that piece of content at its default — see
+// internal/triage.Resolve.
+type KnowledgeBaseEntry struct {
+	Title string `json:"title,omitempty"`
+	// Description is the organization's own explanation of the
+	// vulnerability — distinct from Finding.Message (the tool's own,
+	// sometimes per-resource, technical text), which is never replaced,
+	// only shown alongside a Description override as "Technical detail"
+	// (see internal/triage.ResolvedContent).
+	Description string `json:"description,omitempty"`
+	Remediation string `json:"remediation,omitempty"`
 }
 
 // NewID computes a stable, content-addressed finding ID from the policy,

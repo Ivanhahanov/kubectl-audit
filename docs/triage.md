@@ -26,7 +26,10 @@ concrete, numbered instructions for confirming a finding is a true positive in y
 environment, distinct from `remediation` (which assumes it's already confirmed). This is the whole
 reason `triage` exists as a separate step from `scan`: a static-analysis tool can flag "this
 Ingress has no `spec.tls`," but only a human who knows whether that Ingress is actually
-internet-reachable can decide how urgent that really is.
+internet-reachable can decide how urgent that really is. Recorded in `findings.json`
+(`verificationSteps`) for other tooling to use; not currently shown in the triage TUI or filed
+tickets, which stay focused on Title/Description/Remediation (see [Knowledge
+base](#knowledge-base-your-organizations-own-ticket-content)).
 
 ## Getting started
 
@@ -43,7 +46,9 @@ below.
 
 A k9s-style table: one row per finding by default, columns for severity, status, policy ID, kind,
 namespace/name, a COUNT column, and tags. Press `enter` on a row for the full detail view
-(message, remediation, CIS refs, and — most importantly — the verification steps).
+(title, description, CIS refs, and remediation — exactly what filing a Jira ticket for this finding
+would contain, knowledge-base override included; see [Knowledge
+base](#knowledge-base-your-organizations-own-ticket-content)).
 
 | Key | Action |
 |---|---|
@@ -53,6 +58,7 @@ namespace/name, a COUNT column, and tags. Press `enter` on a row for the full de
 | `r` | toggle collapsing repeated findings on/off (**off** by default — see below) |
 | `g` | on a collapsed row: expand it to review each individual finding; press again to re-collapse |
 | `s` | isolate the table to every finding in this row's namespace, across every check and kind — for reviewing one tenant/system end-to-end |
+| `p` | policy stats: every check with severity/count/new/confirmed, sorted by count by default (`1`-`6` to sort by another column, again to reverse); enter on one to filter the table to just that policy |
 | `space` | mark/unmark the current row (its whole collapsed group, if collapsed) |
 | `a` | mark every row currently visible |
 | `1`-`7` | sort by that column (press again to reverse direction) |
@@ -138,18 +144,20 @@ This targets **Jira Server/Data Center** (`/rest/api/2/issue`, Bearer Personal A
 auth) — not Jira Cloud, which uses a different auth scheme and API version.
 
 Issue content by default: summary from the finding's title/severity/resource; description includes
-the message, remediation, verification steps, CIS refs, your triage note, and a back-link
-(`kubectl-audit finding: <id>`) for traceability; labels from severity, category, and your tags.
-Every piece of this is customizable from `audit.yaml` alone — see below — no rebuild ever needed.
+the message, remediation, CIS refs, your triage note, and a back-link (`kubectl-audit finding:
+<id>`) for traceability; labels from severity, category, and your tags. Every piece of this is
+customizable from `audit.yaml` alone — see below — no rebuild ever needed. Verification steps are
+deliberately **not** part of the ticket — they're guidance for the analyst deciding whether to
+confirm a finding in the first place (see [Verification steps](#verification-steps)), not something
+the person who receives the ticket needs.
 
 **The Jira token never belongs in `audit.yaml`** — it's a git-committable file, same as everything
 else this tool reads config from. Pass `--jira-token`, or set `KUBECTL_AUDIT_JIRA_TOKEN`.
 
-### Custom fields, extra labels, and a fully custom template (e.g. a different language)
+### Custom fields, extra labels, and a fully custom template
 
-Your Jira project may need its own required fields, its own labels, or issue text in a different
-language than the built-in English default — all three are `triage.jira` config, read fresh on
-every run:
+Your Jira project may need its own required fields, its own labels, or a differently structured
+ticket — all `triage.jira` config, read fresh on every run:
 
 ```yaml
 triage:
@@ -171,24 +179,81 @@ triage:
       customfield_10020:
         value: Prod
     # Paths to external Go text/template files that fully replace the
-    # built-in summary/description — write your own in any language.
-    # Empty (the default) uses the built-in English template.
-    summaryTemplate: /path/to/summary-ru.tpl
-    descriptionTemplate: /path/to/description-ru.tpl
+    # built-in summary/description structure. Empty (the default) uses
+    # the built-in template.
+    summaryTemplate: /path/to/summary.tpl
+    descriptionTemplate: /path/to/description.tpl
 ```
 
-Get a starting point to translate or restructure with:
+Get a starting point to restructure with:
 
 ```sh
-kubectl audit triage jira template dump --kind summary --out summary-ru.tpl
-kubectl audit triage jira template dump --kind description --out description-ru.tpl
+kubectl audit triage jira template dump --kind summary --out summary.tpl
+kubectl audit triage jira template dump --kind description --out description.tpl
 ```
 
-Both templates render against `{{.Finding}}` (the full finding — `Title`, `Severity`, `Message`,
-`Remediation`, `VerificationSteps`, `CIS`, `Resource`, `ID`, `PolicyID`, `Source`, ...) and
-`{{.Entry}}` (the triage record — `Note`, `Tags`, ...). Edit the dumped file however you like —
+Both templates render against `{{.Content}}` (`Title`/`Description`/`Remediation`/`Technical` —
+the *resolved* content, already reflecting any knowledge-base override below; prefer these over
+the raw `{{.Finding.*}}` fields so a custom template automatically stays in sync with a
+knowledge-base override the same way the default template does), `{{.Finding}}` (the full finding
+— `Severity`, `CIS`, `Resource`, `ID`, `PolicyID`, `Source`, ...), and `{{.Entry}}` (the triage
+record — `Note`, `Tags`, ...). Edit the dumped file however you like —
 `triage.jira.summaryTemplate`/`descriptionTemplate` just needs to point at it; the file is read
 fresh on every `jira-sync`/TUI `j` run, so no rebuild or reinstall is ever required.
+
+### Knowledge base: your organization's own ticket content
+
+**On by default, no configuration needed**: every built-in check ships with a Russian
+title/description/remediation, applied automatically to every Jira ticket and the triage TUI's
+detail view (`enter`) — `what you preview is exactly what gets filed`, there's no separate "ticket
+mode" to second-guess. Inspect the bundle with:
+
+```sh
+kubectl audit triage knowledge-base dump
+```
+
+To correct one entry, or add your organization's own internal standard/house style for a check
+(built-in or your own), point `triage.knowledgeBaseFile` at a small file with just the entries you
+want to change — it's merged on top of the bundle, field by field, so you never repeat the rest:
+
+```yaml
+triage:
+  knowledgeBaseFile: knowledge-base.yaml
+```
+
+```yaml
+# knowledge-base.yaml — keyed by PolicyID, any field you don't set keeps
+# the bundled/tool default for it. Each field is a Go template rendered
+# against {{.Finding}} (same data shape as triage.jira.customFields), so
+# it can reference the specific resource a finding fired on instead of
+# only generic, check-level text.
+rbac-analyzer.broad-secrets-access:
+  title: "[Internal standard] Overly broad Secrets access"
+  description: >-
+    ServiceAccount {{.Finding.Resource.Name}} in {{.Finding.Resource.Namespace}} has cluster-wide
+    Secrets access, which our internal security standard SEC-042 restricts to the security-team
+    role. Open a review request per the SEC-042 process before granting an exception.
+  remediation: "File a review request with security-team per SEC-042 for {{.Finding.Resource.Name}}."
+```
+
+A field with no `{{ }}` in it round-trips unchanged — templating is opt-in per field, not
+required. A malformed template in one field is reported (in the TUI detail view, and as a
+render error for `jira-sync`) without blocking the other fields from still resolving.
+
+This is deliberately **not a translation mechanism** — `Message` (the tool's own, sometimes
+per-resource, technical text — e.g. exactly which ServiceAccount and binding are involved) is
+never overridden. When a knowledge-base entry sets `description`, the original `Message` still
+shows in the ticket as a separate "Technical detail" section, so the org's own explanation never
+hides the specific detail needed to actually act on the finding. `message` can be — and for
+built-in checks, is — in any language you like; only the surrounding scaffolding
+("Remediation:", "Technical detail:") comes from the template, in whatever language you wrote it.
+
+**Writing your own policy?** Skip the external file and write your knowledge base directly in the
+policy — `audit.k8s-auditor.io/kb-title`, `.../kb-description`, `.../kb-remediation` alongside the
+existing English annotations (see [Writing Policies](./writing-policies/)). One file, no separate
+entry needed. If a policy sets these *and* `knowledgeBaseFile` also has an entry for the same
+PolicyID, the file wins, field by field — the one case these two mechanisms overlap; day to day
+you'll only ever use one or the other for a given check.
 
 ## Configuration
 
@@ -196,6 +261,8 @@ fresh on every `jira-sync`/TUI `j` run, so no rebuild or reinstall is ever requi
 triage:
   # Where triage decisions are persisted — a local, git-diffable YAML file.
   stateFile: triage-state.yaml
+  # Your organization's own ticket content — see "Knowledge base" above.
+  knowledgeBaseFile: knowledge-base.yaml
   jira:
     baseUrl: https://jira.example.com
     projectKey: SEC

@@ -106,3 +106,35 @@ func TestRefresh_SystemFilterIsolatesNamespaceAcrossPolicies(t *testing.T) {
 		}
 	}
 }
+
+// TestRefresh_PolicyFilterNarrowsToOnePolicyAndComposesWithCollapse verifies
+// 'p' (policyFilter) restricts the row set to one PolicyID and, unlike
+// systemFilter, still composes with collapsing rather than bypassing it.
+func TestRefresh_PolicyFilterNarrowsToOnePolicyAndComposesWithCollapse(t *testing.T) {
+	all := []findings.Finding{
+		findingWithPolicy("a", "policy.one", "msg-1", "tenant-a", "app"),
+		findingWithPolicy("b", "policy.one", "msg-1", "tenant-b", "app"),
+		findingWithPolicy("c", "policy.one", "msg-1", "tenant-c", "app"),
+		findingWithPolicy("d", "policy.two", "msg-2", "tenant-a", "worker"),
+	}
+	a := newTestApp(all)
+	a.dedupThreshold = 3
+	a.policyFilter = "policy.one"
+	a.refresh()
+
+	if len(a.rows) != 1 {
+		t.Fatalf("expected policy.one's 3 findings to both narrow to just that policy AND collapse to 1 row, got %d", len(a.rows))
+	}
+	if a.rows[0].Entry.PolicyID != "policy.one" {
+		t.Errorf("expected the collapsed row to be for policy.one, got %q", a.rows[0].Entry.PolicyID)
+	}
+	if members := a.dedupMembers[a.rows[0].Entry.FindingID]; len(members) != 3 {
+		t.Errorf("expected 3 members in the collapsed bucket, got %d", len(members))
+	}
+
+	a.policyFilter = ""
+	a.refresh()
+	if len(a.rows) != 2 {
+		t.Fatalf("expected clearing policyFilter to restore both policies (policy.one collapsed + policy.two), got %d", len(a.rows))
+	}
+}

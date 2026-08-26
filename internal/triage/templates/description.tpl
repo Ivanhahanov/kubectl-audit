@@ -1,13 +1,13 @@
-{{.Finding.Message}}
+{{.Content.Description}}
 
-{{if .Finding.Remediation -}}
-*Remediation:*
-{{.Finding.Remediation}}
+{{if .Content.Technical -}}
+*Technical detail:*
+{{.Content.Technical}}
 
 {{end -}}
-{{if .Finding.VerificationSteps -}}
-*Verification steps (confirm before treating as urgent):*
-{{.Finding.VerificationSteps}}
+{{if .Content.Remediation -}}
+*Remediation:*
+{{.Content.Remediation}}
 
 {{end -}}
 {{if .Finding.CIS -}}

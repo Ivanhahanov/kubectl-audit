@@ -39,6 +39,29 @@ func (a *app) closeOverlay(name string) {
 	a.tv.SetFocus(a.table)
 }
 
+// showFullScreenPage replaces the main view with a k9s-style full-screen
+// screen: a slim title bar naming the section (plus a one-line hotkey
+// hint), then content filling the rest. Used for views that are
+// themselves a list/table in their own right — the policy stats picker,
+// finding detail — which read as a real screen rather than a small
+// floating dialog, the same way k9s never shows a resource list or detail
+// view in a popup. closeOverlay(name) (the same one small modals use)
+// returns to the main table; nothing about closing differs between the
+// two, only how the page is built.
+func (a *app) showFullScreenPage(name, title, hint string, content tview.Primitive) {
+	header := tview.NewTextView().SetDynamicColors(true)
+	header.SetBorder(true).SetBorderColor(theme.borderFg)
+	header.SetText(fmt.Sprintf("[%s:%s:b] %s [-:-:-]\n%s",
+		colorTag(theme.titleFg), colorTag(theme.titleBg), title, hint))
+
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(header, 4, 0, false).
+		AddItem(content, 0, 1, true)
+
+	a.pages.AddPage(name, layout, true, true)
+	a.tv.SetFocus(content)
+}
+
 // confirmBulkAction gates any action that would touch more than one
 // finding at once behind an explicit Yes/Cancel — the safeguard against
 // silently bulk-triaging (or bulk-Jira-ticketing) findings you only meant
@@ -156,7 +179,7 @@ func (a *app) openDetail() {
 		return
 	}
 	tv := tview.NewTextView().SetDynamicColors(true).SetWrap(true).SetScrollable(true)
-	tv.SetBorder(true).SetTitle(" " + sel.Entry.PolicyID + " (enter/esc to close) ")
+	tv.SetBorder(true).SetBorderColor(theme.borderFg)
 	tv.SetText(a.detailText(sel))
 	tv.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEnter || event.Key() == tcell.KeyEscape {
@@ -165,7 +188,7 @@ func (a *app) openDetail() {
 		}
 		return event
 	})
-	a.showModal("detail", tv, 110, 32)
+	a.showFullScreenPage("detail", "FINDING — "+sel.Entry.PolicyID, keyHint("enter/esc")+" back", tv)
 }
 
 func (a *app) detailText(r triage.Row) string {
@@ -212,18 +235,30 @@ func (a *app) detailText(r triage.Row) string {
 	}
 
 	f := r.Finding
-	fmt.Fprintf(&b, "[yellow]Title:[white] %s\n\n", f.Title)
-	fmt.Fprintf(&b, "[yellow]Message:[white]\n%s\n\n", f.Message)
+	// content is exactly what a Jira ticket would show (see
+	// triage.Resolve/RenderIssueDescription) — computed the same way here
+	// so this view is always a trustworthy preview of what filing a ticket
+	// would actually produce. Labels stay constant regardless of whether a
+	// knowledge base is involved — it's meant to blend in as the tool's
+	// own content, not to be flagged inline every time it applies.
+	content, err := triage.Resolve(*f, a.knowledgeBase)
+	if err != nil {
+		// Surfaced here deliberately: this view is exactly where a
+		// broken knowledge-base template (e.g. a typo'd {{ }}) should be
+		// caught, before it ever reaches a filed ticket.
+		fmt.Fprintf(&b, "[red]Knowledge base template error:[white] %v\n\n", err)
+	}
+
+	fmt.Fprintf(&b, "[yellow]Title:[white] %s\n\n", content.Title)
+	fmt.Fprintf(&b, "[yellow]Description:[white]\n%s\n\n", content.Description)
+	if content.Technical != "" {
+		fmt.Fprintf(&b, "[yellow]Technical detail:[white]\n%s\n\n", content.Technical)
+	}
 	if len(f.CIS) > 0 {
 		fmt.Fprintf(&b, "[yellow]CIS:[white] %s\n\n", strings.Join(f.CIS, ", "))
 	}
-	if f.Remediation != "" {
-		fmt.Fprintf(&b, "[yellow]Remediation (how to fix, once confirmed):[white]\n%s\n\n", f.Remediation)
-	}
-	if f.VerificationSteps != "" {
-		fmt.Fprintf(&b, "[green::b]Verification steps (confirm it's a true positive first):[white::-]\n%s\n\n", f.VerificationSteps)
-	} else {
-		b.WriteString("[red]No verification steps recorded for this check — treat with extra caution.[white]\n\n")
+	if content.Remediation != "" {
+		fmt.Fprintf(&b, "[yellow]Remediation:[white]\n%s\n\n", content.Remediation)
 	}
 	return b.String()
 }
@@ -246,6 +281,10 @@ const helpText = `[yellow::b]kubectl audit triage — hotkeys[white::-]
   s                      isolate the table to every finding in this row's namespace, across every
                           check and resource Kind — for reviewing one tenant/system end-to-end.
                           Bypasses collapsing. Press again (or esc) to clear.
+  p                      policy stats: every check with severity/count/new/confirmed — sorted by
+                          count by default, press 1-6 to sort by another column (again to reverse)
+                          — enter on one to filter the table to just that policy (press 'p' again,
+                          or esc, to clear)
 
   [yellow::b]Sort[white::-]
   1-7                   sort by that column (shown as "N:LABEL" in the header) — press again to
@@ -286,4 +325,90 @@ func (a *app) openHelp() {
 		return nil
 	})
 	a.showModal("help", tv, 90, 30)
+}
+
+// openPolicyStats shows every PolicyID present in the full row set
+// (a.merged — not narrowed by any current filter, so it's always a
+// trustworthy "everything" overview), tallied by policyStats. Sortable by
+// column with '1'-'6' (same digit-key-plus-▲/▼-indicator convention as the
+// main table's '1'-'7' — see sortField/redrawTable), persisted in
+// a.policySortField/policySortAsc across opens. Enter on a row sets
+// a.policyFilter to that PolicyID and returns to the main table narrowed to
+// it (see togglePolicyFilter); esc closes without picking anything.
+func (a *app) openPolicyStats() {
+	stats := policyStats(a.merged)
+	if len(stats) == 0 {
+		a.statusLine = "No findings to show policy stats for."
+		a.redraw()
+		return
+	}
+	sortPolicyStats(stats, a.policySortField, a.policySortAsc)
+
+	t := tview.NewTable().SetSelectable(true, false).SetFixed(1, 0)
+	t.SetSelectedStyle(tcell.StyleDefault.Background(theme.selectionBg).Foreground(theme.selectionFg).Bold(true))
+	t.SetBorder(true).SetBorderColor(theme.borderFg)
+
+	render := func() {
+		t.Clear()
+		for c, h := range policyStatHeaders {
+			label := h
+			if policyStatSortField(c) == a.policySortField {
+				if a.policySortAsc {
+					label += " ▲"
+				} else {
+					label += " ▼"
+				}
+			}
+			t.SetCell(0, c, tview.NewTableCell(label).
+				SetSelectable(false).
+				SetTextColor(theme.tableHeaderFg).
+				SetBackgroundColor(theme.tableHeaderBg).
+				SetAttributes(tcell.AttrBold))
+		}
+		for i, s := range stats {
+			row := i + 1
+			set := func(col int, text string, fg tcell.Color, align int) {
+				t.SetCell(row, col, tview.NewTableCell(text).SetTextColor(fg).SetAlign(align))
+			}
+			set(0, s.Severity, severityColor(s.Severity), tview.AlignLeft)
+			set(1, s.PolicyID, tcell.ColorWhite, tview.AlignLeft)
+			set(2, fmt.Sprintf("%d", s.Count), theme.accent, tview.AlignRight)
+			set(3, fmt.Sprintf("%d", s.New), statusColor(triage.StatusNew), tview.AlignRight)
+			set(4, fmt.Sprintf("%d", s.Confirmed), statusColor(triage.StatusConfirmed), tview.AlignRight)
+			set(5, s.Title, theme.dim, tview.AlignLeft)
+		}
+	}
+	render()
+
+	t.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyEnter:
+			if row, _ := t.GetSelection(); row >= 1 && row-1 < len(stats) {
+				a.policyFilter = stats[row-1].PolicyID
+				a.refresh()
+			}
+			a.closeOverlay("policyStats")
+			a.redraw()
+			return nil
+		case tcell.KeyEscape:
+			a.closeOverlay("policyStats")
+			return nil
+		case tcell.KeyRune:
+			if field, ok := policyStatSortFieldForDigit(event.Rune()); ok {
+				if a.policySortField == field {
+					a.policySortAsc = !a.policySortAsc
+				} else {
+					a.policySortField = field
+					a.policySortAsc = false
+				}
+				sortPolicyStats(stats, a.policySortField, a.policySortAsc)
+				render()
+				return nil
+			}
+		}
+		return event
+	})
+
+	a.showFullScreenPage("policyStats", "POLICIES",
+		keyHint("enter")+" filter to this policy   "+keyHint("1-6")+" sort   "+keyHint("esc")+" back", t)
 }

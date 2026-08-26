@@ -39,6 +39,36 @@ var columnLabels = [columnCount]string{"", "SEV", "STATUS", "POLICY ID", "KIND",
 // redraw.
 var columnWidths = [columnCount]int{1, 8, 10, 42, 13, 42, 7, 22}
 
+// effectiveColumnWidths returns columnWidths with colNamespaceName grown to
+// consume whatever terminal width is left over once every other column,
+// the inter-column separators tview.Table draws (one rune per column
+// boundary), and the table's own left/right border are accounted for —
+// otherwise, on a terminal wider than columnWidths' fixed total, the table
+// just leaves blank space on the right instead of stretching to fill the
+// screen. NAMESPACE/NAME is the column most worth the extra room (resource
+// names are what most often get truncated with "…"). termWidth <= 0 (not
+// yet known, e.g. the very first redraw before the app's first real draw
+// cycle) returns columnWidths unchanged.
+func effectiveColumnWidths(termWidth int) [columnCount]int {
+	w := columnWidths
+	if termWidth <= 0 {
+		return w
+	}
+	fixed := 0
+	for i, cw := range columnWidths {
+		if i != colNamespaceName {
+			fixed += cw
+		}
+	}
+	const separators = columnCount - 1 // tview.Table draws one rune between each column
+	const tableBorder = 2              // the table's own left+right border
+	available := termWidth - fixed - separators - tableBorder
+	if available > w[colNamespaceName] {
+		w[colNamespaceName] = available
+	}
+	return w
+}
+
 // shortStatus abbreviates the longest status value (false_positive, 14
 // chars — by far the widest STATUS cell) so the column can stay narrow and
 // fixed-width without truncating everything else down to an unreadable
@@ -205,5 +235,118 @@ func fieldValue(r triage.Row, field sortField) string {
 		return joinTags(r.Entry.Tags)
 	default:
 		return ""
+	}
+}
+
+// policyStat is one row of the 'p' policy stats picker — everything about
+// one PolicyID across the full (unfiltered) row set.
+type policyStat struct {
+	PolicyID  string
+	Title     string
+	Severity  string
+	Count     int
+	New       int
+	Confirmed int
+}
+
+// policyStats tallies rows by PolicyID, sorted by Count descending (the
+// noisiest checks — the ones most worth triaging in bulk — first). Title/
+// Severity are taken from the first row seen for that policy (uniform by
+// construction: both come from the policy/check definition, not the
+// individual resource).
+func policyStats(rows []triage.Row) []policyStat {
+	byID := map[string]*policyStat{}
+	var order []string
+	for _, r := range rows {
+		id := r.Entry.PolicyID
+		s, ok := byID[id]
+		if !ok {
+			s = &policyStat{PolicyID: id, Title: r.Entry.Title, Severity: severityOf(r)}
+			byID[id] = s
+			order = append(order, id)
+		}
+		s.Count++
+		switch statusOf(r) {
+		case triage.StatusNew:
+			s.New++
+		case triage.StatusConfirmed:
+			s.Confirmed++
+		}
+	}
+
+	out := make([]policyStat, len(order))
+	for i, id := range order {
+		out[i] = *byID[id]
+	}
+	sortPolicyStats(out, policySortCount, false)
+	return out
+}
+
+// policyStatSortField/policyStatHeaders back the 'p' policy stats picker's
+// own digit-key sort ('1'-'6'), the same mechanism the main table's '1'-'7'
+// uses (see sortField/columnLabels above) — a separate, smaller set since
+// the picker's columns aren't the main table's.
+type policyStatSortField int
+
+const (
+	policySortSeverity policyStatSortField = iota
+	policySortPolicyID
+	policySortCount
+	policySortNew
+	policySortConfirmed
+	policySortTitle
+)
+
+var policyStatHeaders = [...]string{"SEV", "POLICY ID", "COUNT", "NEW", "CONFIRMED", "TITLE"}
+
+func policyStatSortFieldForDigit(r rune) (policyStatSortField, bool) {
+	switch r {
+	case '1':
+		return policySortSeverity, true
+	case '2':
+		return policySortPolicyID, true
+	case '3':
+		return policySortCount, true
+	case '4':
+		return policySortNew, true
+	case '5':
+		return policySortConfirmed, true
+	case '6':
+		return policySortTitle, true
+	}
+	return 0, false
+}
+
+// sortPolicyStats sorts stats in place; asc/desc apply uniformly over a
+// true ascending comparison from comparePolicyStat, the same convention
+// sortRows/compareField use for the main table (see their doc comment for
+// why: baking a fixed direction into one field's own comparator makes the
+// asc/desc toggle backwards for that field only).
+func sortPolicyStats(stats []policyStat, field policyStatSortField, asc bool) {
+	sort.SliceStable(stats, func(i, j int) bool {
+		c := comparePolicyStat(stats[i], stats[j], field)
+		if asc {
+			return c < 0
+		}
+		return c > 0
+	})
+}
+
+func comparePolicyStat(a, b policyStat, field policyStatSortField) int {
+	switch field {
+	case policySortSeverity:
+		return findings.ParseSeverity(a.Severity).Rank() - findings.ParseSeverity(b.Severity).Rank()
+	case policySortPolicyID:
+		return strings.Compare(a.PolicyID, b.PolicyID)
+	case policySortCount:
+		return a.Count - b.Count
+	case policySortNew:
+		return a.New - b.New
+	case policySortConfirmed:
+		return a.Confirmed - b.Confirmed
+	case policySortTitle:
+		return strings.Compare(a.Title, b.Title)
+	default:
+		return 0
 	}
 }

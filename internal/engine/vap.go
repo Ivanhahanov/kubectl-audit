@@ -30,6 +30,18 @@ const (
 	AnnotationCIS               = "audit.k8s-auditor.io/cis"
 	AnnotationTitle             = "audit.k8s-auditor.io/title"
 	AnnotationVerificationSteps = "audit.k8s-auditor.io/verification-steps"
+	// The kb-* annotations below let a policy author write their
+	// organization's own ticket-facing wording directly alongside the
+	// English check definition, in the same policy file, instead of also
+	// maintaining a separate triage.knowledgeBaseFile entry for every
+	// custom policy — see docs/writing-policies.md and docs/triage.md's
+	// knowledge-base section. Deliberately not a translation mechanism:
+	// there's no kb-message, since Finding.Message (the tool's own,
+	// sometimes per-resource, technical text) is never overridden this
+	// way — see internal/triage.Resolve.
+	AnnotationKBTitle       = "audit.k8s-auditor.io/kb-title"
+	AnnotationKBDescription = "audit.k8s-auditor.io/kb-description"
+	AnnotationKBRemediation = "audit.k8s-auditor.io/kb-remediation"
 )
 
 // PolicyMeta carries the audit-specific metadata read from a policy's
@@ -42,6 +54,11 @@ type PolicyMeta struct {
 	Remediation       string
 	VerificationSteps string
 	CIS               []string
+	// KnowledgeBase carries any kb-title/kb-description/kb-remediation
+	// annotation overrides (see AnnotationKBTitle and friends) — nil if
+	// the policy sets none. Copied onto every Finding this policy
+	// produces (see eval.go), consumed by internal/triage.Resolve.
+	KnowledgeBase *findings.KnowledgeBaseEntry
 }
 
 // ParsePolicyDocs decodes a (possibly multi-document) YAML/JSON byte stream
@@ -102,6 +119,13 @@ func ExtractMeta(policy *admissionregistrationv1.ValidatingAdmissionPolicy) Poli
 	}
 	if meta.Category == "" {
 		meta.Category = "general"
+	}
+	if kb := (findings.KnowledgeBaseEntry{
+		Title:       ann[AnnotationKBTitle],
+		Description: ann[AnnotationKBDescription],
+		Remediation: ann[AnnotationKBRemediation],
+	}); kb != (findings.KnowledgeBaseEntry{}) {
+		meta.KnowledgeBase = &kb
 	}
 	return meta
 }

@@ -124,6 +124,12 @@ compliance:
 # $KUBECTL_AUDIT_JIRA_TOKEN only, never this file.
 triage:
   stateFile: triage-state.yaml
+  # A bundled Russian title/description/remediation applies to every check
+  # automatically (no config needed) — see Triage > Knowledge base. Point
+  # this at a file to correct one entry or add your own organization's
+  # wording; merged on top of the bundle, field by field. Read fresh on
+  # every run, no rebuild.
+  # knowledgeBaseFile: knowledge-base.yaml
   jira:
     baseUrl: ""
     projectKey: ""
@@ -131,9 +137,9 @@ triage:
     # Optional: extraLabels (static labels on every created issue),
     # customFields (arbitrary Jira fields, string values Go-templated),
     # and summaryTemplate/descriptionTemplate (external .tpl file paths
-    # fully replacing the built-in issue text, e.g. to translate it) — see
-    # Triage > Custom fields, extra labels, and a fully custom template.
-    # All read fresh on every run, no rebuild.
+    # fully replacing the built-in issue structure) — see Triage > Custom
+    # fields, extra labels, and a fully custom template. All read fresh
+    # on every run, no rebuild.
 
 # Waivers for specific (check, resource) pairs — an accepted, documented
 # risk, not a silent gap. Config-file only (no CLI flag: a rule has too many

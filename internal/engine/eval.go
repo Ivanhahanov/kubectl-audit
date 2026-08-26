@@ -135,6 +135,7 @@ func evalPolicy(p *CompiledPolicy, res loader.Resource, gvk schema.GroupVersionK
 			Remediation:       p.Meta.Remediation,
 			VerificationSteps: p.Meta.VerificationSteps,
 			Source:            res.Source,
+			KnowledgeBase:     p.Meta.KnowledgeBase,
 		})
 	}
 	return out

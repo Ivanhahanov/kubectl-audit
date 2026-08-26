@@ -1,1 +1,1 @@
-[{{.Finding.Severity}}] {{.Finding.Title}} — {{.Finding.Resource.String}}
+[{{.Finding.Severity}}] {{.Content.Title}} — {{.Finding.Resource.String}}

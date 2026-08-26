@@ -62,6 +62,8 @@ func colorTag(c tcell.Color) string {
 // rows. No per-row background color either (a flat, non-alternating
 // background reads calmer over a wide table than zebra-striping did).
 func (a *app) redrawTable() {
+	widths := effectiveColumnWidths(a.termWidth)
+
 	a.table.Clear()
 	for c := 0; c < columnCount; c++ {
 		label := columnLabels[c]
@@ -72,7 +74,7 @@ func (a *app) redrawTable() {
 				label += " ▼"
 			}
 		}
-		a.table.SetCell(0, c, tview.NewTableCell(fixedWidth(label, columnWidths[c])).
+		a.table.SetCell(0, c, tview.NewTableCell(fixedWidth(label, widths[c])).
 			SetSelectable(false).
 			SetTextColor(theme.tableHeaderFg).
 			SetBackgroundColor(theme.tableHeaderBg).
@@ -97,7 +99,7 @@ func (a *app) redrawTable() {
 		}
 
 		set := func(col int, text string, fg tcell.Color) {
-			a.table.SetCell(row, col, tview.NewTableCell(fixedWidth(text, columnWidths[col])).SetTextColor(fg))
+			a.table.SetCell(row, col, tview.NewTableCell(fixedWidth(text, widths[col])).SetTextColor(fg))
 		}
 		set(colMark, mark, theme.mark)
 		set(colSeverity, sevDisplay, severityColor(sev))
@@ -105,16 +107,28 @@ func (a *app) redrawTable() {
 		set(colPolicy, r.Entry.PolicyID, tcell.ColorWhite)
 		set(colKind, r.Entry.Resource.Kind, tcell.ColorWhite)
 		set(colNamespaceName, nsNameLabel(r.Entry.Resource), tcell.ColorWhite)
-		a.table.SetCell(row, colCount, tview.NewTableCell(fixedWidthRight(countDisplay, columnWidths[colCount])).SetTextColor(theme.accent))
+		a.table.SetCell(row, colCount, tview.NewTableCell(fixedWidthRight(countDisplay, widths[colCount])).SetTextColor(theme.accent))
 		set(colTags, joinTags(r.Entry.Tags), theme.dim)
 	}
 }
 
-func (a *app) footerText() string {
-	sec := func(label string) string { return fmt.Sprintf("[%s::b] %s [-:-:-]", colorTag(theme.accent), label) }
-	key := func(k string) string { return "[" + colorTag(theme.accent) + "::b]" + k + "[-:-:-]" }
+// sectionLabel and keyHint render the footer/full-screen-header's
+// color-coded "[section]"/"[key]" chips — shared so the policy stats and
+// detail full-screen pages (see showFullScreenPage) can reuse the exact
+// same hotkey-hint styling as the main footer.
+func sectionLabel(label string) string {
+	return fmt.Sprintf("[%s::b] %s [-:-:-]", colorTag(theme.accent), label)
+}
 
-	line1 := sec("nav") + key("↑/↓") + " move  " + key("enter") + " detail  " + key("/") + " search  " +
+func keyHint(k string) string {
+	return "[" + colorTag(theme.accent) + "::b]" + k + "[-:-:-]"
+}
+
+func (a *app) footerText() string {
+	sec := sectionLabel
+	key := keyHint
+
+	line1 := sec("nav") + key("↑/↓") + " move  " + key("enter") + " detail  " + key("/") + " search  " + key("p") + " policies  " +
 		sec("noise") + key("r") + " collapse  " + key("g") + " expand group  " + key("s") + " isolate system  " +
 		sec("select") + key("space") + " mark  " + key("a") + " mark visible  " + key("esc") + " clear  " + key("1-7") + " sort"
 	line2 := sec("triage") + key("c/x/w/d/i") + " confirm/false-pos/wont-fix/dup/needs-info  " + key("0") + " reset to new  " +
@@ -130,6 +144,9 @@ func (a *app) footerText() string {
 	}
 	if a.systemFilter != "" {
 		status += fmt.Sprintf("  [%s::b]system: %s (s/esc to clear)[-:-:-]", colorTag(theme.accent), a.systemFilter)
+	}
+	if a.policyFilter != "" {
+		status += fmt.Sprintf("  [%s::b]policy: %s (p/esc to clear)[-:-:-]", colorTag(theme.accent), a.policyFilter)
 	}
 	if len(a.marked) > 0 {
 		status += fmt.Sprintf("  [%s::b]%d marked[-:-:-]", colorTag(theme.mark), len(a.marked))
