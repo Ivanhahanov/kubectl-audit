@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/ivanhahanov/kubectl-audit/internal/findings"
@@ -42,6 +43,11 @@ func TestDedupGroups_DifferentPoliciesNeverCollapseTogether(t *testing.T) {
 	}
 }
 
+// TestDedupGroups_NonUniformMessagePolicyNeverCollapses: 3 findings under
+// one policy with 3 substantively different messages land in 3 separate
+// dedupKey buckets (PolicyID+Kind+normalizedMessage) — each bucket has only
+// 1 member, below threshold 3, so none collapse. No resource-specific
+// detail is ever hidden.
 func TestDedupGroups_NonUniformMessagePolicyNeverCollapses(t *testing.T) {
 	rows := []triage.Row{
 		dedupRow("1", "rbac.least-privilege", "role X grants get on secrets", "ns", "a"),
@@ -54,6 +60,41 @@ func TestDedupGroups_NonUniformMessagePolicyNeverCollapses(t *testing.T) {
 	}
 	if len(members) != 0 {
 		t.Errorf("expected no dedup members recorded, got %d", len(members))
+	}
+}
+
+// TestDedupGroups_OutlierMessageDoesNotBlockOtherRowsFromCollapsing is the
+// regression test for a real bug found on a real cluster: the previous
+// design gated collapsing on a per-PolicyID "are ALL of this policy's
+// messages identical" check — one finding with a genuinely different
+// message (e.g. a Group subject alongside many ServiceAccount ones) tripped
+// that gate for the ENTIRE policy, so none of its findings collapsed
+// anywhere, not just the outlier. Bucketing directly on
+// PolicyID+Kind+normalizedMessage fixes this: the 3 identical findings
+// still collapse into 1 representative, and the outlier just stays its own
+// separate row — it no longer blocks the rest of the policy.
+func TestDedupGroups_OutlierMessageDoesNotBlockOtherRowsFromCollapsing(t *testing.T) {
+	msg := func(ns string) string {
+		return `ServiceAccount "checker-sa" in namespace "` + ns + `" can read Secrets cluster-wide, via: ClusterRoleBinding "checker-sa-binding-` + ns + `".`
+	}
+	rows := []triage.Row{
+		dedupRow("1", "rbac-analyzer.broad-secrets-access", msg("pg-cl-aaa"), "pg-cl-aaa", "checker-sa"),
+		dedupRow("2", "rbac-analyzer.broad-secrets-access", msg("pg-cl-bbb"), "pg-cl-bbb", "checker-sa"),
+		dedupRow("3", "rbac-analyzer.broad-secrets-access", msg("pg-cl-ccc"), "pg-cl-ccc", "checker-sa"),
+		dedupRow("4", "rbac-analyzer.broad-secrets-access",
+			`Group "kubeadm:cluster-admins" can read Secrets cluster-wide, via: ClusterRoleBinding "kubeadm:cluster-admins" -> ClusterRole "cluster-admin".`,
+			"", "kubeadm:cluster-admins"),
+	}
+	result, members := dedupGroups(rows, 3)
+	if len(result) != 2 {
+		t.Fatalf("expected 2 rows: 1 collapsed representative for the 3 identical tenants + 1 for the outlier, got %d: %+v", len(result), result)
+	}
+	total := 0
+	for _, m := range members {
+		total += len(m)
+	}
+	if total != 3 {
+		t.Errorf("expected exactly the 3 identical findings recorded as collapsed members, got %d", total)
 	}
 }
 
@@ -112,31 +153,14 @@ func TestDedupGroups_ZeroThresholdDisablesCollapsing(t *testing.T) {
 	}
 }
 
-func TestUniformMessagePolicies(t *testing.T) {
-	rows := []triage.Row{
-		dedupRow("1", "policy.a", "same", "ns", "a"),
-		dedupRow("2", "policy.a", "same", "ns", "b"),
-		dedupRow("3", "policy.b", "different-1", "ns", "a"),
-		dedupRow("4", "policy.b", "different-2", "ns", "b"),
-	}
-	uniform := uniformMessagePolicies(rows)
-	if !uniform["policy.a"] {
-		t.Error("expected policy.a (identical messages) to be uniform")
-	}
-	if uniform["policy.b"] {
-		t.Error("expected policy.b (differing messages) to not be uniform")
-	}
-}
-
 // TestDedupGroups_CollapsesTemplatedPerTenantResourceMessages is the fix for
 // a real report: rbac-analyzer.broad-secrets-access fires once per
 // generated per-tenant namespace ("pg-cl-<uuid>") for the same
 // ServiceAccount name ("checker-sa") via the same generated binding
 // pattern — the message embeds that namespace/name so it was never
-// literally identical across tenants and the policy never qualified as
-// "uniform", even though it's mechanically the same finding repeated.
-// normalizedMessage strips each finding's own resource identity before the
-// uniform comparison so this now collapses.
+// literally identical across tenants without normalization, even though
+// it's mechanically the same finding repeated. normalizedMessage strips
+// each finding's own resource identity before bucketing so this collapses.
 func TestDedupGroups_CollapsesTemplatedPerTenantResourceMessages(t *testing.T) {
 	msg := func(ns string) string {
 		return `ServiceAccount "checker-sa" in namespace "` + ns + `" can read Secrets cluster-wide, via: ClusterRoleBinding "checker-sa-binding-` + ns + `" -> ClusterRole "checker-role".`
@@ -172,5 +196,27 @@ func TestDedupGroups_SubstantiveMessageDifferenceStillBlocksCollapse(t *testing.
 	}
 	if len(members) != 0 {
 		t.Errorf("expected no dedup members recorded, got %d", len(members))
+	}
+}
+
+// TestDedupGroups_CollapsesAtRealClusterScale confirms both correctness and
+// the switch away from regexp.MustCompile-per-row hold at the scale this
+// was actually reported broken at: a multi-tenant cluster with thousands of
+// near-identical per-tenant findings (mirroring the real pg-cl-<uuid>/
+// checker-sa shape).
+func TestDedupGroups_CollapsesAtRealClusterScale(t *testing.T) {
+	const n = 2000
+	rows := make([]triage.Row, n)
+	for i := 0; i < n; i++ {
+		ns := fmt.Sprintf("pg-cl-%08x", i)
+		msg := `ServiceAccount "checker-sa" in namespace "` + ns + `" can read Secrets cluster-wide, via: ClusterRoleBinding "checker-sa-binding-` + ns + `".`
+		rows[i] = dedupRow(fmt.Sprintf("f%d", i), "rbac-analyzer.broad-secrets-access", msg, ns, "checker-sa")
+	}
+	result, members := dedupGroups(rows, 3)
+	if len(result) != 1 {
+		t.Fatalf("expected all %d per-tenant findings to collapse to 1 representative, got %d rows", n, len(result))
+	}
+	if len(members[result[0].Entry.FindingID]) != n {
+		t.Errorf("expected the representative's member list to contain all %d findings, got %d", n, len(members[result[0].Entry.FindingID]))
 	}
 }
