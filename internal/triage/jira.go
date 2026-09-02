@@ -203,14 +203,18 @@ func (c JiraClient) CreateIssue(ctx context.Context, summary, description string
 	return out.Key, strings.TrimRight(c.BaseURL, "/") + "/browse/" + out.Key, nil
 }
 
-// IssueLabels builds Jira labels from a finding's severity/category and
-// any triage tags, plus extra (triage.jira.extraLabels — static labels a
-// user wants on every created issue beyond what's auto-derived, e.g. their
-// own team/queue label). Jira labels can't contain whitespace;
+// IssueLabels builds Jira labels from a finding's severity/category, any
+// triage tags (Entry.Tags — an analyst's own free-text annotations, not
+// this check's own labels), this check's knowledge-base Labels (kb —
+// org-defined, the same for every finding this policy produces, e.g. an
+// internal compliance requirement id like "k-ose-5"; see
+// findings.KnowledgeBaseEntry.Labels), and extra (triage.jira.extraLabels —
+// static labels a user wants on every created issue regardless of check,
+// e.g. their own team/queue label). Jira labels can't contain whitespace;
 // sanitizeLabel replaces it with "-" and drops anything else Jira's label
 // validation would reject rather than risk the whole create request
 // failing over one bad label. Duplicates (after sanitizing) are dropped.
-func IssueLabels(f findings.Finding, e Entry, extra []string) []string {
+func IssueLabels(f findings.Finding, kb map[string]findings.KnowledgeBaseEntry, e Entry, extra []string) []string {
 	var labels []string
 	seen := map[string]bool{}
 	add := func(raw string) {
@@ -225,6 +229,13 @@ func IssueLabels(f findings.Finding, e Entry, extra []string) []string {
 	add(string(f.Severity))
 	add(f.Category)
 	for _, t := range e.Tags {
+		add(t)
+	}
+	// Labels aren't Go-templated (see KnowledgeBaseEntry.Labels), so this
+	// doesn't need Resolve's error handling — only its Title/Description/
+	// Remediation fields ever fail to render.
+	rc, _ := Resolve(f, kb)
+	for _, t := range rc.Labels {
 		add(t)
 	}
 	for _, t := range extra {

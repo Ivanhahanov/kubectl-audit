@@ -82,6 +82,9 @@ func MergeKnowledgeBases(maps ...map[string]findings.KnowledgeBaseEntry) map[str
 			if v.Remediation != "" {
 				e.Remediation = v.Remediation
 			}
+			if len(v.Labels) > 0 {
+				e.Labels = v.Labels
+			}
 			out[id] = e
 		}
 	}
@@ -123,6 +126,11 @@ type ResolvedContent struct {
 	// which flag) that a knowledge-base entry, being written once for
 	// every finding of that check, can't include.
 	Technical string
+	// Labels are this check's org-defined Jira labels (KnowledgeBaseEntry.
+	// Labels) — nil if neither layer sets any. Not templated, unlike the
+	// text fields above. See IssueLabels, which merges these with the
+	// auto-derived severity/category/tags and triage.jira.extraLabels.
+	Labels []string
 }
 
 // Resolve computes a finding's effective ticket/detail-view content: start
@@ -171,6 +179,9 @@ func Resolve(f findings.Finding, kb map[string]findings.KnowledgeBaseEntry) (Res
 			} else {
 				rc.Remediation = rendered
 			}
+		}
+		if len(e.Labels) > 0 {
+			rc.Labels = e.Labels
 		}
 	}
 	if f.KnowledgeBase != nil {

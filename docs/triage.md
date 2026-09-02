@@ -53,7 +53,7 @@ base](#knowledge-base-your-organizations-own-ticket-content)).
 | Key | Action |
 |---|---|
 | ↑/↓, pgup/pgdn (or arrows) | move |
-| `enter` | open finding detail — `y` copies it to the clipboard; `c`/`x`/`w`/`d`/`i`/`n`/`t`/`j`/`space`/`0` (below) all work from there too, no need to close back to the table first |
+| `enter` | open finding detail — `y` copies it to the clipboard, `v` toggles a Jira ticket preview (project/issue type/summary/description/labels/custom fields, exactly what `j` would send — a real check for a custom summaryTemplate/descriptionTemplate); `c`/`x`/`w`/`d`/`i`/`n`/`t`/`j`/`space`/`0` (below) all work from there too, no need to close back to the table first |
 | `/` | live-filter (substring match over title/policy ID/resource/message) |
 | `r` | toggle collapsing repeated findings on/off (**off** by default — see below) |
 | `g` | on a collapsed row: expand it to review each individual finding; press again to re-collapse |
@@ -234,11 +234,19 @@ rbac-analyzer.broad-secrets-access:
     Secrets access, which our internal security standard SEC-042 restricts to the security-team
     role. Open a review request per the SEC-042 process before granting an exception.
   remediation: "File a review request with security-team per SEC-042 for {{.Finding.Resource.Name}}."
+  labels:
+    - sec-042
 ```
 
 A field with no `{{ }}` in it round-trips unchanged — templating is opt-in per field, not
 required. A malformed template in one field is reported (in the TUI detail view, and as a
 render error for `jira-sync`) without blocking the other fields from still resolving.
+
+`labels` are this check's own Jira labels — merged with the auto-derived severity/category labels
+and `triage.jira.extraLabels`, sanitized the same way. Distinct from `Entry.Tags` (an analyst's own
+free-text annotation added by hand per finding, via `t` in the TUI): `labels` is org-defined and
+the same for every finding this check produces — an internal compliance requirement id, for
+example — not templated (unlike the text fields above; a Jira label is a short fixed slug).
 
 This is deliberately **not a translation mechanism** — `Message` (the tool's own, sometimes
 per-resource, technical text — e.g. exactly which ServiceAccount and binding are involved) is

@@ -2,8 +2,13 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
+
+	"github.com/rivo/tview"
 
 	"github.com/ivanhahanov/kubectl-audit/internal/triage"
 )
@@ -57,11 +62,80 @@ func (a *app) createOneIssue(ctx context.Context, client triage.JiraClient, r tr
 	if err != nil {
 		return "", "", err
 	}
-	// Labels use the finding's own severity/category, not the knowledge
-	// base — Jira labels are conventionally short ASCII slugs, not free
-	// text worth overriding per organization.
-	labels := triage.IssueLabels(f, r.Entry, a.jira.ExtraLabels)
+	labels := triage.IssueLabels(f, a.knowledgeBase, r.Entry, a.jira.ExtraLabels)
 	return client.CreateIssue(ctx, summary, description, labels, customFields)
+}
+
+// jiraPreviewText renders exactly what filing a Jira ticket for r would
+// send — calling the same triage.RenderIssueSummary/RenderIssueDescription/
+// RenderCustomFields/IssueLabels createOneIssue itself uses, so this can
+// never drift out of sync with what 'j' actually creates. This is the fix
+// for detailText's fixed layout not reflecting a custom
+// summaryTemplate/descriptionTemplate — the exact "what you preview is
+// what gets filed" gap a real WYSIWYG guarantee requires. Rendered
+// summary/description/custom-field VALUES are tview.Escape'd before
+// display: they're free-form, user-configured text (commonly Jira wiki
+// markup, e.g. "[link text|http://...]"), and without escaping, a literal
+// "[...]" in there would be misread as a tview color/region tag by this
+// same TextView.
+func (a *app) jiraPreviewText(r triage.Row) string {
+	var b strings.Builder
+	if !a.jira.configured() {
+		b.WriteString("[yellow]Jira is not configured.[white] Set triage.jira (baseUrl/projectKey/issueType) in " +
+			"audit.yaml, or pass --jira-url/--project/--issue-type — see docs/triage.md.\n")
+		return b.String()
+	}
+	if r.Finding == nil {
+		b.WriteString("[yellow]This finding is no longer produced by the latest scan — nothing to file.[white]\n")
+		return b.String()
+	}
+
+	f := *r.Finding
+	fmt.Fprintf(&b, "[yellow]Project:[white] %s      [yellow]Issue type:[white] %s\n", a.jira.ProjectKey, a.jira.IssueType)
+
+	if summary, err := triage.RenderIssueSummary(f, a.knowledgeBase, r.Entry, a.jira.SummaryTemplate); err != nil {
+		fmt.Fprintf(&b, "\n[red]Summary template error:[white] %v\n", err)
+	} else {
+		fmt.Fprintf(&b, "\n[yellow]Summary:[white]\n%s\n", tview.Escape(summary))
+	}
+
+	if labels := triage.IssueLabels(f, a.knowledgeBase, r.Entry, a.jira.ExtraLabels); len(labels) > 0 {
+		fmt.Fprintf(&b, "\n[yellow]Labels:[white] %s\n", strings.Join(labels, ", "))
+	}
+
+	if len(a.jira.CustomFields) > 0 {
+		if fields, err := triage.RenderCustomFields(a.jira.CustomFields, f, a.knowledgeBase, r.Entry); err != nil {
+			fmt.Fprintf(&b, "\n[red]Custom fields template error:[white] %v\n", err)
+		} else {
+			b.WriteString("\n[yellow]Custom fields:[white]\n")
+			keys := make([]string, 0, len(fields))
+			for k := range fields {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				data, err := json.Marshal(fields[k])
+				if err != nil {
+					data = []byte(fmt.Sprintf("%v", fields[k]))
+				}
+				fmt.Fprintf(&b, "  %s: %s\n", k, tview.Escape(string(data)))
+			}
+		}
+	}
+
+	if description, err := triage.RenderIssueDescription(f, a.knowledgeBase, r.Entry, a.jira.DescriptionTemplate); err != nil {
+		fmt.Fprintf(&b, "\n[red]Description template error:[white] %v\n", err)
+	} else {
+		fmt.Fprintf(&b, "\n[yellow]Description:[white]\n%s\n", tview.Escape(description))
+	}
+
+	if r.Entry.JiraIssueKey != "" {
+		fmt.Fprintf(&b, "\n[green]Already filed:[white] %s (%s)\n", r.Entry.JiraIssueKey, r.Entry.JiraIssueURL)
+	} else if r.Entry.Status != triage.StatusConfirmed {
+		b.WriteString("\n[yellow]Not yet filed:[white] status isn't CONFIRMED — 'j' won't create a ticket until you confirm it ('c').\n")
+	}
+
+	return b.String()
 }
 
 // createJiraIssues creates a Jira issue for every marked-or-selected row

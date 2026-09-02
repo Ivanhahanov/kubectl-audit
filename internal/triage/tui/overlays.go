@@ -217,10 +217,24 @@ func (a *app) openDetail() {
 	}
 	tv := tview.NewTextView().SetDynamicColors(true).SetWrap(true).SetScrollable(true)
 	tv.SetBorder(true).SetBorderColor(theme.borderFg)
-	tv.SetText(a.detailText(sel))
+
+	// preview toggles between the normal Title/Description/Remediation
+	// view and the Jira ticket preview (see jiraPreviewText) — a real
+	// WYSIWYG check for a custom summaryTemplate/descriptionTemplate,
+	// which detailText's fixed layout can't reflect. 'v' switches modes;
+	// render keeps whichever is active in sync after every mutation below.
+	preview := false
+	render := func() string {
+		if preview {
+			return a.jiraPreviewText(sel)
+		}
+		return a.detailText(sel)
+	}
+	tv.SetText(render())
 
 	title := "FINDING — " + sel.Entry.PolicyID
-	hint := keyHint("enter/esc") + " back   " + keyHint("y") + " copy   " + keyHint("j") + " jira   " + keyHint("c") + " confirm"
+	hint := keyHint("enter/esc") + " back   " + keyHint("y") + " copy   " + keyHint("v") + " jira preview   " +
+		keyHint("j") + " jira   " + keyHint("c") + " confirm"
 	flash := a.showFullScreenPage("detail", title, hint, tv)
 
 	tv.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -229,14 +243,28 @@ func (a *app) openDetail() {
 			a.closeOverlay("detail")
 			return nil
 		case tcell.KeyRune:
-			if r := event.Rune(); r == 'y' {
-				if err := copyToClipboard(stripDetailColorTags(a.detailText(sel))); err != nil {
+			switch r := event.Rune(); {
+			case r == 'y':
+				if err := copyToClipboard(stripDetailColorTags(render())); err != nil {
 					flash("Copy failed: " + err.Error())
 				} else {
 					flash("Copied to clipboard.")
 				}
 				return nil
-			} else if detailKeys[r] {
+			case r == 'v':
+				if !a.jira.configured() {
+					flash("Jira not configured — set triage.jira in audit.yaml or pass --jira-url/--project/--issue-type.")
+					return nil
+				}
+				preview = !preview
+				tv.SetText(render())
+				if preview {
+					flash("Jira ticket preview — 'v' to go back.")
+				} else {
+					flash("")
+				}
+				return nil
+			case detailKeys[r]:
 				result := a.handleKey(event)
 				// applyStatus/resetToNew/createJiraIssues set a.statusLine
 				// synchronously (before any async Jira work even starts —
@@ -251,13 +279,14 @@ func (a *app) openDetail() {
 				}
 				// c/x/w/d/i/0/space mutate the row synchronously (see the
 				// comment above) — re-render the body so e.g. "Status:"
+				// (or, in preview mode, the CONFIRMED/labels state)
 				// reflects the change immediately instead of only after
 				// closing and reopening. A harmless no-op for keys that
 				// haven't changed anything yet (n/t before the editor is
 				// submitted, j before the async create finishes).
 				if updated, ok := a.selectedRow(); ok {
 					sel = updated
-					tv.SetText(a.detailText(sel))
+					tv.SetText(render())
 				}
 				return result
 			}
@@ -359,8 +388,9 @@ const helpText = `[yellow::b]kubectl audit triage — hotkeys[white::-]
 
   [yellow::b]Navigate[white::-]
   up/down, pgup/pgdn    move
-  enter                 open finding detail — y to copy it to the clipboard, plus every
-                         triage-decision key below (c/x/w/d/i/n/t/j/space/0) works there too
+  enter                 open finding detail — y to copy it to the clipboard, v to toggle a Jira
+                         ticket preview (exactly what j would send), plus every triage-decision
+                         key below (c/x/w/d/i/n/t/j/space/0) works there too
   /                     focus the search bar (live filter over title/policy/resource/message)
   esc                   (in search) clear filter · (in table) clear marks, then clear
                          group-expand/system-isolate, in that order

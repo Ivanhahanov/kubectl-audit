@@ -89,6 +89,39 @@ func TestResolve_TechnicalOnlySetWhenDescriptionOverridden(t *testing.T) {
 	}
 }
 
+// TestResolve_LabelsFromExternalFileWinOverInline mirrors
+// TestResolve_ExternalFileWinsOverInline for the Labels field: an external
+// knowledgeBaseFile correcting a policy's own inline kb-labels-equivalent
+// must actually take effect.
+func TestResolve_LabelsFromExternalFileWinOverInline(t *testing.T) {
+	f := mustFinding("f1")
+	f.KnowledgeBase = &findings.KnowledgeBaseEntry{Labels: []string{"from-policy"}}
+	table := map[string]findings.KnowledgeBaseEntry{f.PolicyID: {Labels: []string{"k-ose-5"}}}
+
+	rc, err := triage.Resolve(f, table)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if len(rc.Labels) != 1 || rc.Labels[0] != "k-ose-5" {
+		t.Errorf("expected the external file's labels to override the inline ones, got %v", rc.Labels)
+	}
+}
+
+// TestResolve_NoLabelsOverrideLeavesLabelsNil guards that Labels stays nil
+// (not an empty-but-non-nil slice, and not silently defaulting to
+// something) when neither layer sets any — IssueLabels should then fall
+// back cleanly to just the auto-derived + extraLabels set.
+func TestResolve_NoLabelsOverrideLeavesLabelsNil(t *testing.T) {
+	f := mustFinding("f1")
+	rc, err := triage.Resolve(f, nil)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if rc.Labels != nil {
+		t.Errorf("expected nil Labels with no override, got %v", rc.Labels)
+	}
+}
+
 // TestResolve_TemplatesResourceNameFromFinding is the "not just theoretical
 // text" feature: a knowledge-base field can reference the specific
 // resource a finding fired on.
@@ -202,6 +235,27 @@ func TestMergeKnowledgeBases_LaterMapWinsFieldByField(t *testing.T) {
 	}
 	if merged["policy.a"].Remediation != "Base remediation" {
 		t.Errorf("expected the base remediation to survive (override left it empty), got %q", merged["policy.a"].Remediation)
+	}
+}
+
+func TestMergeKnowledgeBases_LabelsFieldByField(t *testing.T) {
+	base := map[string]findings.KnowledgeBaseEntry{
+		"policy.a": {Labels: []string{"base-label"}},
+	}
+	override := map[string]findings.KnowledgeBaseEntry{
+		"policy.a": {Title: "Override title"}, // Labels left empty (nil)
+	}
+	merged := triage.MergeKnowledgeBases(base, override)
+	if len(merged["policy.a"].Labels) != 1 || merged["policy.a"].Labels[0] != "base-label" {
+		t.Errorf("expected the base labels to survive (override left them empty), got %v", merged["policy.a"].Labels)
+	}
+
+	overrideWithLabels := map[string]findings.KnowledgeBaseEntry{
+		"policy.a": {Labels: []string{"k-ose-5"}},
+	}
+	merged = triage.MergeKnowledgeBases(base, overrideWithLabels)
+	if len(merged["policy.a"].Labels) != 1 || merged["policy.a"].Labels[0] != "k-ose-5" {
+		t.Errorf("expected the override's labels to replace the base's, got %v", merged["policy.a"].Labels)
 	}
 }
 

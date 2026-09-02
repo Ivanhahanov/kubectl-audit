@@ -5,6 +5,16 @@
 # Scan output produced by running the tool from the repo root
 /findings.json
 /report.md
+/triage-state.yaml
+
+# Org-specific/sensitive local files — real Jira config, example tickets,
+# private knowledge-base/template overrides. Never meant to be committed;
+# keep them here (or entirely outside the repo) and reference by path via
+# --config/triage.knowledgeBaseFile/triage.jira.summaryTemplate etc.
+/issue
+/private/
+/audit.yaml
+/knowledge-base*.yaml
 
 # Go
 *.test

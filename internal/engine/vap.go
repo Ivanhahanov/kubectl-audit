@@ -120,11 +120,16 @@ func ExtractMeta(policy *admissionregistrationv1.ValidatingAdmissionPolicy) Poli
 	if meta.Category == "" {
 		meta.Category = "general"
 	}
-	if kb := (findings.KnowledgeBaseEntry{
+	kb := findings.KnowledgeBaseEntry{
 		Title:       ann[AnnotationKBTitle],
 		Description: ann[AnnotationKBDescription],
 		Remediation: ann[AnnotationKBRemediation],
-	}); kb != (findings.KnowledgeBaseEntry{}) {
+	}
+	// No kb-labels annotation (Labels is deliberately external-knowledge-
+	// base-only — see findings.KnowledgeBaseEntry.Labels), so the
+	// zero-value check below only ever needs Title/Description/
+	// Remediation; Labels stays nil either way for an inline entry.
+	if kb.Title != "" || kb.Description != "" || kb.Remediation != "" {
 		meta.KnowledgeBase = &kb
 	}
 	return meta
