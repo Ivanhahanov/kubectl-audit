@@ -89,6 +89,21 @@ type app struct {
 	// table's column widths when the terminal has actually been resized,
 	// not on every single frame.
 	termWidth int
+
+	// selectedID is the FindingID of whichever row the user actually
+	// intends to have selected — kept in sync via
+	// a.table.SetSelectionChangedFunc (fires on both arrow-key navigation
+	// and programmatic Select calls) and used by redrawTable to
+	// re-anchor tview's cursor after every refresh(). Without this,
+	// tview.Table's own selectedRow is a naked integer index that Clear()
+	// does not reset: refresh() rebuilds a.rows from scratch on every
+	// action (sorted/filtered/regrouped fresh each time), so the same
+	// numeric row index can silently end up pointing at a completely
+	// different finding than the one the user was just looking at — a
+	// real reported bug (confirming a finding, then immediately being
+	// told it's "not confirmed" because the row that ended up back under
+	// the cursor was actually a different one after resorting).
+	selectedID string
 }
 
 // Config is everything Run needs beyond the findings/state themselves.
@@ -172,6 +187,15 @@ func Run(all []findings.Finding, suppressed []report.SuppressedFinding, state *t
 	a.table.SetSelectedStyle(tcell.StyleDefault.Background(theme.selectionBg).Foreground(theme.selectionFg).Bold(true))
 	a.table.SetInputCapture(a.handleKey)
 	a.table.SetBorder(true).SetBorderColor(theme.borderFg).SetTitle(" findings ").SetTitleColor(theme.accent)
+	// Keeps a.selectedID in sync with wherever the cursor actually is —
+	// see the field's doc comment for why this matters (redrawTable uses
+	// it to re-anchor selection by identity, not raw row index, after
+	// every refresh() rebuild).
+	a.table.SetSelectionChangedFunc(func(row, _ int) {
+		if idx := row - 1; idx >= 0 && idx < len(a.rows) {
+			a.selectedID = a.rows[idx].Entry.FindingID
+		}
+	})
 
 	root := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(a.header, headerHeight, 0, false).

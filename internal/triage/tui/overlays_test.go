@@ -74,6 +74,62 @@ func TestRedraw_NilActiveFlashDoesNotPanic(t *testing.T) {
 	a.redraw() // must not panic with activeFlash == nil
 }
 
+// TestReanchorSelection_FollowsFindingAcrossResort is the fix for a real
+// report: confirming a finding (via 'c', which triggers a.refresh()'s
+// unconditional re-sort) and then immediately checking its status showed
+// "not confirmed" — even though it plainly was. Root cause: tview.Table's
+// selectedRow is a naked integer that Clear() does not reset; once
+// refresh() resorts a.rows, the same row index can end up pointing at a
+// completely different finding. reanchorSelection must follow the same
+// FindingID to its new index instead of leaving the stale one.
+func TestReanchorSelection_FollowsFindingAcrossResort(t *testing.T) {
+	a := &app{table: tview.NewTable(), sortField: sortSeverity, sortAsc: false}
+	// Initial order: "confirmed-me" (low) is at row 2 (index 1).
+	a.rows = []triage.Row{
+		rowWith("high-sev", findings.SeverityHigh, "ns", "a"),
+		rowWith("confirmed-me", findings.SeverityLow, "ns", "b"),
+	}
+	a.table.Select(2, 0) // the user is looking at "confirmed-me"
+	a.selectedID = "confirmed-me"
+
+	// Simulate what confirming does: the finding's severity is unchanged,
+	// but a totally different, higher-severity finding now sorts first —
+	// same effect as any refresh() that reorders the list for any reason.
+	a.rows = []triage.Row{
+		rowWith("new-critical", findings.SeverityCritical, "ns", "c"),
+		rowWith("high-sev", findings.SeverityHigh, "ns", "a"),
+		rowWith("confirmed-me", findings.SeverityLow, "ns", "b"),
+	}
+	a.reanchorSelection()
+
+	row, _ := a.table.GetSelection()
+	if row != 3 {
+		t.Fatalf("expected the cursor to follow \"confirmed-me\" to its new row 3, got row %d", row)
+	}
+	got, ok := a.selectedRow()
+	if !ok || got.Entry.FindingID != "confirmed-me" {
+		t.Errorf("expected selectedRow() to return \"confirmed-me\" after reanchoring, got %+v (ok=%v)", got, ok)
+	}
+}
+
+// TestReanchorSelection_ClampsWhenFindingDisappeared covers the finding
+// getting filtered/resolved away entirely — must not leave a stale index
+// that could now belong to an unrelated finding.
+func TestReanchorSelection_ClampsWhenFindingDisappeared(t *testing.T) {
+	a := &app{table: tview.NewTable()}
+	a.rows = []triage.Row{rowWith("a", findings.SeverityHigh, "ns", "a"), rowWith("b", findings.SeverityLow, "ns", "b")}
+	a.table.Select(2, 0)
+	a.selectedID = "b"
+
+	a.rows = []triage.Row{rowWith("a", findings.SeverityHigh, "ns", "a")} // "b" is gone
+	a.reanchorSelection()
+
+	row, _ := a.table.GetSelection()
+	if row != 1 {
+		t.Errorf("expected the cursor clamped to the last valid row (1), got %d", row)
+	}
+}
+
 // TestStripDetailColorTags_RemovesOnlyKnownTagsNotUserBrackets guards the
 // clipboard-copy path against eating literal bracketed text that happens
 // to appear in a finding's own Message/Note (e.g. an IPv6 address) — it

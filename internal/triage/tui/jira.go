@@ -173,14 +173,35 @@ func (a *app) createJiraIssues() {
 		return
 	}
 
+	sel := a.markedOrSelectedTargets()
 	var targets []triage.Row
-	for _, r := range a.markedOrSelectedTargets() {
-		if r.Entry.Status == triage.StatusConfirmed && r.Entry.JiraIssueKey == "" {
+	var alreadyFiled, notConfirmed int
+	for _, r := range sel {
+		switch {
+		case r.Entry.JiraIssueKey != "":
+			alreadyFiled++
+		case r.Entry.Status != triage.StatusConfirmed:
+			notConfirmed++
+		default:
 			targets = append(targets, r)
 		}
 	}
 	if len(targets) == 0 {
-		a.statusLine = "No confirmed, not-yet-ticketed findings in the current selection — mark 'c' first."
+		// Distinguish *why* nothing's eligible — a single generic "mark 'c'
+		// first" message here was misleading for the already-filed case: a
+		// triager re-pressing 'j' on a finding that already has a ticket
+		// saw text telling them to confirm it, when confirming was never
+		// the actual blocker.
+		switch {
+		case len(sel) == 0:
+			a.statusLine = "Nothing selected."
+		case alreadyFiled > 0 && notConfirmed == 0:
+			a.statusLine = fmt.Sprintf("Already filed — %d finding(s) in the current selection already have a Jira ticket.", alreadyFiled)
+		case notConfirmed > 0 && alreadyFiled == 0:
+			a.statusLine = "Not confirmed yet — mark 'c' first."
+		default:
+			a.statusLine = fmt.Sprintf("Nothing to file: %d already ticketed, %d not yet confirmed.", alreadyFiled, notConfirmed)
+		}
 		a.redraw()
 		return
 	}

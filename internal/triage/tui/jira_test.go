@@ -136,3 +136,63 @@ func TestJiraPreviewText_NoFilingStatusInBody(t *testing.T) {
 		}
 	}
 }
+
+func bareAppForCreateJiraIssues(t *testing.T) *app {
+	t.Helper()
+	return &app{
+		header: tview.NewTextView(),
+		table:  tview.NewTable(),
+		footer: tview.NewTextView(),
+		jira: JiraConfig{
+			BaseURL: "https://jira.example.com", ProjectKey: "SEC", IssueType: "Bug", Token: "tok",
+		},
+		marked: map[string]bool{},
+		state:  &triage.State{Entries: map[string]triage.Entry{}},
+	}
+}
+
+// TestCreateJiraIssues_AlreadyFiledMessageDoesNotSayNotConfirmed is the fix
+// for a real report: a triager re-pressing 'j' on a finding that already
+// has a Jira ticket saw "No confirmed, not-yet-ticketed findings ... mark
+// 'c' first" — misleading, since confirming was never the blocker, the
+// finding was already filed. The message must name the real reason.
+func TestCreateJiraIssues_AlreadyFiledMessageDoesNotSayNotConfirmed(t *testing.T) {
+	a := bareAppForCreateJiraIssues(t)
+	f := findings.Finding{ID: "f1", PolicyID: "workload.run-as-non-root", Severity: findings.SeverityHigh}
+	a.merged = []triage.Row{{
+		Finding: &f,
+		Entry:   triage.Entry{FindingID: "f1", Status: triage.StatusConfirmed, JiraIssueKey: "SEC-123", JiraIssueURL: "https://jira.example.com/browse/SEC-123"},
+	}}
+	a.marked["f1"] = true
+
+	a.createJiraIssues()
+
+	if strings.Contains(a.statusLine, "mark 'c' first") || strings.Contains(a.statusLine, "Not confirmed") {
+		t.Errorf("expected the already-filed case to not mention confirming, got %q", a.statusLine)
+	}
+	if !strings.Contains(a.statusLine, "already") {
+		t.Errorf("expected the message to say the finding is already filed, got %q", a.statusLine)
+	}
+}
+
+// TestCreateJiraIssues_NotConfirmedMessageStaysAccurate is the
+// complementary case: a genuinely unconfirmed, unfiled finding should
+// still get the "mark 'c' first" guidance.
+func TestCreateJiraIssues_NotConfirmedMessageStaysAccurate(t *testing.T) {
+	a := bareAppForCreateJiraIssues(t)
+	f := findings.Finding{ID: "f1", PolicyID: "workload.run-as-non-root", Severity: findings.SeverityHigh}
+	a.merged = []triage.Row{{
+		Finding: &f,
+		Entry:   triage.Entry{FindingID: "f1", Status: triage.StatusNew},
+	}}
+	a.marked["f1"] = true
+
+	a.createJiraIssues()
+
+	if !strings.Contains(a.statusLine, "mark 'c' first") {
+		t.Errorf("expected guidance to confirm first, got %q", a.statusLine)
+	}
+	if strings.Contains(a.statusLine, "already") {
+		t.Errorf("expected no 'already filed' text for a finding that was never filed, got %q", a.statusLine)
+	}
+}

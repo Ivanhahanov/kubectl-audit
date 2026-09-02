@@ -117,6 +117,41 @@ func (a *app) redrawTable() {
 		set(colNamespaceName, nsNameLabel(r.Entry.Resource), tcell.ColorWhite)
 		a.table.SetCell(row, colCount, tview.NewTableCell(fixedWidthRight(countDisplay, widths[colCount])).SetTextColor(theme.accent))
 	}
+
+	a.reanchorSelection()
+}
+
+// reanchorSelection points tview's cursor back at the same finding
+// (a.selectedID) it was on before this rebuild — see that field's doc
+// comment for why: Clear() doesn't reset tview.Table's own selectedRow, so
+// without this, the same numeric row index can end up pointing at a
+// completely different finding once refresh() has resorted/refiltered/
+// regrouped a.rows. If that finding is no longer present at all (resolved
+// and hidden, filtered out, ...), clamps to a valid row instead of leaving
+// a stale index that might belong to an unrelated finding.
+func (a *app) reanchorSelection() {
+	if a.selectedID == "" {
+		return
+	}
+	for i, r := range a.rows {
+		if r.Entry.FindingID == a.selectedID {
+			if row, _ := a.table.GetSelection(); row != i+1 {
+				a.table.Select(i+1, 0)
+			}
+			return
+		}
+	}
+	// Not found — clamp rather than leave whatever raw index tview still
+	// has, which could now belong to a different finding entirely.
+	row, _ := a.table.GetSelection()
+	switch {
+	case len(a.rows) == 0:
+		a.table.Select(0, 0)
+	case row > len(a.rows):
+		a.table.Select(len(a.rows), 0)
+	case row < 1:
+		a.table.Select(1, 0)
+	}
 }
 
 // sectionLabel and keyHint render the footer/full-screen-header's
