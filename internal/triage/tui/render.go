@@ -62,6 +62,43 @@ func colorTag(c tcell.Color) string {
 	return fmt.Sprintf("#%02x%02x%02x", r, g, b)
 }
 
+// jiraCellDisplay is the JIRA column's text/color for r — the representative
+// row's own JiraIssueKey for a normal (non-collapsed) row, same as any
+// other field. For a collapsed row, though, JiraIssueKey is per-finding
+// state that dedupGroups' bucket key (PolicyID+Kind+message) has no reason
+// to make uniform across members — some may already be filed, some not,
+// each with its OWN distinct ticket (one issue per finding, never one per
+// bucket) — so showing just the representative's single key would be
+// meaningless at best, actively misleading at worst (implying either "none
+// filed" or "this one ticket covers the group" when neither is true). Same
+// precedent as the MARK column's isFullyMarked: aggregate across the whole
+// bucket instead of trusting the representative's own field.
+func jiraCellDisplay(r triage.Row, members []triage.Row) (text string, color tcell.Color) {
+	if len(members) <= 1 {
+		if r.Entry.JiraIssueKey == "" {
+			return "-", theme.dim
+		}
+		return r.Entry.JiraIssueKey, theme.accent
+	}
+	filed := 0
+	for _, m := range members {
+		if m.Entry.JiraIssueKey != "" {
+			filed++
+		}
+	}
+	switch filed {
+	case 0:
+		return "-", theme.dim
+	case len(members):
+		return fmt.Sprintf("%d/%d", filed, len(members)), theme.accent
+	default:
+		// Partially filed — the case most worth a triager's attention
+		// (bulk 'j'/'J' on this row will only touch the not-yet-filed
+		// ones), so it gets the same attention color as a marked row.
+		return fmt.Sprintf("%d/%d", filed, len(members)), theme.mark
+	}
+}
+
 // redrawTable renders every visible cell pre-padded to a fixed character
 // width (see columnWidths/fixedWidth) rather than relying on
 // tview.Table's own auto-sizing (which fits each column to its widest
@@ -105,10 +142,7 @@ func (a *app) redrawTable() {
 		if n := len(a.dedupMembers[r.Entry.FindingID]); n > 0 {
 			countDisplay = fmt.Sprintf("×%d", n)
 		}
-		jiraDisplay, jiraColor := "-", theme.dim
-		if r.Entry.JiraIssueKey != "" {
-			jiraDisplay, jiraColor = r.Entry.JiraIssueKey, theme.accent
-		}
+		jiraDisplay, jiraColor := jiraCellDisplay(r, a.dedupMembers[r.Entry.FindingID])
 
 		set := func(col int, text string, fg tcell.Color) {
 			a.table.SetCell(row, col, tview.NewTableCell(fixedWidth(text, widths[col])).SetTextColor(fg))

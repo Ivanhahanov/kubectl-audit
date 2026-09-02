@@ -45,8 +45,12 @@ below.
 ## The TUI
 
 A k9s-style table: one row per finding by default, columns for severity, status, policy ID, kind,
-namespace/name, a COUNT column, and a JIRA column (the filed ticket's key, or `-` if none yet).
-Press `enter` on a row for the full detail view (title, description, CIS refs, and remediation —
+namespace/name, a COUNT column, and a JIRA column (the filed ticket's key, or `-` if none yet). On a
+collapsed row (see [Noise reduction](#noise-reduction-collapsing-repeated-findings) below), Jira
+filing state is per-finding and has no reason to be uniform across the group — the JIRA column
+shows a `filed/total` count instead of one member's key, so e.g. `2/5` (in the same attention color
+as a marked row) means only some of the group has been ticketed yet; press `g` to drill in and see
+which. Press `enter` on a row for the full detail view (title, description, CIS refs, and remediation —
 exactly what filing a Jira ticket for this finding would contain, knowledge-base override included;
 see [Knowledge base](#knowledge-base-your-organizations-own-ticket-content)).
 

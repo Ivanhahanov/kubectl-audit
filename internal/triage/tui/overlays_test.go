@@ -152,6 +152,57 @@ func TestRedrawTable_JiraColumnShowsKeyOrDash(t *testing.T) {
 	}
 }
 
+// TestRedrawTable_JiraColumnAggregatesCollapsedRows is the fix for a real
+// question: a collapsed representative row's own JiraIssueKey is just
+// whichever bucket member happened to be picked first — dedupGroups
+// collapses on PolicyID+Kind+message, which has no reason to make
+// per-finding Jira state uniform across the group. Showing that one
+// member's key (or lack of one) would be meaningless at best ("this ticket
+// covers the whole group") or misleading at worst ("none of these are
+// filed" when some are). The column must aggregate across every member —
+// same precedent as the MARK column's isFullyMarked.
+func TestRedrawTable_JiraColumnAggregatesCollapsedRows(t *testing.T) {
+	rep := rowWith("rep", findings.SeverityHigh, "ns", "a") // representative itself unfiled
+	member2 := rowWith("m2", findings.SeverityHigh, "ns", "b")
+	member2.Entry.JiraIssueKey = "SEC-7" // but a sibling IS filed
+	member3 := rowWith("m3", findings.SeverityHigh, "ns", "c")
+
+	a := &app{
+		header: tview.NewTextView(), table: tview.NewTable(), footer: tview.NewTextView(),
+		rows:         []triage.Row{rep},
+		dedupMembers: map[string][]triage.Row{"rep": {rep, member2, member3}},
+	}
+	a.redrawTable()
+
+	got := strings.TrimSpace(a.table.GetCell(1, colJira).Text)
+	if got != "1/3" {
+		t.Errorf("expected the aggregate \"1/3\" (one of three members filed), got %q — showing just the representative's own key would be meaningless here", got)
+	}
+}
+
+// TestRedrawTable_JiraColumnAllFiledInGroup guards the other aggregate
+// edge: every member filed (each with its own distinct ticket — one issue
+// per finding, never one per bucket) still shows a count, not one
+// arbitrary key standing in for all of them.
+func TestRedrawTable_JiraColumnAllFiledInGroup(t *testing.T) {
+	rep := rowWith("rep", findings.SeverityHigh, "ns", "a")
+	rep.Entry.JiraIssueKey = "SEC-1"
+	member2 := rowWith("m2", findings.SeverityHigh, "ns", "b")
+	member2.Entry.JiraIssueKey = "SEC-2"
+
+	a := &app{
+		header: tview.NewTextView(), table: tview.NewTable(), footer: tview.NewTextView(),
+		rows:         []triage.Row{rep},
+		dedupMembers: map[string][]triage.Row{"rep": {rep, member2}},
+	}
+	a.redrawTable()
+
+	got := strings.TrimSpace(a.table.GetCell(1, colJira).Text)
+	if got != "2/2" {
+		t.Errorf("expected \"2/2\", got %q", got)
+	}
+}
+
 // TestStripDetailColorTags_RemovesOnlyKnownTagsNotUserBrackets guards the
 // clipboard-copy path against eating literal bracketed text that happens
 // to appear in a finding's own Message/Note (e.g. an IPv6 address) — it
