@@ -75,6 +75,39 @@ compliance:
     # - fstec
     # - nsa
 
+# Configures `kubectl audit triage` (see docs/triage.md). No credential
+# field here: the Jira Personal Access Token always comes from
+# --jira-token or $KUBECTL_AUDIT_JIRA_TOKEN, never this file.
+# triage:
+#   stateFile: triage-state.yaml
+#   # A bundled Russian title/description/remediation applies to every check
+#   # automatically, no config needed (see docs/triage.md > Knowledge base).
+#   # Point this at a file to correct one entry or add your own
+#   # organization's wording; merged on top of the bundle, field by field.
+#   # knowledgeBaseFile: knowledge-base.yaml
+#   jira:
+#     baseUrl: https://jira.example.com
+#     projectKey: SEC
+#     issueType: Bug
+#     # Static labels added to every created issue, beyond the auto-derived
+#     # severity/category/tag ones.
+#     extraLabels:
+#       - platform-team
+#     # Merged into every created issue's Jira fields, keyed by Jira field
+#     # ID. A string value is rendered as a Go template (same data as the
+#     # summary/description templates); any other value (a number, bool, or
+#     # an object like {value: Prod} for a select-list field) is sent as-is.
+#     customFields:
+#       customfield_10010: "severity={{.Finding.Severity}}"
+#       customfield_10020:
+#         value: Prod
+#     # Paths to external Go text/template files that fully replace the
+#     # built-in summary/description structure. Empty (the default) uses
+#     # the built-in template — get a starting point with
+#     # `kubectl audit triage jira template dump --kind summary --out summary.tpl`.
+#     summaryTemplate: /path/to/summary.tpl
+#     descriptionTemplate: /path/to/description.tpl
+
 # Disable individual built-in exclusion rules by id (cilium-agent,
 # prometheus-node-exporter, falco, tetragon, kube-proxy, control-plane-static-pods — see
 # internal/suppress/builtin-exclusions.yaml) while leaving the rest active.
