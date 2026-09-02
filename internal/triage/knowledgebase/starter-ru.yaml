@@ -68,8 +68,8 @@ apisix.admin-allow-wide-open:
   remediation: 'Ограничьте allow_admin конкретными CIDR управляющей сети, которым
     действительно нужен доступ к Admin API, вместо 0.0.0.0/0 (или ::/0). Официальный
     эталонный конфиг (github.com/apache/apisix/blob/master/conf/config.yaml.example):
-    `` allow_admin: # Limit Admin API access by IP addresses. - 127.0.0.0/24 # If
-    not set, any IP address is allowed. `` — официальный Helm-чарт apisix/apisix по
+    {{"{{"}}allow_admin: # Limit Admin API access by IP addresses. - 127.0.0.0/24 # If
+    not set, any IP address is allowed.{{"}}"}} — официальный Helm-чарт apisix/apisix по
     умолчанию использует 127.0.0.1/24, поэтому запись 0.0.0.0/0 — это явное расширение
     относительно безопасного значения по умолчанию, а не результат установки по умолчанию.
     Это защита в глубину, независимая от admin_key/ admin_key_required: даже надёжный,
@@ -97,8 +97,7 @@ apisix.admin-auth-disabled:
     от того, какой admin_key настроен.'
   remediation: 'Удалите admin_key_required: false (или установите значение true —
     значение по умолчанию) из config.yaml. Официальный эталонный конфиг (github.com/apache/apisix/blob/master/conf/config.yaml.example):
-    `` admin_key_required: true # Enable Admin API authentication by default for security.
-    `` — установка значения false полностью отключает аутентификацию Admin API независимо
+    {{"{{"}}admin_key_required: true # Enable Admin API authentication by default for security.{{"}}"}} — установка значения false полностью отключает аутентификацию Admin API независимо
     от того, какой admin_key настроен: любой, кто может достучаться до порта Admin
     API, получает полный доступ к control-plane (routes, upstreams, consumers) вообще
     без ключа.'
@@ -111,7 +110,7 @@ apisix.etcd-connection-plaintext:
   remediation: 'Измените записи etcd.host на https:// и настройте etcd.tls (а также
     etcd.user/password или взаимный TLS на стороне etcd) — в документации APISIX для
     «decoupled»-режима развёртывания (https://apisix.apache.org/docs/apisix/deployment-modes/)
-    показано `etcd.host: [https://${etcd_IP}:${etcd_Port}]`, в отличие от примера
+    показано {{"{{"}}etcd.host: [https://${etcd_IP}:${etcd_Port}]{{"}}"}}, в отличие от примера
     с обычным текстом для «traditional»-режима. Сам etcd прямо предупреждает о риске:
     «An etcd cluster which doesn''t enable security features can expose its data to
     any clients.» В etcd APISIX хранит всю конфигурацию маршрутов/плагинов/consumer''ов
@@ -151,7 +150,7 @@ argocd.application-sync-validate-disabled:
     пропускается.
   remediation: Удалите Validate=false из spec.syncPolicy.syncOptions. В документации
     ArgoCD по опциям синхронизации это описывается как пропуск проверки схемы ресурсов
-    kubectl (эквивалент `kubectl apply --validate=false`) при синхронизации — явный
+    kubectl (эквивалент {{"{{"}}kubectl apply --validate=false{{"}}"}}) при синхронизации — явный
     отказ на уровне конкретного Application от встроенной проверки безопасности, которая
     отлавливает некорректные или неожиданные манифесты до их применения в кластере.
     Проверка со слабым источником обоснования по сравнению с большинством проверок
@@ -165,7 +164,7 @@ argocd.application-uses-default-project:
     default, вместо выделенного, ограниченного проекта.
   remediation: 'Установите spec.project в выделенный AppProject, ограниченный реальными
     репозиториями источников/назначениями/ресурсами Application «{{.Finding.Resource.Name}}»,
-    вместо «default». В документации ArgoCD указано: «The `default` project can be
+    вместо «default». В документации ArgoCD указано: «The {{"{{"}}default{{"}}"}} project can be
     modified, but not deleted. The project is useful for initial testing, but it is
     recommended to create dedicated projects with explicit source, destination, and
     resource permissions.» Application в проекте default наследует всё, что в данный
@@ -208,8 +207,8 @@ argocd.cmd-params-cm-disable-auth:
     «true» — собственная аутентификация ArgoCD полностью отключена.'
   remediation: 'Удалите server.disable.auth (или верните значение «false» — значение
     по умолчанию) из argocd-cmd-params-cm. Проверено напрямую по официальному эталону
-    (docs/operator-manual/argocd-cmd-params-cm.yaml в argoproj/argo-cd): `` # Disable
-    client authentication / server.disable.auth: "false" ``. Установка значения «true»
+    (docs/operator-manual/argocd-cmd-params-cm.yaml в argoproj/argo-cd): {{"{{"}}# Disable
+    client authentication / server.disable.auth: "false"{{"}}"}}. Установка значения «true»
     полностью отключает собственную аутентификацию ArgoCD — каждый запрос через UI/API/CLI
     рассматривается как аутентифицированный без учётных данных, аналог Root feature
     gate в KubeVirt: явный отказ на уровне всего кластера от фундаментального механизма
@@ -343,7 +342,7 @@ calico.felixconfiguration-wireguard-disabled:
     с именем «default»), чтобы шифровать трафик между подами внутри кластера на сети
     — в документации Calico указано: «Enable WireGuard to secure on-the-wire, in-cluster
     pod traffic in a Calico cluster.» По умолчанию — false (проверено напрямую по
-    исходному коду Felix, config_params.go: WireguardEnabled bool `config:"bool;false"`).
+    исходному коду Felix, config_params.go: WireguardEnabled bool {{"{{"}}config:"bool;false"{{"}}"}}).
     В dual-stack кластере также следует установить wireguardEnabledV6 для трафика
     IPv6.'
   title: Шифрование pod-to-pod трафика WireGuard в Calico не включено
@@ -791,7 +790,7 @@ kubevirt.host-disk-volume:
     диска на локальной файловой системе узла.
   remediation: 'Замените том hostDisk на PersistentVolumeClaim/DataVolume, обеспеченный
     корректным provisioning через storage class, вместо файла образа диска на локальной
-    файловой системе узла. Собственное [руководство пользователя KubeVirt](https://kubevirt.io/user-guide/storage/disks_and_volumes/):
+    файловой системе узла. Собственное [руководство пользователя KubeVirt|https://kubevirt.io/user-guide/storage/disks_and_volumes/]:
     "A hostDisk volume type provides the ability to create or use a disk image located
     somewhere on a node. It works similar to a hostPath in Kubernetes" — та же проблема
     доступа к файловой системе узла, которую проверка workload.no-hostpath-volumes
@@ -875,9 +874,8 @@ kyverno.cluster-policy-admission-disabled:
   remediation: 'Уберите spec.admission: false (либо верните значение true, значение
     по умолчанию), если политика «{{.Finding.Resource.Name}}» не предназначена намеренно
     только для фонового сканирования (background scan). Проверено непосредственно
-    по собственному исходному коду Kyverno (api/kyverno/v1/spec_types.go): `` // Admission
-    controls if rules are applied during admission. Optional. Default value is "true".
-    `` Политика с admission: false по-прежнему существует и отображается как "установленная",
+    по собственному исходному коду Kyverno (api/kyverno/v1/spec_types.go): {{"{{"}}// Admission
+    controls if rules are applied during admission. Optional. Default value is "true".{{"}}"}} Политика с admission: false по-прежнему существует и отображается как "установленная",
     но полностью бездействует на этапе admission — та же ситуация "выглядит активной,
     но тихо не является таковой", что и у kubevirt.root-feature-gate-enabled.'
   title: Политика Kyverno тихо отключена на этапе admission
@@ -999,7 +997,7 @@ multitenancy.capsule-tenant-no-image-pull-policy-restriction:
     образ, загруженный по учётным данным приватного реестра другого арендатора, без
     повторной аутентификации в реестре.
   remediation: 'Установите spec.imagePullPolicies в ["Always"]. В руководстве Capsule
-    по лучшим практикам указано: «it''s recommended to use the ImagePullPolicy `Always`
+    по лучшим практикам указано: «it''s recommended to use the ImagePullPolicy {{"{{"}}Always{{"}}"}}
     for private registries on shared nodes. This ensures that no images can be used
     which are already pulled to the node.» Без этого workload одного арендатора на
     общем узле может ссылаться на образ с тегом, уже закэшированным на узле после
@@ -1277,7 +1275,7 @@ secrets.known-weak-placeholder-value:
     по умолчанию или классические записи из списков слабых паролей), по определению
     не является секретом, независимо от того, какому продукту он принадлежит. "changeit"
     — это официальный задокументированный пароль keystore/truststore по умолчанию
-    в Java (согласно собственному руководству `keytool`); остальные — одни из самых
+    в Java (согласно собственному руководству {{"{{"}}keytool{{"}}"}}); остальные — одни из самых
     распространённых паролей/ placeholder-токенов, выбираемых людьми, по данным опубликованных
     исследований слабых паролей и утечек. Проверка использует короткий, намеренно
     узкий список точных, очевидно неслучайных значений — а не общую эвристику слабых
@@ -1292,7 +1290,7 @@ secrets.no-secrets-via-env:
     env/envFrom (secretKeyRef или secretRef) вместо смонтированного тома.
   remediation: 'Смонтируйте Secret как том и читайте его с файловой системы вместо
     env/envFrom. Переменные окружения с большей вероятностью приводят к утечке: они
-    видны в `kubectl describe pod`/дампах падений, наследуются каждым дочерним процессом
+    видны в {{"{{"}}kubectl describe pod{{"}}"}}/дампах падений, наследуются каждым дочерним процессом
     и часто попадают в логи через обработчики ошибок приложения, которые выводят окружение
     целиком.'
   title: Контейнер получает данные Secret через переменные окружения вместо смонтированного
@@ -1362,7 +1360,7 @@ temporal.authorization-not-configured:
   remediation: 'Настройте server.config.authorization (authorizer/claimMapper) в values.yaml
     официального чарта temporalio/helm-charts, чтобы в отрендеренном config_template.yaml
     появился настоящий блок authorization:. Собственная [документация Temporal по
-    безопасности](https://docs.temporal.io/self-hosted-guide/security): "If you do
+    безопасности|https://docs.temporal.io/self-hosted-guide/security]: "If you do
     not explicitly configure an Authorizer, Temporal uses the default noopAuthorizer.
     This default allows every API request, with no authentication or access control"
     — и явно: "This is not secure for production or for any environment that is accessible

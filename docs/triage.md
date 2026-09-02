@@ -250,6 +250,24 @@ A field with no `{{ }}` in it round-trips unchanged — templating is opt-in per
 required. A malformed template in one field is reported (in the TUI detail view, and as a
 render error for `jira-sync`) without blocking the other fields from still resolving.
 
+**`title`/`description`/`remediation` render as Jira Server/Data Center wiki markup, not
+Markdown** — this tool talks to the REST API v2 `description` field as plain text, and Jira itself
+renders that text using its own wiki syntax. A Markdown link like `[text](url)` renders as literal,
+unclickable text; the Jira equivalent is `[text|url]` (pipe, not parentheses). Quick reference:
+
+| Want | Jira wiki markup | Not Markdown |
+|---|---|---|
+| Bold | `*bold*` | ~~`**bold**`~~ |
+| Italic | `_italic_` | ~~`*italic*`~~ |
+| Link | `[text\|https://example.com]` | ~~`[text](https://example.com)`~~ |
+| Heading | `h2. Heading` (start of line) | ~~`## Heading`~~ |
+| Inline code | `{{code}}` | ~~`` `code` ``~~ |
+| Code block | `` {code:yaml}...{code} `` (or `{code}`/`{noformat}` with no language) | ~~` ```yaml...``` `~~ |
+| Bullet list | `* item` | same as Markdown |
+
+The built-in templates (`summary.tpl`/`description.tpl`) already use this syntax — `*Remediation:*`
+is Jira bold, not a stray typo.
+
 `labels` are this check's own Jira labels — merged with the auto-derived severity/category labels
 and `triage.jira.extraLabels`, sanitized the same way. Org-defined and the same for every finding
 this check produces — an internal compliance requirement id, for example — not templated (unlike
