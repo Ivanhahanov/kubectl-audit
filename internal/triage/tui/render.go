@@ -108,7 +108,6 @@ func (a *app) redrawTable() {
 		set(colKind, r.Entry.Resource.Kind, tcell.ColorWhite)
 		set(colNamespaceName, nsNameLabel(r.Entry.Resource), tcell.ColorWhite)
 		a.table.SetCell(row, colCount, tview.NewTableCell(fixedWidthRight(countDisplay, widths[colCount])).SetTextColor(theme.accent))
-		set(colTags, joinTags(r.Entry.Tags), theme.dim)
 	}
 }
 

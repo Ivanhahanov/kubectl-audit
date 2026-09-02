@@ -107,7 +107,7 @@ func (a *app) confirmBulkAction(prompt string, targets []triage.Row, proceed fun
 	a.tv.SetFocus(modal)
 }
 
-// editorTitle builds the modal title for the note/tags editors, appending
+// editorTitle builds the modal title for the note editor, appending
 // a bulk-apply notice when editing a collapsed representative row applies
 // the same text to every finding it stands for (see expandIfCollapsed) —
 // that's never supposed to be a silent surprise.
@@ -147,56 +147,16 @@ func (a *app) openNoteEditor() {
 	a.showModal("note", input, 80, 3)
 }
 
-func (a *app) openTagsEditor() {
-	sel, ok := a.selectedRow()
-	if !ok || sel.Finding == nil {
-		return
-	}
-	targets := a.expandIfCollapsed(sel)
-	input := tview.NewInputField().SetLabel("Tags (comma-separated): ").SetText(strings.Join(sel.Entry.Tags, ", "))
-	input.SetBorder(true).SetTitle(editorTitle("Tags", sel, targets))
-	input.SetDoneFunc(func(key tcell.Key) {
-		if key != tcell.KeyEnter {
-			a.closeOverlay("tags")
-			a.redraw()
-			return
-		}
-		tags := splitTags(input.GetText())
-		a.closeOverlay("tags")
-		a.confirmBulkAction(fmt.Sprintf("Set these tags on %d findings?", len(targets)), targets, func() {
-			now := time.Now()
-			for _, t := range targets {
-				a.state.SetTags(*t.Finding, tags, now)
-			}
-			a.save()
-			a.refresh()
-			a.redraw()
-		})
-	})
-	a.showModal("tags", input, 80, 3)
-}
-
-func splitTags(s string) []string {
-	var out []string
-	for _, part := range strings.Split(s, ",") {
-		part = strings.TrimSpace(part)
-		if part != "" {
-			out = append(out, part)
-		}
-	}
-	return out
-}
-
 // detailKeys are the single-finding actions available from inside the
 // detail full-screen page, delegated straight to handleKey (the exact same
-// code path the main table uses — status changes, note/tags editors, mark,
+// code path the main table uses — status changes, the note editor, mark,
 // reset, Jira) so a triager can act on the finding they're reading without
 // closing back to the table first. Deliberately NOT every table hotkey:
 // view-level ones (r/g/s/p/u/a/'/') either have no meaning for a single
 // finding or act on table state the triager can't see from here, so
 // they're left out to avoid a confusing action with invisible effect.
 //
-// Caveat: a delegated action that opens its own nested page (the note/tags
+// Caveat: a delegated action that opens its own nested page (the note
 // editor, the bulk-confirm Yes/Cancel dialog, help) closes back to "main"
 // on completion, not back to "detail" — closeOverlay has no navigation
 // stack, it always returns to the table. Acceptable for now: the common
@@ -206,7 +166,7 @@ func splitTags(s string) []string {
 // somewhere still perfectly usable (main), just not exactly where the
 // triager pressed the key.
 var detailKeys = map[rune]bool{
-	' ': true, '0': true, 'n': true, 't': true, 'j': true, 'q': true, '?': true,
+	' ': true, '0': true, 'n': true, 'j': true, 'q': true, '?': true,
 	'c': true, 'x': true, 'w': true, 'd': true, 'i': true,
 }
 
@@ -271,9 +231,9 @@ func (a *app) openDetail() {
 				// see jira.go), so flashing it right here gives the same
 				// immediate feedback the footer would show on "main",
 				// without requiring this page to close first. A stale
-				// flash for keys that don't touch statusLine (note/tags —
-				// their own editor modal is what's visibly on screen at
-				// that point — space, help, quit) is harmless.
+				// flash for keys that don't touch statusLine (note — its
+				// own editor modal is what's visibly on screen at that
+				// point — space, help, quit) is harmless.
 				if a.statusLine != "" {
 					flash(a.statusLine)
 				}
@@ -282,7 +242,7 @@ func (a *app) openDetail() {
 				// (or, in preview mode, the CONFIRMED/labels state)
 				// reflects the change immediately instead of only after
 				// closing and reopening. A harmless no-op for keys that
-				// haven't changed anything yet (n/t before the editor is
+				// haven't changed anything yet (n before the editor is
 				// submitted, j before the async create finishes).
 				if updated, ok := a.selectedRow(); ok {
 					sel = updated
@@ -319,9 +279,6 @@ func (a *app) detailText(r triage.Row) string {
 			example += fmt.Sprintf(", …and %d more", len(members)-maxDetailExamples)
 		}
 		fmt.Fprintf(&b, "  %s\n", example)
-	}
-	if len(r.Entry.Tags) > 0 {
-		fmt.Fprintf(&b, "[yellow]Tags:[white] %s\n", strings.Join(r.Entry.Tags, ", "))
 	}
 	if r.Entry.Note != "" {
 		fmt.Fprintf(&b, "[yellow]Note:[white] %s\n", r.Entry.Note)
@@ -390,7 +347,7 @@ const helpText = `[yellow::b]kubectl audit triage — hotkeys[white::-]
   up/down, pgup/pgdn    move
   enter                 open finding detail — y to copy it to the clipboard, v to toggle a Jira
                          ticket preview (exactly what j would send), plus every triage-decision
-                         key below (c/x/w/d/i/n/t/j/space/0) works there too
+                         key below (c/x/w/d/i/n/j/space/0) works there too
   /                     focus the search bar (live filter over title/policy/resource/message)
   esc                   (in search) clear filter · (in table) clear marks, then clear
                          group-expand/system-isolate, in that order
@@ -410,7 +367,7 @@ const helpText = `[yellow::b]kubectl audit triage — hotkeys[white::-]
                           or esc, to clear)
 
   [yellow::b]Sort[white::-]
-  1-7                   sort by that column (shown as "N:LABEL" in the header) — press again to
+  1-6                   sort by that column (shown as "N:LABEL" in the header) — press again to
                          reverse direction
 
   [yellow::b]Select[white::-]
@@ -427,7 +384,6 @@ const helpText = `[yellow::b]kubectl audit triage — hotkeys[white::-]
   i                      needs more info
   0                      reset back to new (undo a previous c/x/w/d/i)
   n                      edit note (same bulk-apply rule)
-  t                      edit tags, comma-separated (same bulk-apply rule)
   j                      create a Jira ticket for every marked/selected CONFIRMED finding without
                          one yet (needs triage.jira configured — see docs/triage.md)
 

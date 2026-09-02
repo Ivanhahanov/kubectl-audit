@@ -37,7 +37,6 @@ func TestSaveLoadState_RoundTrip(t *testing.T) {
 		t.Fatalf("SetStatus: %v", err)
 	}
 	s.SetNote(f, "definitely exploitable", now)
-	s.SetTags(f, []string{"prod", "internet-facing"}, now)
 
 	if err := triage.SaveState(path, s); err != nil {
 		t.Fatalf("SaveState: %v", err)
@@ -56,9 +55,6 @@ func TestSaveLoadState_RoundTrip(t *testing.T) {
 	}
 	if e.Note != "definitely exploitable" {
 		t.Errorf("expected note to round-trip, got %q", e.Note)
-	}
-	if len(e.Tags) != 2 || e.Tags[0] != "prod" {
-		t.Errorf("expected tags to round-trip, got %v", e.Tags)
 	}
 	if e.PolicyID != "workload.no-latest-tag" || e.Resource.Name != "app" {
 		t.Errorf("expected the finding snapshot (PolicyID/Resource) to be captured, got %+v", e)

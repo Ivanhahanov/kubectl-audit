@@ -98,15 +98,15 @@ func TestFilterRows_EmptyQueryReturnsAll(t *testing.T) {
 }
 
 func TestSortFieldForDigit(t *testing.T) {
-	cases := map[rune]sortField{'1': sortSeverity, '2': sortStatus, '7': sortTags}
+	cases := map[rune]sortField{'1': sortSeverity, '2': sortStatus, '6': sortCount}
 	for digit, want := range cases {
 		got, ok := sortFieldForDigit(digit)
 		if !ok || got != want {
 			t.Errorf("sortFieldForDigit(%q) = %v, %v; want %v, true", digit, got, ok, want)
 		}
 	}
-	if _, ok := sortFieldForDigit('8'); ok {
-		t.Error("expected digit '8' (out of range — only 7 sortable columns) to not map to a sort field")
+	if _, ok := sortFieldForDigit('7'); ok {
+		t.Error("expected digit '7' (out of range — only 6 sortable columns) to not map to a sort field")
 	}
 	if _, ok := sortFieldForDigit('a'); ok {
 		t.Error("expected a non-digit rune to not map to a sort field")

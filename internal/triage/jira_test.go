@@ -107,14 +107,13 @@ func TestJiraClient_CreateIssue_NonCreatedStatusErrors(t *testing.T) {
 	}
 }
 
-func TestIssueLabels_SanitizesTagsAndSeverity(t *testing.T) {
+func TestIssueLabels_SanitizesSeverityAndCategory(t *testing.T) {
 	f := mustFinding("f1")
 	f.Severity = "HIGH"
 	f.Category = "workload security" // space, needs sanitizing
-	e := triage.Entry{Tags: []string{"Internet Facing!", "prod"}}
 
-	labels := triage.IssueLabels(f, nil, e, nil)
-	want := map[string]bool{"kubectl-audit": true, "high": true, "workload-security": true, "internet-facing": true, "prod": true}
+	labels := triage.IssueLabels(f, nil, nil)
+	want := map[string]bool{"kubectl-audit": true, "high": true, "workload-security": true}
 	if len(labels) != len(want) {
 		t.Fatalf("expected %d labels, got %v", len(want), labels)
 	}
@@ -131,9 +130,8 @@ func TestIssueLabels_SanitizesTagsAndSeverity(t *testing.T) {
 func TestIssueLabels_ExtraLabelsMergeAndDedup(t *testing.T) {
 	f := mustFinding("f1")
 	f.Severity = "high"
-	e := triage.Entry{}
 
-	labels := triage.IssueLabels(f, nil, e, []string{"Team-Sec", "high"}) // "high" duplicates the severity label
+	labels := triage.IssueLabels(f, nil, []string{"Team-Sec", "high"}) // "high" duplicates the severity label
 	count := map[string]int{}
 	for _, l := range labels {
 		count[l]++
@@ -148,14 +146,12 @@ func TestIssueLabels_ExtraLabelsMergeAndDedup(t *testing.T) {
 
 // TestIssueLabels_IncludesKnowledgeBaseLabels is the fix for a real need:
 // an org-defined per-check label (e.g. an internal compliance requirement
-// id like "k-ose-5") that's the same for every finding a check produces —
-// distinct from Entry.Tags (an analyst's own free-text annotation per
-// finding).
+// id like "k-ose-5") that's the same for every finding a check produces.
 func TestIssueLabels_IncludesKnowledgeBaseLabels(t *testing.T) {
 	f := mustFinding("f1")
 	kb := map[string]findings.KnowledgeBaseEntry{f.PolicyID: {Labels: []string{"k-ose-5", "K-OSE-5"}}}
 
-	labels := triage.IssueLabels(f, kb, triage.Entry{}, nil)
+	labels := triage.IssueLabels(f, kb, nil)
 	count := 0
 	for _, l := range labels {
 		if l == "k-ose-5" {

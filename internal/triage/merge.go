@@ -39,7 +39,7 @@ func GroupKey(ref findings.ResourceRef) string {
 //
 // A finding with no matching Entry gets a fresh, unpersisted Status:
 // StatusNew Entry (nothing is written to state until a human acts on it —
-// see State.SetStatus/SetNote/SetTags). A state Entry whose FindingID is in
+// see State.SetStatus/SetNote). A state Entry whose FindingID is in
 // NEITHER current NOR suppressed (and isn't already StatusResolved) is
 // mutated in place to StatusResolved — the caller must SaveState after
 // calling Merge for that transition to persist, but it's computed

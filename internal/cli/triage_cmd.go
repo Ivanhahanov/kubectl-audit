@@ -311,7 +311,7 @@ func newTriageJiraSyncCmd() *cobra.Command {
 					failed++
 					continue
 				}
-				labels := triage.IssueLabels(*r.Finding, kb, r.Entry, jiraCfg.ExtraLabels)
+				labels := triage.IssueLabels(*r.Finding, kb, jiraCfg.ExtraLabels)
 				key, url, err := client.CreateIssue(cmd.Context(), summary, description, labels, customFields)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "warning: failed to create issue for %s: %v\n", r.Finding.ID, err)

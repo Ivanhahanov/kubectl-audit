@@ -58,7 +58,6 @@ type Entry struct {
 	Title        string               `json:"title"`
 	Status       Status               `json:"status"`
 	Note         string               `json:"note,omitempty"`
-	Tags         []string             `json:"tags,omitempty"`
 	JiraIssueKey string               `json:"jiraIssueKey,omitempty"`
 	JiraIssueURL string               `json:"jiraIssueUrl,omitempty"`
 	Reviewer     string               `json:"reviewer,omitempty"`
@@ -149,22 +148,15 @@ func (s *State) ResetStatus(f findings.Finding, now time.Time) {
 	s.Entries[f.ID] = e
 }
 
-// SetNote and SetTags mirror SetStatus for the other human-editable
-// fields — also create the Entry from f's snapshot if it doesn't exist yet
-// (e.g. a triager adds a note before ever setting a status), defaulting a
-// freshly created entry's Status to StatusNew (still not persisted-
-// meaningful on its own, but keeps the Entry internally consistent rather
-// than leaving Status as the Go zero value "").
+// SetNote mirrors SetStatus for the other human-editable field — also
+// creates the Entry from f's snapshot if it doesn't exist yet (e.g. a
+// triager adds a note before ever setting a status), defaulting a freshly
+// created entry's Status to StatusNew (still not persisted-meaningful on
+// its own, but keeps the Entry internally consistent rather than leaving
+// Status as the Go zero value "").
 func (s *State) SetNote(f findings.Finding, note string, now time.Time) {
 	e := s.entryOrNew(f, now)
 	e.Note = note
-	e.LastUpdated = now
-	s.Entries[f.ID] = e
-}
-
-func (s *State) SetTags(f findings.Finding, tags []string, now time.Time) {
-	e := s.entryOrNew(f, now)
-	e.Tags = tags
 	e.LastUpdated = now
 	s.Entries[f.ID] = e
 }

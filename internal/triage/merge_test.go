@@ -22,7 +22,7 @@ func TestMerge_NewFindingGetsStatusNew(t *testing.T) {
 		t.Errorf("expected the live Finding to be attached, got %+v", rows[0].Finding)
 	}
 	// A never-triaged finding must not be written into state by Merge
-	// alone — only an explicit human action (SetStatus/SetNote/SetTags)
+	// alone — only an explicit human action (SetStatus/SetNote)
 	// persists an entry.
 	if _, ok := state.Entries["f1"]; ok {
 		t.Error("expected Merge to not persist an entry for an untouched finding")

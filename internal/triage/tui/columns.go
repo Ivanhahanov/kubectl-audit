@@ -8,13 +8,9 @@ import (
 	"github.com/ivanhahanov/kubectl-audit/internal/triage"
 )
 
-func joinTags(tags []string) string {
-	return strings.Join(tags, ",")
-}
-
 // Column layout. Column 0 (mark) has no header label and isn't sortable —
-// sortField values below line up 1:1 with column indices 1-7, which is
-// what the digit hotkeys ('1'-'7') refer to (the header itself just shows
+// sortField values below line up 1:1 with column indices 1-6, which is
+// what the digit hotkeys ('1'-'6') refer to (the header itself just shows
 // a ▲/▼ on whichever one is currently active — see render.go).
 const (
 	colMark = iota
@@ -24,11 +20,10 @@ const (
 	colKind
 	colNamespaceName
 	colCount
-	colTags
 	columnCount
 )
 
-var columnLabels = [columnCount]string{"", "SEV", "STATUS", "POLICY ID", "KIND", "NAMESPACE/NAME", "COUNT", "TAGS"}
+var columnLabels = [columnCount]string{"", "SEV", "STATUS", "POLICY ID", "KIND", "NAMESPACE/NAME", "COUNT"}
 
 // columnWidths are fixed character widths, not just upper bounds: every
 // cell's text is padded/truncated to exactly this width (see fixedWidth),
@@ -37,7 +32,7 @@ var columnLabels = [columnCount]string{"", "SEV", "STATUS", "POLICY ID", "KIND",
 // widest CURRENTLY VISIBLE cell, so scrolling or filtering to a
 // differently-shaped subset of rows visibly resizes every column on every
 // redraw.
-var columnWidths = [columnCount]int{1, 8, 10, 42, 13, 42, 7, 22}
+var columnWidths = [columnCount]int{1, 8, 10, 42, 13, 42, 7}
 
 // effectiveColumnWidths returns columnWidths with colNamespaceName grown to
 // consume whatever terminal width is left over once every other column,
@@ -117,7 +112,6 @@ const (
 	sortKind     sortField = colKind
 	sortNS       sortField = colNamespaceName
 	sortCount    sortField = colCount
-	sortTags     sortField = colTags
 )
 
 func sortFieldForDigit(r rune) (sortField, bool) {
@@ -134,8 +128,6 @@ func sortFieldForDigit(r rune) (sortField, bool) {
 		return sortNS, true
 	case '6':
 		return sortCount, true
-	case '7':
-		return sortTags, true
 	}
 	return 0, false
 }
@@ -231,8 +223,6 @@ func fieldValue(r triage.Row, field sortField) string {
 		return r.Entry.Resource.Kind
 	case sortNS:
 		return nsNameLabel(r.Entry.Resource)
-	case sortTags:
-		return joinTags(r.Entry.Tags)
 	default:
 		return ""
 	}

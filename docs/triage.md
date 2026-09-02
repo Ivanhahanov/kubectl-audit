@@ -9,7 +9,7 @@ permalink: /triage/
 A `scan` against a real cluster — especially a large, multi-tenant one — commonly produces
 hundreds or thousands of findings. `kubectl audit triage` is a separate, interactive step for a
 human expert to work through that list by hand: mark each finding confirmed / false positive /
-won't fix / duplicate / needs more info, attach notes and tags, and end up with a filtered
+won't fix / duplicate / needs more info, attach notes, and end up with a filtered
 "what actually needs fixing" list — one that can be exported or pushed into Jira as tickets.
 
 **`findings.json`/CSV stay unaffected by anything triage does.** Triage state is a separate file
@@ -45,15 +45,15 @@ below.
 ## The TUI
 
 A k9s-style table: one row per finding by default, columns for severity, status, policy ID, kind,
-namespace/name, a COUNT column, and tags. Press `enter` on a row for the full detail view
-(title, description, CIS refs, and remediation — exactly what filing a Jira ticket for this finding
-would contain, knowledge-base override included; see [Knowledge
+namespace/name, and a COUNT column. Press `enter` on a row for the full detail view (title,
+description, CIS refs, and remediation — exactly what filing a Jira ticket for this finding would
+contain, knowledge-base override included; see [Knowledge
 base](#knowledge-base-your-organizations-own-ticket-content)).
 
 | Key | Action |
 |---|---|
 | ↑/↓, pgup/pgdn (or arrows) | move |
-| `enter` | open finding detail — `y` copies it to the clipboard, `v` toggles a Jira ticket preview (project/issue type/summary/description/labels/custom fields, exactly what `j` would send — a real check for a custom summaryTemplate/descriptionTemplate); `c`/`x`/`w`/`d`/`i`/`n`/`t`/`j`/`space`/`0` (below) all work from there too, no need to close back to the table first |
+| `enter` | open finding detail — `y` copies it to the clipboard, `v` toggles a Jira ticket preview (project/issue type/summary/description/labels/custom fields, exactly what `j` would send — a real check for a custom summaryTemplate/descriptionTemplate); `c`/`x`/`w`/`d`/`i`/`n`/`j`/`space`/`0` (below) all work from there too, no need to close back to the table first |
 | `/` | live-filter (substring match over title/policy ID/resource/message) |
 | `r` | toggle collapsing repeated findings on/off (**off** by default — see below) |
 | `g` | on a collapsed row: expand it to review each individual finding; press again to re-collapse |
@@ -61,11 +61,10 @@ base](#knowledge-base-your-organizations-own-ticket-content)).
 | `p` | policy stats: every check with severity/count/new/confirmed, sorted by count by default (`1`-`6` to sort by another column, again to reverse); enter on one to filter the table to just that policy |
 | `space` | mark/unmark the current row (its whole collapsed group, if collapsed) |
 | `a` | mark every row currently visible |
-| `1`-`7` | sort by that column (press again to reverse direction) |
+| `1`-`6` | sort by that column (press again to reverse direction) |
 | `c` / `x` / `w` / `d` / `i` | confirmed / false positive / won't fix / duplicate / needs more info — applied to every marked row, or the selection if nothing's marked (and every finding a collapsed row stands for) |
 | `0` | reset back to `new` — undo a previous `c`/`x`/`w`/`d`/`i` (same bulk-apply rule) |
 | `n` | edit note (same bulk-apply rule) |
-| `t` | edit tags, comma-separated (same bulk-apply rule) |
 | `j` | create a Jira ticket for every marked/selected CONFIRMED finding without one yet |
 | `u` | show/hide suppressed findings (hidden by default) |
 | `q` | save and quit |
@@ -73,7 +72,7 @@ base](#knowledge-base-your-organizations-own-ticket-content)).
 | `esc` | clear filter/marks, then group-expand, then system-isolate, in that order |
 
 State autosaves after every action — a crash loses at most the one edit in progress, not prior
-decisions. Anything that would touch more than one finding at once (a triage decision, a note/tags
+decisions. Anything that would touch more than one finding at once (a triage decision, a note
 edit, filing Jira tickets — whether from marking several rows or from one collapsed row) asks
 "Yes / Cancel" first, with the affected count shown, before it happens — nothing bulk-applies
 silently.
@@ -145,7 +144,8 @@ auth) — not Jira Cloud, which uses a different auth scheme and API version.
 
 Issue content by default: summary from the finding's title/severity/resource; description includes
 the message, remediation, CIS refs, your triage note, and a back-link (`kubectl-audit finding:
-<id>`) for traceability; labels from severity, category, and your tags. Every piece of this is
+<id>`) for traceability; labels from severity, category, and this check's own knowledge-base
+labels (see [Knowledge base](#knowledge-base-your-organizations-own-ticket-content)). Every piece of this is
 customizable from `audit.yaml` alone — see below — no rebuild ever needed. Verification steps are
 deliberately **not** part of the ticket — they're guidance for the analyst deciding whether to
 confirm a finding in the first place (see [Verification steps](#verification-steps)), not something
@@ -197,7 +197,7 @@ the *resolved* content, already reflecting any knowledge-base override below; pr
 the raw `{{.Finding.*}}` fields so a custom template automatically stays in sync with a
 knowledge-base override the same way the default template does), `{{.Finding}}` (the full finding
 — `Severity`, `CIS`, `Resource`, `ID`, `PolicyID`, `Source`, ...), and `{{.Entry}}` (the triage
-record — `Note`, `Tags`, ...). Edit the dumped file however you like —
+record — `Note`, ...). Edit the dumped file however you like —
 `triage.jira.summaryTemplate`/`descriptionTemplate` just needs to point at it; the file is read
 fresh on every `jira-sync`/TUI `j` run, so no rebuild or reinstall is ever required.
 
@@ -243,10 +243,9 @@ required. A malformed template in one field is reported (in the TUI detail view,
 render error for `jira-sync`) without blocking the other fields from still resolving.
 
 `labels` are this check's own Jira labels — merged with the auto-derived severity/category labels
-and `triage.jira.extraLabels`, sanitized the same way. Distinct from `Entry.Tags` (an analyst's own
-free-text annotation added by hand per finding, via `t` in the TUI): `labels` is org-defined and
-the same for every finding this check produces — an internal compliance requirement id, for
-example — not templated (unlike the text fields above; a Jira label is a short fixed slug).
+and `triage.jira.extraLabels`, sanitized the same way. Org-defined and the same for every finding
+this check produces — an internal compliance requirement id, for example — not templated (unlike
+the text fields above; a Jira label is a short fixed slug).
 
 This is deliberately **not a translation mechanism** — `Message` (the tool's own, sometimes
 per-resource, technical text — e.g. exactly which ServiceAccount and binding are involved) is

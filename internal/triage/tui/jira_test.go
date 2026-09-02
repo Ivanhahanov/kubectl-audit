@@ -89,4 +89,12 @@ func TestJiraPreviewText_NotConfirmedNotesItWontFileYet(t *testing.T) {
 	if !strings.Contains(got, "CONFIRMED") {
 		t.Errorf("expected a note that the finding isn't confirmed yet, got:\n%s", got)
 	}
+	// Must be near the top (right after Project/Issue type), not buried
+	// after the full rendered ticket — it's the first thing a triager
+	// should notice, not something they discover after reading everything.
+	notConfirmedIdx := strings.Index(got, "Not yet filed")
+	summaryIdx := strings.Index(got, "Summary:")
+	if notConfirmedIdx < 0 || summaryIdx < 0 || notConfirmedIdx > summaryIdx {
+		t.Errorf("expected the 'Not yet filed' note before the Summary section, got:\n%s", got)
+	}
 }

@@ -631,9 +631,6 @@ func (a *app) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		case r == 'n':
 			a.openNoteEditor()
 			return nil
-		case r == 't':
-			a.openTagsEditor()
-			return nil
 		case r == 'j':
 			a.createJiraIssues()
 			return nil
