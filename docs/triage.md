@@ -53,7 +53,7 @@ base](#knowledge-base-your-organizations-own-ticket-content)).
 | Key | Action |
 |---|---|
 | ↑/↓, pgup/pgdn (or arrows) | move |
-| `enter` | open finding detail |
+| `enter` | open finding detail — `y` copies it to the clipboard; `c`/`x`/`w`/`d`/`i`/`n`/`t`/`j`/`space`/`0` (below) all work from there too, no need to close back to the table first |
 | `/` | live-filter (substring match over title/policy ID/resource/message) |
 | `r` | toggle collapsing repeated findings on/off (**off** by default — see below) |
 | `g` | on a collapsed row: expand it to review each individual finding; press again to re-collapse |

@@ -30,6 +30,20 @@ func TestConfirmBulkAction_SingleTargetProceedsWithoutDialog(t *testing.T) {
 	}
 }
 
+// TestStripDetailColorTags_RemovesOnlyKnownTagsNotUserBrackets guards the
+// clipboard-copy path against eating literal bracketed text that happens
+// to appear in a finding's own Message/Note (e.g. an IPv6 address) — it
+// must only strip the exact literal tags detailText itself emits, not any
+// "[...]"-shaped text.
+func TestStripDetailColorTags_RemovesOnlyKnownTagsNotUserBrackets(t *testing.T) {
+	in := "[yellow]Resource:[white] Pod default/app reaches [::1] via [red]note[white] [not-a-real-tag]"
+	got := stripDetailColorTags(in)
+	want := "Resource: Pod default/app reaches [::1] via note [not-a-real-tag]"
+	if got != want {
+		t.Errorf("stripDetailColorTags(%q) = %q, want %q", in, got, want)
+	}
+}
+
 // TestDetailText_NoVerificationStepsSection guards against verification
 // steps creeping back into the detail view — dropped deliberately (see
 // docs/triage.md), the view now shows only what a filed ticket would

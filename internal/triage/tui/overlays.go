@@ -47,8 +47,11 @@ func (a *app) closeOverlay(name string) {
 // floating dialog, the same way k9s never shows a resource list or detail
 // view in a popup. closeOverlay(name) (the same one small modals use)
 // returns to the main table; nothing about closing differs between the
-// two, only how the page is built.
-func (a *app) showFullScreenPage(name, title, hint string, content tview.Primitive) {
+// two, only how the page is built. Returns the header TextView so a caller
+// that wants to flash a transient status line on top of the hint (see
+// openDetail's copy/Jira feedback) can update it without rebuilding the
+// whole page.
+func (a *app) showFullScreenPage(name, title, hint string, content tview.Primitive) *tview.TextView {
 	header := tview.NewTextView().SetDynamicColors(true)
 	header.SetBorder(true).SetBorderColor(theme.borderFg)
 	header.SetText(fmt.Sprintf("[%s:%s:b] %s [-:-:-]\n%s",
@@ -60,6 +63,7 @@ func (a *app) showFullScreenPage(name, title, hint string, content tview.Primiti
 
 	a.pages.AddPage(name, layout, true, true)
 	a.tv.SetFocus(content)
+	return header
 }
 
 // confirmBulkAction gates any action that would touch more than one
@@ -173,6 +177,29 @@ func splitTags(s string) []string {
 	return out
 }
 
+// detailKeys are the single-finding actions available from inside the
+// detail full-screen page, delegated straight to handleKey (the exact same
+// code path the main table uses — status changes, note/tags editors, mark,
+// reset, Jira) so a triager can act on the finding they're reading without
+// closing back to the table first. Deliberately NOT every table hotkey:
+// view-level ones (r/g/s/p/u/a/'/') either have no meaning for a single
+// finding or act on table state the triager can't see from here, so
+// they're left out to avoid a confusing action with invisible effect.
+//
+// Caveat: a delegated action that opens its own nested page (the note/tags
+// editor, the bulk-confirm Yes/Cancel dialog, help) closes back to "main"
+// on completion, not back to "detail" — closeOverlay has no navigation
+// stack, it always returns to the table. Acceptable for now: the common
+// case (acting on a single, non-collapsed finding) never opens a nested
+// page at all (confirmBulkAction runs immediately for <= 1 target), so
+// this only surfaces for a collapsed representative row, and lands
+// somewhere still perfectly usable (main), just not exactly where the
+// triager pressed the key.
+var detailKeys = map[rune]bool{
+	' ': true, '0': true, 'n': true, 't': true, 'j': true, 'q': true, '?': true,
+	'c': true, 'x': true, 'w': true, 'd': true, 'i': true,
+}
+
 func (a *app) openDetail() {
 	sel, ok := a.selectedRow()
 	if !ok {
@@ -181,14 +208,56 @@ func (a *app) openDetail() {
 	tv := tview.NewTextView().SetDynamicColors(true).SetWrap(true).SetScrollable(true)
 	tv.SetBorder(true).SetBorderColor(theme.borderFg)
 	tv.SetText(a.detailText(sel))
+
+	title := "FINDING — " + sel.Entry.PolicyID
+	hint := keyHint("enter/esc") + " back   " + keyHint("y") + " copy   " + keyHint("j") + " jira   " + keyHint("c") + " confirm"
+	header := a.showFullScreenPage("detail", title, hint, tv)
+	flash := func(msg string) {
+		header.SetText(fmt.Sprintf("[%s:%s:b] %s [-:-:-]\n%s\n[green]▸ %s[-]",
+			colorTag(theme.titleFg), colorTag(theme.titleBg), title, hint, msg))
+	}
+
 	tv.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyEnter || event.Key() == tcell.KeyEscape {
+		switch event.Key() {
+		case tcell.KeyEnter, tcell.KeyEscape:
 			a.closeOverlay("detail")
 			return nil
+		case tcell.KeyRune:
+			if r := event.Rune(); r == 'y' {
+				if err := copyToClipboard(stripDetailColorTags(a.detailText(sel))); err != nil {
+					flash("Copy failed: " + err.Error())
+				} else {
+					flash("Copied to clipboard.")
+				}
+				return nil
+			} else if detailKeys[r] {
+				result := a.handleKey(event)
+				// applyStatus/resetToNew/createJiraIssues set a.statusLine
+				// synchronously (before any async Jira work even starts —
+				// see jira.go), so flashing it right here gives the same
+				// immediate feedback the footer would show on "main",
+				// without requiring this page to close first. A stale
+				// flash for keys that don't touch statusLine (note/tags —
+				// their own editor modal is what's visibly on screen at
+				// that point — space, help, quit) is harmless.
+				if a.statusLine != "" {
+					flash(a.statusLine)
+				}
+				// c/x/w/d/i/0/space mutate the row synchronously (see the
+				// comment above) — re-render the body so e.g. "Status:"
+				// reflects the change immediately instead of only after
+				// closing and reopening. A harmless no-op for keys that
+				// haven't changed anything yet (n/t before the editor is
+				// submitted, j before the async create finishes).
+				if updated, ok := a.selectedRow(); ok {
+					sel = updated
+					tv.SetText(a.detailText(sel))
+				}
+				return result
+			}
 		}
 		return event
 	})
-	a.showFullScreenPage("detail", "FINDING — "+sel.Entry.PolicyID, keyHint("enter/esc")+" back", tv)
 }
 
 func (a *app) detailText(r triage.Row) string {
@@ -263,11 +332,29 @@ func (a *app) detailText(r triage.Row) string {
 	return b.String()
 }
 
+// detailColorTags are the exact literal tview color tags detailText emits
+// — see stripDetailColorTags.
+var detailColorTags = []string{"[yellow]", "[white]", "[purple]", "[red]", "[green]"}
+
+// stripDetailColorTags removes detailText's tview color markup so the
+// result is safe to copy to the clipboard or paste elsewhere. Replaces
+// only the exact literal tags detailText itself emits — not a general
+// "anything in brackets" regex — so it can never accidentally eat literal
+// bracketed text that happens to appear in a finding's own Message/Note
+// (e.g. an IPv6 address like "[::1]").
+func stripDetailColorTags(s string) string {
+	for _, tag := range detailColorTags {
+		s = strings.ReplaceAll(s, tag, "")
+	}
+	return s
+}
+
 const helpText = `[yellow::b]kubectl audit triage — hotkeys[white::-]
 
   [yellow::b]Navigate[white::-]
   up/down, pgup/pgdn    move
-  enter                 open finding detail
+  enter                 open finding detail — y to copy it to the clipboard, plus every
+                         triage-decision key below (c/x/w/d/i/n/t/j/space/0) works there too
   /                     focus the search bar (live filter over title/policy/resource/message)
   esc                   (in search) clear filter · (in table) clear marks, then clear
                          group-expand/system-isolate, in that order
