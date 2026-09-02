@@ -34,6 +34,12 @@ type JiraConfig struct {
 	// ExtraLabels are static labels (triage.jira.extraLabels) added to
 	// every created issue beyond IssueLabels' auto-derived ones.
 	ExtraLabels []string
+	// AutoLabels is the already-resolved triage.jira.autoLabels value (see
+	// config.AutoLabelsConfig — each field true unless explicitly set
+	// false in audit.yaml). Controls which of IssueLabels' own
+	// "kubectl-audit"/severity/category labels get added; ExtraLabels and
+	// each check's own knowledge-base labels apply either way.
+	AutoLabels triage.AutoLabels
 	// CustomFields (triage.jira.customFields) are merged into every
 	// created issue's fields — see triage.RenderCustomFields.
 	CustomFields map[string]any
@@ -62,7 +68,7 @@ func (a *app) createOneIssue(ctx context.Context, client triage.JiraClient, r tr
 	if err != nil {
 		return "", "", err
 	}
-	labels := triage.IssueLabels(f, a.knowledgeBase, a.jira.ExtraLabels)
+	labels := triage.IssueLabels(f, a.knowledgeBase, a.jira.AutoLabels, a.jira.ExtraLabels)
 	return client.CreateIssue(ctx, summary, description, labels, customFields)
 }
 
@@ -99,7 +105,7 @@ func (a *app) jiraPreviewText(r triage.Row) string {
 		fmt.Fprintf(&b, "\n[yellow]Summary:[white]\n%s\n", tview.Escape(summary))
 	}
 
-	if labels := triage.IssueLabels(f, a.knowledgeBase, a.jira.ExtraLabels); len(labels) > 0 {
+	if labels := triage.IssueLabels(f, a.knowledgeBase, a.jira.AutoLabels, a.jira.ExtraLabels); len(labels) > 0 {
 		fmt.Fprintf(&b, "\n[yellow]Labels:[white] %s\n", strings.Join(labels, ", "))
 	}
 

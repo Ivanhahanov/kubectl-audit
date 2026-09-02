@@ -59,6 +59,43 @@ func TestDefault_JiraConfigHasNoCredentialField(t *testing.T) {
 	}
 }
 
+// TestAutoLabelsConfig_DefaultsAllOnUnsetFields guards that AutoLabels is
+// on by default — a nil field (never mentioned in audit.yaml) must behave
+// as true, not false, matching every other on-by-default *bool convention
+// in this package (see OutputConfig.GroupByNamePattern).
+func TestAutoLabelsConfig_DefaultsAllOnUnsetFields(t *testing.T) {
+	var a config.AutoLabelsConfig
+	if !a.ToolEnabled() || !a.SeverityEnabled() || !a.CategoryEnabled() {
+		t.Errorf("expected all three AutoLabelsConfig fields to default to enabled, got Tool=%v Severity=%v Category=%v",
+			a.ToolEnabled(), a.SeverityEnabled(), a.CategoryEnabled())
+	}
+}
+
+// TestLoad_AutoLabelsPerFieldOverride is the actual feature: a Jira
+// project that wants to drop just the severity label (e.g. it already
+// tracks severity in a dedicated field) without losing the others.
+func TestLoad_AutoLabelsPerFieldOverride(t *testing.T) {
+	path := writeConfig(t, `
+triage:
+  jira:
+    autoLabels:
+      severity: false
+`)
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.Triage.Jira.AutoLabels.ToolEnabled() {
+		t.Error("expected Tool to stay enabled (not mentioned in the config)")
+	}
+	if cfg.Triage.Jira.AutoLabels.SeverityEnabled() {
+		t.Error("expected Severity to be disabled per the config")
+	}
+	if !cfg.Triage.Jira.AutoLabels.CategoryEnabled() {
+		t.Error("expected Category to stay enabled (not mentioned in the config)")
+	}
+}
+
 // TestLoad_UnknownFieldIsRejected guards against the class of bug where a
 // typo'd config field (e.g. "namespceGroupThreshold") is silently dropped
 // by a lenient YAML unmarshal, leaving the tool running on a default the

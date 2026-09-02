@@ -107,12 +107,16 @@ func TestJiraClient_CreateIssue_NonCreatedStatusErrors(t *testing.T) {
 	}
 }
 
+// allAutoLabels is the "everything on" AutoLabels value most tests that
+// aren't specifically about the per-label toggles want.
+var allAutoLabels = triage.AutoLabels{Tool: true, Severity: true, Category: true}
+
 func TestIssueLabels_SanitizesSeverityAndCategory(t *testing.T) {
 	f := mustFinding("f1")
 	f.Severity = "HIGH"
 	f.Category = "workload security" // space, needs sanitizing
 
-	labels := triage.IssueLabels(f, nil, nil)
+	labels := triage.IssueLabels(f, nil, allAutoLabels, nil)
 	want := map[string]bool{"kubectl-audit": true, "high": true, "workload-security": true}
 	if len(labels) != len(want) {
 		t.Fatalf("expected %d labels, got %v", len(want), labels)
@@ -131,7 +135,7 @@ func TestIssueLabels_ExtraLabelsMergeAndDedup(t *testing.T) {
 	f := mustFinding("f1")
 	f.Severity = "high"
 
-	labels := triage.IssueLabels(f, nil, []string{"Team-Sec", "high"}) // "high" duplicates the severity label
+	labels := triage.IssueLabels(f, nil, allAutoLabels, []string{"Team-Sec", "high"}) // "high" duplicates the severity label
 	count := map[string]int{}
 	for _, l := range labels {
 		count[l]++
@@ -151,7 +155,7 @@ func TestIssueLabels_IncludesKnowledgeBaseLabels(t *testing.T) {
 	f := mustFinding("f1")
 	kb := map[string]findings.KnowledgeBaseEntry{f.PolicyID: {Labels: []string{"k-ose-5", "K-OSE-5"}}}
 
-	labels := triage.IssueLabels(f, kb, nil)
+	labels := triage.IssueLabels(f, kb, allAutoLabels, nil)
 	count := 0
 	for _, l := range labels {
 		if l == "k-ose-5" {
@@ -160,6 +164,56 @@ func TestIssueLabels_IncludesKnowledgeBaseLabels(t *testing.T) {
 	}
 	if count != 1 {
 		t.Errorf("expected the knowledge-base label present exactly once (sanitized+deduped even though the source had a case-only duplicate), got labels %v", labels)
+	}
+}
+
+// TestIssueLabels_AutoLabelsAreIndependentPerField is the fix for a real
+// request: a Jira project that already tracks severity in its own
+// dedicated field shouldn't also get it duplicated as a label — but should
+// keep the "kubectl-audit" and category ones. Each of AutoLabels' three
+// fields must be controllable independently, not just an all-or-nothing
+// switch.
+func TestIssueLabels_AutoLabelsAreIndependentPerField(t *testing.T) {
+	f := mustFinding("f1")
+	f.Severity = "critical"
+	f.Category = "workload-security"
+
+	labels := triage.IssueLabels(f, nil, triage.AutoLabels{Tool: true, Severity: false, Category: true}, nil)
+
+	has := map[string]bool{}
+	for _, l := range labels {
+		has[l] = true
+	}
+	if !has["kubectl-audit"] {
+		t.Error("expected the tool label to survive (Tool: true)")
+	}
+	if has["critical"] {
+		t.Error("expected the severity label to be suppressed (Severity: false)")
+	}
+	if !has["workload-security"] {
+		t.Error("expected the category label to survive (Category: true)")
+	}
+}
+
+// TestIssueLabels_AllAutoLabelsOffLeavesOnlyOrgDefinedOnes guards the fully
+// suppressed case: with every AutoLabels field false, only kb Labels and
+// extra survive — none of this tool's own automatic ones.
+func TestIssueLabels_AllAutoLabelsOffLeavesOnlyOrgDefinedOnes(t *testing.T) {
+	f := mustFinding("f1")
+	f.Severity = "critical"
+	f.Category = "workload-security"
+	kb := map[string]findings.KnowledgeBaseEntry{f.PolicyID: {Labels: []string{"k-ose-5"}}}
+
+	labels := triage.IssueLabels(f, kb, triage.AutoLabels{}, []string{"team-sec"})
+
+	want := map[string]bool{"k-ose-5": true, "team-sec": true}
+	if len(labels) != len(want) {
+		t.Fatalf("expected only the org-defined labels, got %v", labels)
+	}
+	for _, l := range labels {
+		if !want[l] {
+			t.Errorf("unexpected label %q with every AutoLabels field false", l)
+		}
 	}
 }
 

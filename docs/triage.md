@@ -166,9 +166,17 @@ triage:
     projectKey: SEC
     issueType: Bug
     # Static labels added to every created issue, beyond the auto-derived
-    # severity/category/tag ones.
+    # ones (see autoLabels below) and each check's own knowledge-base
+    # labels.
     extraLabels:
       - platform-team
+    # Which of this tool's own automatic labels ("kubectl-audit", the
+    # finding's severity, its category) get added — each on by default,
+    # independently. E.g. drop just severity if your Jira project already
+    # tracks it in a dedicated field; extraLabels/knowledge-base labels
+    # always apply regardless of this setting.
+    autoLabels:
+      severity: false
     # Merged into every created issue's Jira fields, keyed by Jira field ID.
     # A string value is rendered as a Go template (same data as the
     # summary/description templates below); any other value (a number,

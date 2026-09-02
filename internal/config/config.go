@@ -253,6 +253,14 @@ type JiraConfig struct {
 	// check's own knowledge-base labels) — e.g. a team or queue label your
 	// Jira project expects.
 	ExtraLabels []string `json:"extraLabels,omitempty"`
+	// AutoLabels controls which of this tool's own automatic labels get
+	// added to every created issue — independent per label, so e.g.
+	// severity can be dropped (a Jira project that already tracks it in a
+	// dedicated field) while keeping the others. ExtraLabels and each
+	// check's own knowledge-base labels (see
+	// findings.KnowledgeBaseEntry.Labels) always apply regardless of this
+	// setting.
+	AutoLabels AutoLabelsConfig `json:"autoLabels,omitempty"`
 	// CustomFields are merged into every created issue's Jira fields,
 	// keyed by Jira field ID (e.g. "customfield_10050"). A string value is
 	// rendered as a Go template (same data as SummaryTemplate/
@@ -264,6 +272,25 @@ type JiraConfig struct {
 	// in a custom field value.
 	CustomFields map[string]any `json:"customFields,omitempty"`
 }
+
+// AutoLabelsConfig controls which of this tool's own automatic Jira labels
+// get added to every created issue — a separate on/off per label (unlike a
+// single "AutoLabels: false" switch) so e.g. severity can be dropped
+// without also losing the "kubectl-audit"/category ones. Each field is on
+// by default (nil = true); a *bool (like OutputConfig.GroupByNamePattern)
+// because "false" and "not set" must be distinguishable.
+type AutoLabelsConfig struct {
+	// Tool is the fixed "kubectl-audit" marker label.
+	Tool *bool `json:"tool,omitempty"`
+	// Severity is the finding's own severity (e.g. "critical", "high").
+	Severity *bool `json:"severity,omitempty"`
+	// Category is the finding's own category (e.g. "workload-security").
+	Category *bool `json:"category,omitempty"`
+}
+
+func (a AutoLabelsConfig) ToolEnabled() bool     { return a.Tool == nil || *a.Tool }
+func (a AutoLabelsConfig) SeverityEnabled() bool { return a.Severity == nil || *a.Severity }
+func (a AutoLabelsConfig) CategoryEnabled() bool { return a.Category == nil || *a.Category }
 
 // TriageConfig configures `kubectl audit triage` — see docs/triage.md.
 type TriageConfig struct {

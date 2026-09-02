@@ -80,10 +80,15 @@ func resolveJiraConfig(cmd *cobra.Command) (tui.JiraConfig, error) {
 		return tui.JiraConfig{}, err
 	}
 	jc := tui.JiraConfig{
-		BaseURL:      cfg.Triage.Jira.BaseURL,
-		ProjectKey:   cfg.Triage.Jira.ProjectKey,
-		IssueType:    cfg.Triage.Jira.IssueType,
-		ExtraLabels:  cfg.Triage.Jira.ExtraLabels,
+		BaseURL:     cfg.Triage.Jira.BaseURL,
+		ProjectKey:  cfg.Triage.Jira.ProjectKey,
+		IssueType:   cfg.Triage.Jira.IssueType,
+		ExtraLabels: cfg.Triage.Jira.ExtraLabels,
+		AutoLabels: triage.AutoLabels{
+			Tool:     cfg.Triage.Jira.AutoLabels.ToolEnabled(),
+			Severity: cfg.Triage.Jira.AutoLabels.SeverityEnabled(),
+			Category: cfg.Triage.Jira.AutoLabels.CategoryEnabled(),
+		},
 		CustomFields: cfg.Triage.Jira.CustomFields,
 	}
 	if flagTriageJiraURL != "" {
@@ -311,7 +316,7 @@ func newTriageJiraSyncCmd() *cobra.Command {
 					failed++
 					continue
 				}
-				labels := triage.IssueLabels(*r.Finding, kb, jiraCfg.ExtraLabels)
+				labels := triage.IssueLabels(*r.Finding, kb, jiraCfg.AutoLabels, jiraCfg.ExtraLabels)
 				key, url, err := client.CreateIssue(cmd.Context(), summary, description, labels, customFields)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "warning: failed to create issue for %s: %v\n", r.Finding.ID, err)

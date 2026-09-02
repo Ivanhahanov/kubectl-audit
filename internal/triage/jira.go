@@ -203,17 +203,28 @@ func (c JiraClient) CreateIssue(ctx context.Context, summary, description string
 	return out.Key, strings.TrimRight(c.BaseURL, "/") + "/browse/" + out.Key, nil
 }
 
-// IssueLabels builds Jira labels from a finding's severity/category, this
-// check's knowledge-base Labels (kb — org-defined, the same for every
-// finding this policy produces, e.g. an internal compliance requirement id
-// like "k-ose-5"; see findings.KnowledgeBaseEntry.Labels), and extra
-// (triage.jira.extraLabels — static labels a user wants on every created
-// issue regardless of check, e.g. their own team/queue label). Jira labels
-// can't contain whitespace; sanitizeLabel replaces it with "-" and drops
-// anything else Jira's label validation would reject rather than risk the
-// whole create request failing over one bad label. Duplicates (after
-// sanitizing) are dropped.
-func IssueLabels(f findings.Finding, kb map[string]findings.KnowledgeBaseEntry, extra []string) []string {
+// AutoLabels is the already-resolved (nil-treated-as-true) form of
+// config.AutoLabelsConfig — one independent on/off per automatic label
+// IssueLabels can add, so e.g. a Jira project that already tracks severity
+// in a dedicated field can drop just that one without losing the others.
+type AutoLabels struct {
+	Tool, Severity, Category bool
+}
+
+// IssueLabels builds Jira labels from — per auto's own fields — the fixed
+// "kubectl-audit" marker, the finding's severity, and its category, plus
+// (always, regardless of auto) this check's knowledge-base Labels (kb —
+// org-defined, the same for every finding this policy produces, e.g. an
+// internal compliance requirement id like "k-ose-5"; see
+// findings.KnowledgeBaseEntry.Labels) and extra (triage.jira.extraLabels —
+// static labels a user wants on every created issue regardless of check,
+// e.g. their own team/queue label). The org-defined ones (kb Labels,
+// extra) always apply — auto only controls this tool's own automatic
+// three. Jira labels can't contain whitespace; sanitizeLabel replaces it
+// with "-" and drops anything else Jira's label validation would reject
+// rather than risk the whole create request failing over one bad label.
+// Duplicates (after sanitizing) are dropped.
+func IssueLabels(f findings.Finding, kb map[string]findings.KnowledgeBaseEntry, auto AutoLabels, extra []string) []string {
 	var labels []string
 	seen := map[string]bool{}
 	add := func(raw string) {
@@ -224,9 +235,15 @@ func IssueLabels(f findings.Finding, kb map[string]findings.KnowledgeBaseEntry, 
 		seen[l] = true
 		labels = append(labels, l)
 	}
-	add("kubectl-audit")
-	add(string(f.Severity))
-	add(f.Category)
+	if auto.Tool {
+		add("kubectl-audit")
+	}
+	if auto.Severity {
+		add(string(f.Severity))
+	}
+	if auto.Category {
+		add(f.Category)
+	}
 	// Labels aren't Go-templated (see KnowledgeBaseEntry.Labels), so this
 	// doesn't need Resolve's error handling — only its Title/Description/
 	// Remediation fields ever fail to render.
