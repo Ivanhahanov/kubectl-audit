@@ -67,6 +67,20 @@ func TestSortRows_ByKindNamespaceAlphabetical(t *testing.T) {
 	}
 }
 
+// TestSortRows_ByJiraIssueKey guards the new JIRA column's sort field —
+// alphabetical on the filed ticket key, empty ("-") sorts first ascending.
+func TestSortRows_ByJiraIssueKey(t *testing.T) {
+	filed := rowWith("1", findings.SeverityLow, "ns", "a")
+	filed.Entry.JiraIssueKey = "SEC-2"
+	unfiled := rowWith("2", findings.SeverityLow, "ns", "b")
+	rows := []triage.Row{filed, unfiled}
+
+	sortRows(rows, sortJira, true, nil)
+	if rows[0].Entry.FindingID != "2" {
+		t.Errorf("expected the unfiled (empty key) row first ascending, got %v first", rows[0].Entry.FindingID)
+	}
+}
+
 func TestSortRows_ByCountUsesFindingIDKeyedMap(t *testing.T) {
 	rows := []triage.Row{
 		rowWith("small", findings.SeverityLow, "ns", "a"),
@@ -98,15 +112,15 @@ func TestFilterRows_EmptyQueryReturnsAll(t *testing.T) {
 }
 
 func TestSortFieldForDigit(t *testing.T) {
-	cases := map[rune]sortField{'1': sortSeverity, '2': sortStatus, '6': sortCount}
+	cases := map[rune]sortField{'1': sortSeverity, '2': sortStatus, '6': sortCount, '7': sortJira}
 	for digit, want := range cases {
 		got, ok := sortFieldForDigit(digit)
 		if !ok || got != want {
 			t.Errorf("sortFieldForDigit(%q) = %v, %v; want %v, true", digit, got, ok, want)
 		}
 	}
-	if _, ok := sortFieldForDigit('7'); ok {
-		t.Error("expected digit '7' (out of range — only 6 sortable columns) to not map to a sort field")
+	if _, ok := sortFieldForDigit('8'); ok {
+		t.Error("expected digit '8' (out of range — only 7 sortable columns) to not map to a sort field")
 	}
 	if _, ok := sortFieldForDigit('a'); ok {
 		t.Error("expected a non-digit rune to not map to a sort field")

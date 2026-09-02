@@ -196,3 +196,44 @@ func TestCreateJiraIssues_NotConfirmedMessageStaysAccurate(t *testing.T) {
 		t.Errorf("expected no 'already filed' text for a finding that was never filed, got %q", a.statusLine)
 	}
 }
+
+// TestClearJiraLink_UnlinksAndReportsCount is the recovery path for a
+// ticket deleted/closed in Jira — 'J' must actually clear the state
+// entry's JiraIssueKey so the next 'j' can file a fresh one.
+func TestClearJiraLink_UnlinksAndReportsCount(t *testing.T) {
+	a := bareAppForCreateJiraIssues(t)
+	f := findings.Finding{ID: "f1", PolicyID: "workload.run-as-non-root", Severity: findings.SeverityHigh}
+	a.merged = []triage.Row{{
+		Finding: &f,
+		Entry:   triage.Entry{FindingID: "f1", Status: triage.StatusConfirmed, JiraIssueKey: "SEC-1", JiraIssueURL: "https://jira.example.com/browse/SEC-1"},
+	}}
+	a.state.Entries["f1"] = a.merged[0].Entry
+	a.marked["f1"] = true
+
+	a.clearJiraLink()
+
+	if a.state.Entries["f1"].JiraIssueKey != "" {
+		t.Errorf("expected the Jira link cleared in state, got %+v", a.state.Entries["f1"])
+	}
+	if !strings.Contains(a.statusLine, "Cleared") {
+		t.Errorf("expected a confirmation message, got %q", a.statusLine)
+	}
+}
+
+// TestClearJiraLink_NothingToClearIsReported guards the case where the
+// selection has no Jira link at all — must say so, not silently no-op.
+func TestClearJiraLink_NothingToClearIsReported(t *testing.T) {
+	a := bareAppForCreateJiraIssues(t)
+	f := findings.Finding{ID: "f1", PolicyID: "workload.run-as-non-root", Severity: findings.SeverityHigh}
+	a.merged = []triage.Row{{
+		Finding: &f,
+		Entry:   triage.Entry{FindingID: "f1", Status: triage.StatusNew},
+	}}
+	a.marked["f1"] = true
+
+	a.clearJiraLink()
+
+	if !strings.Contains(a.statusLine, "Nothing to clear") {
+		t.Errorf("expected a clear 'nothing to clear' message, got %q", a.statusLine)
+	}
+}

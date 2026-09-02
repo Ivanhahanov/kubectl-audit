@@ -45,15 +45,15 @@ below.
 ## The TUI
 
 A k9s-style table: one row per finding by default, columns for severity, status, policy ID, kind,
-namespace/name, and a COUNT column. Press `enter` on a row for the full detail view (title,
-description, CIS refs, and remediation — exactly what filing a Jira ticket for this finding would
-contain, knowledge-base override included; see [Knowledge
-base](#knowledge-base-your-organizations-own-ticket-content)).
+namespace/name, a COUNT column, and a JIRA column (the filed ticket's key, or `-` if none yet).
+Press `enter` on a row for the full detail view (title, description, CIS refs, and remediation —
+exactly what filing a Jira ticket for this finding would contain, knowledge-base override included;
+see [Knowledge base](#knowledge-base-your-organizations-own-ticket-content)).
 
 | Key | Action |
 |---|---|
 | ↑/↓, pgup/pgdn (or arrows) | move |
-| `enter` | open finding detail — `y` copies it to the clipboard, `v` toggles a Jira ticket preview (project/issue type/summary/description/labels/custom fields, exactly what `j` would send — a real check for a custom summaryTemplate/descriptionTemplate); `c`/`x`/`w`/`d`/`i`/`n`/`j`/`space`/`0` (below) all work from there too, no need to close back to the table first |
+| `enter` | open finding detail — `y` copies it to the clipboard, `v` toggles a Jira ticket preview (project/issue type/summary/description/labels/custom fields, exactly what `j` would send — a real check for a custom summaryTemplate/descriptionTemplate); `c`/`x`/`w`/`d`/`i`/`n`/`j`/`J`/`space`/`0` (below) all work from there too, no need to close back to the table first |
 | `/` | live-filter (substring match over title/policy ID/resource/message) |
 | `r` | toggle collapsing repeated findings on/off (**off** by default — see below) |
 | `g` | on a collapsed row: expand it to review each individual finding; press again to re-collapse |
@@ -61,11 +61,12 @@ base](#knowledge-base-your-organizations-own-ticket-content)).
 | `p` | policy stats: every check with severity/count/new/confirmed, sorted by count by default (`1`-`6` to sort by another column, again to reverse); enter on one to filter the table to just that policy |
 | `space` | mark/unmark the current row (its whole collapsed group, if collapsed) |
 | `a` | mark every row currently visible |
-| `1`-`6` | sort by that column (press again to reverse direction) |
+| `1`-`7` | sort by that column (press again to reverse direction) |
 | `c` / `x` / `w` / `d` / `i` | confirmed / false positive / won't fix / duplicate / needs more info — applied to every marked row, or the selection if nothing's marked (and every finding a collapsed row stands for) |
 | `0` | reset back to `new` — undo a previous `c`/`x`/`w`/`d`/`i` (same bulk-apply rule) |
 | `n` | edit note (same bulk-apply rule) |
 | `j` | create a Jira ticket for every marked/selected CONFIRMED finding without one yet |
+| `J` | unlink the Jira ticket (doesn't delete anything in Jira — `j` files a fresh one next time). This tool never re-checks whether a tracked ticket still exists in Jira; this is the recovery path if one was deleted or closed there, short of hand-editing the state file |
 | `u` | show/hide suppressed findings (hidden by default) |
 | `q` | save and quit |
 | `?` | help |

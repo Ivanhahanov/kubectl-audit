@@ -161,6 +161,28 @@ func (s *State) SetNote(f findings.Finding, note string, now time.Time) {
 	s.Entries[f.ID] = e
 }
 
+// ClearJiraIssue unlinks a finding from whatever Jira ticket it's recorded
+// against (JiraIssueKey/JiraIssueURL), leaving Status untouched — this is
+// deliberately not part of ResetStatus, since undoing a triage decision and
+// unlinking a stale/deleted Jira ticket are independent decisions (e.g. a
+// triager may want to keep a finding CONFIRMED while clearing a reference
+// to a ticket someone deleted in Jira, so the next 'j' files a fresh one).
+// The tool never re-verifies a tracked JiraIssueKey still exists in Jira —
+// if it's deleted or closed-and-purged there, this is the only way back to
+// "not yet filed" short of hand-editing the state file. A no-op if the
+// finding has no Entry yet, or the Entry has no JiraIssueKey — nothing to
+// clear either way.
+func (s *State) ClearJiraIssue(f findings.Finding, now time.Time) {
+	e, ok := s.Entries[f.ID]
+	if !ok || e.JiraIssueKey == "" {
+		return
+	}
+	e.JiraIssueKey = ""
+	e.JiraIssueURL = ""
+	e.LastUpdated = now
+	s.Entries[f.ID] = e
+}
+
 func (s *State) entryOrNew(f findings.Finding, now time.Time) Entry {
 	e, ok := s.Entries[f.ID]
 	if ok {

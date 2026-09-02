@@ -491,6 +491,37 @@ func (a *app) resetToNew() {
 	})
 }
 
+// clearJiraLink unlinks whatever Jira ticket a finding is recorded against
+// (see State.ClearJiraIssue) — the recovery path for a ticket that was
+// deleted/closed in Jira itself, which this tool never re-verifies against.
+// Targets with no JiraIssueKey at all are silently skipped rather than
+// counted, so e.g. selecting a mixed group only reports (and confirms) the
+// ones that actually have something to clear.
+func (a *app) clearJiraLink() {
+	var targets []triage.Row
+	for _, r := range a.markedOrSelectedTargets() {
+		if r.Entry.JiraIssueKey != "" {
+			targets = append(targets, r)
+		}
+	}
+	if len(targets) == 0 {
+		a.statusLine = "Nothing to clear — no Jira ticket linked in the current selection."
+		a.redraw()
+		return
+	}
+	a.confirmBulkAction(fmt.Sprintf("Unlink the Jira ticket from %d finding(s)? (Does not delete anything in Jira — 'j' will file a fresh one next time.)", len(targets)), targets, func() {
+		now := time.Now()
+		for _, r := range targets {
+			a.state.ClearJiraIssue(*r.Finding, now)
+		}
+		a.statusLine = fmt.Sprintf("Cleared the Jira link on %d finding(s).", len(targets))
+		a.marked = map[string]bool{}
+		a.save()
+		a.refresh()
+		a.redraw()
+	})
+}
+
 func (a *app) toggleMark() {
 	sel, ok := a.selectedRow()
 	if !ok || sel.Finding == nil {
@@ -667,6 +698,9 @@ func (a *app) handleKey(event *tcell.EventKey) *tcell.EventKey {
 			return nil
 		case r == 'j':
 			a.createJiraIssues()
+			return nil
+		case r == 'J':
+			a.clearJiraLink()
 			return nil
 		case r == '0':
 			a.resetToNew()

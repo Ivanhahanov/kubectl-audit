@@ -118,3 +118,49 @@ func TestSetNote_CreatesEntryIfMissing(t *testing.T) {
 		t.Errorf("expected the note to be set, got %q", e.Note)
 	}
 }
+
+// TestClearJiraIssue_UnlinksWithoutTouchingStatus is the recovery path for
+// a Jira ticket deleted/closed outside this tool's knowledge (it never
+// re-verifies a tracked JiraIssueKey still exists in Jira) — Status must
+// survive untouched, since undoing a triage decision and unlinking a stale
+// ticket reference are independent actions.
+func TestClearJiraIssue_UnlinksWithoutTouchingStatus(t *testing.T) {
+	s := &triage.State{Entries: map[string]triage.Entry{}}
+	f := mustFinding("z")
+	if err := s.SetStatus(f, triage.StatusConfirmed, time.Now()); err != nil {
+		t.Fatalf("SetStatus: %v", err)
+	}
+	s.Entries["z"] = triage.Entry{
+		FindingID: "z", Status: triage.StatusConfirmed,
+		JiraIssueKey: "SEC-1", JiraIssueURL: "https://jira.example.com/browse/SEC-1",
+	}
+
+	s.ClearJiraIssue(f, time.Now())
+
+	e := s.Entries["z"]
+	if e.JiraIssueKey != "" || e.JiraIssueURL != "" {
+		t.Errorf("expected JiraIssueKey/URL cleared, got key=%q url=%q", e.JiraIssueKey, e.JiraIssueURL)
+	}
+	if e.Status != triage.StatusConfirmed {
+		t.Errorf("expected Status to survive untouched, got %q", e.Status)
+	}
+}
+
+// TestClearJiraIssue_NoOpWhenNothingToClear guards both edge cases: no
+// Entry at all, and an Entry with no JiraIssueKey — neither should create
+// an entry or error.
+func TestClearJiraIssue_NoOpWhenNothingToClear(t *testing.T) {
+	s := &triage.State{Entries: map[string]triage.Entry{}}
+	f := mustFinding("never-triaged")
+	s.ClearJiraIssue(f, time.Now())
+	if _, ok := s.Entries["never-triaged"]; ok {
+		t.Error("expected ClearJiraIssue to not create an entry for a finding with none")
+	}
+
+	s.Entries["has-entry-no-jira"] = triage.Entry{FindingID: "has-entry-no-jira", Status: triage.StatusConfirmed}
+	s.ClearJiraIssue(mustFinding("has-entry-no-jira"), time.Now())
+	e := s.Entries["has-entry-no-jira"]
+	if e.Status != triage.StatusConfirmed {
+		t.Errorf("expected the entry untouched, got %+v", e)
+	}
+}

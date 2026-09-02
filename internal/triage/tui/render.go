@@ -105,6 +105,10 @@ func (a *app) redrawTable() {
 		if n := len(a.dedupMembers[r.Entry.FindingID]); n > 0 {
 			countDisplay = fmt.Sprintf("×%d", n)
 		}
+		jiraDisplay, jiraColor := "-", theme.dim
+		if r.Entry.JiraIssueKey != "" {
+			jiraDisplay, jiraColor = r.Entry.JiraIssueKey, theme.accent
+		}
 
 		set := func(col int, text string, fg tcell.Color) {
 			a.table.SetCell(row, col, tview.NewTableCell(fixedWidth(text, widths[col])).SetTextColor(fg))
@@ -116,6 +120,7 @@ func (a *app) redrawTable() {
 		set(colKind, r.Entry.Resource.Kind, tcell.ColorWhite)
 		set(colNamespaceName, nsNameLabel(r.Entry.Resource), tcell.ColorWhite)
 		a.table.SetCell(row, colCount, tview.NewTableCell(fixedWidthRight(countDisplay, widths[colCount])).SetTextColor(theme.accent))
+		set(colJira, jiraDisplay, jiraColor)
 	}
 
 	a.reanchorSelection()
@@ -172,9 +177,9 @@ func (a *app) footerText() string {
 
 	line1 := sec("nav") + key("↑/↓") + " move  " + key("enter") + " detail  " + key("/") + " search  " + key("p") + " policies  " +
 		sec("noise") + key("r") + " collapse  " + key("g") + " expand group  " + key("s") + " isolate system  " +
-		sec("select") + key("space") + " mark  " + key("a") + " mark visible  " + key("esc") + " clear  " + key("1-6") + " sort"
+		sec("select") + key("space") + " mark  " + key("a") + " mark visible  " + key("esc") + " clear  " + key("1-7") + " sort"
 	line2 := sec("triage") + key("c/x/w/d/i") + " confirm/false-pos/wont-fix/dup/needs-info  " + key("0") + " reset to new  " +
-		key("j") + " Jira ticket  " + key("n") + " note  " + key("u") + " suppressed  " +
+		key("j") + " Jira ticket  " + key("J") + " unlink  " + key("n") + " note  " + key("u") + " suppressed  " +
 		key("q") + " quit  " + key("?") + " help"
 
 	status := fmt.Sprintf("[%s]%d/%d shown[-]", colorTag(theme.dim), len(a.rows), len(a.merged))

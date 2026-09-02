@@ -177,7 +177,7 @@ func (a *app) openNoteEditor() {
 // somewhere still perfectly usable (main), just not exactly where the
 // triager pressed the key.
 var detailKeys = map[rune]bool{
-	' ': true, '0': true, 'n': true, 'j': true, 'q': true, '?': true,
+	' ': true, '0': true, 'n': true, 'j': true, 'J': true, 'q': true, '?': true,
 	'c': true, 'x': true, 'w': true, 'd': true, 'i': true,
 }
 
@@ -361,7 +361,7 @@ const helpText = `[yellow::b]kubectl audit triage — hotkeys[white::-]
   up/down, pgup/pgdn    move
   enter                 open finding detail — y to copy it to the clipboard, v to toggle a Jira
                          ticket preview (exactly what j would send), plus every triage-decision
-                         key below (c/x/w/d/i/n/j/space/0) works there too
+                         key below (c/x/w/d/i/n/j/J/space/0) works there too
   /                     focus the search bar (live filter over title/policy/resource/message)
   esc                   (in search) clear filter · (in table) clear marks, then clear
                          group-expand/system-isolate, in that order
@@ -381,7 +381,7 @@ const helpText = `[yellow::b]kubectl audit triage — hotkeys[white::-]
                           or esc, to clear)
 
   [yellow::b]Sort[white::-]
-  1-6                   sort by that column (shown as "N:LABEL" in the header) — press again to
+  1-7                   sort by that column (shown as "N:LABEL" in the header) — press again to
                          reverse direction
 
   [yellow::b]Select[white::-]
@@ -399,7 +399,11 @@ const helpText = `[yellow::b]kubectl audit triage — hotkeys[white::-]
   0                      reset back to new (undo a previous c/x/w/d/i)
   n                      edit note (same bulk-apply rule)
   j                      create a Jira ticket for every marked/selected CONFIRMED finding without
-                         one yet (needs triage.jira configured — see docs/triage.md)
+                         one yet (needs triage.jira configured — see docs/triage.md); the JIRA
+                         column shows the filed ticket's key
+  J                      unlink the Jira ticket (doesn't delete anything in Jira — 'j' will file a
+                         fresh one next time) — recovery path if a ticket was deleted/closed in
+                         Jira itself, which this tool never re-checks
 
   [yellow::b]Other[white::-]
   u                      show/hide suppressed findings (hidden by default)

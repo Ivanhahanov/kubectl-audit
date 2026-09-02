@@ -130,6 +130,28 @@ func TestReanchorSelection_ClampsWhenFindingDisappeared(t *testing.T) {
 	}
 }
 
+// TestRedrawTable_JiraColumnShowsKeyOrDash is the visual half of the
+// "how do I even know a ticket was filed" request — the JIRA column must
+// show the filed ticket's key, and a plain "-" (not blank) when none.
+func TestRedrawTable_JiraColumnShowsKeyOrDash(t *testing.T) {
+	a := &app{header: tview.NewTextView(), table: tview.NewTable(), footer: tview.NewTextView()}
+	filed := rowWith("1", findings.SeverityHigh, "ns", "a")
+	filed.Entry.JiraIssueKey = "SEC-42"
+	unfiled := rowWith("2", findings.SeverityLow, "ns", "b")
+	a.rows = []triage.Row{filed, unfiled}
+
+	a.redrawTable()
+
+	got := strings.TrimSpace(a.table.GetCell(1, colJira).Text)
+	if got != "SEC-42" {
+		t.Errorf("expected the JIRA column to show the filed key, got %q", got)
+	}
+	got = strings.TrimSpace(a.table.GetCell(2, colJira).Text)
+	if got != "-" {
+		t.Errorf("expected the JIRA column to show \"-\" when unfiled, got %q", got)
+	}
+}
+
 // TestStripDetailColorTags_RemovesOnlyKnownTagsNotUserBrackets guards the
 // clipboard-copy path against eating literal bracketed text that happens
 // to appear in a finding's own Message/Note (e.g. an IPv6 address) — it
