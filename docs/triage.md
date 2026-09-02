@@ -93,7 +93,7 @@ merges findings from different checks together, even on the same resource.
 This is **off by default** and stays session-only (never persisted) — you always start seeing
 every finding as its own row, and opt into collapsing explicitly once you trust it for a given
 review session. Acting on a collapsed row — marking it, applying a triage decision, editing its
-note/tags, filing a Jira ticket — transparently applies to every finding it stands for, not just
+note, filing a Jira ticket — transparently applies to every finding it stands for, not just
 the one shown, and (per the confirmation rule above) always asks first when more than one finding
 is affected. Press `g` on a collapsed row to drill into its individual members instead, if you
 want to review each one by hand.

@@ -129,7 +129,7 @@ type ResolvedContent struct {
 	// Labels are this check's org-defined Jira labels (KnowledgeBaseEntry.
 	// Labels) — nil if neither layer sets any. Not templated, unlike the
 	// text fields above. See IssueLabels, which merges these with the
-	// auto-derived severity/category/tags and triage.jira.extraLabels.
+	// auto-derived severity/category and triage.jira.extraLabels.
 	Labels []string
 }
 

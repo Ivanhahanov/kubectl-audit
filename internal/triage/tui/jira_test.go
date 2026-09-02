@@ -78,23 +78,61 @@ func TestJiraPreviewText_EscapesBracketsInRenderedContent(t *testing.T) {
 	}
 }
 
-// TestJiraPreviewText_NotConfirmedNotesItWontFileYet is a small guardrail
-// against a triager assuming 'j' silently worked from the preview screen.
-func TestJiraPreviewText_NotConfirmedNotesItWontFileYet(t *testing.T) {
+// TestJiraFilingStatus_NotConfirmedNotesItWontFileYet is a small guardrail
+// against a triager assuming 'j' silently worked from the preview screen —
+// jiraFilingStatus is what openDetail's 'v' handler flashes into the
+// hint/status bar, deliberately kept out of jiraPreviewText's own body
+// (see its doc comment): filing status is meta-information about the
+// action, not part of the ticket content a triager is reviewing.
+func TestJiraFilingStatus_NotConfirmedNotesItWontFileYet(t *testing.T) {
+	row := dedupRow("1", "workload.run-as-non-root", "msg", "ns", "app")
+	row.Entry.Status = triage.StatusNew
+
+	got := jiraFilingStatus(row)
+	if !strings.Contains(got, "CONFIRMED") {
+		t.Errorf("expected a note that the finding isn't confirmed yet, got %q", got)
+	}
+}
+
+// TestJiraFilingStatus_AlreadyFiledNamesTheIssue.
+func TestJiraFilingStatus_AlreadyFiledNamesTheIssue(t *testing.T) {
+	row := dedupRow("1", "workload.run-as-non-root", "msg", "ns", "app")
+	row.Entry.Status = triage.StatusConfirmed
+	row.Entry.JiraIssueKey = "SEC-123"
+	row.Entry.JiraIssueURL = "https://jira.example.com/browse/SEC-123"
+
+	got := jiraFilingStatus(row)
+	if !strings.Contains(got, "SEC-123") {
+		t.Errorf("expected the filing status to name the already-filed issue, got %q", got)
+	}
+}
+
+// TestJiraFilingStatus_ConfirmedAndUnfiledIsEmpty is the "ready to file,
+// nothing to warn about" case — jiraFilingStatus must return "" so the 'v'
+// handler falls back to the plain "Jira ticket preview" flash instead of
+// an empty or confusing note.
+func TestJiraFilingStatus_ConfirmedAndUnfiledIsEmpty(t *testing.T) {
+	row := dedupRow("1", "workload.run-as-non-root", "msg", "ns", "app")
+	row.Entry.Status = triage.StatusConfirmed
+
+	if got := jiraFilingStatus(row); got != "" {
+		t.Errorf("expected no filing-status note for a confirmed, not-yet-filed finding, got %q", got)
+	}
+}
+
+// TestJiraPreviewText_NoFilingStatusInBody guards that jiraPreviewText's
+// own body no longer mixes in filing-status meta-info — it belongs in the
+// hint/status bar (see jiraFilingStatus), not the scrollable ticket
+// content a triager is reviewing.
+func TestJiraPreviewText_NoFilingStatusInBody(t *testing.T) {
 	a := &app{jira: JiraConfig{BaseURL: "https://jira.example.com", ProjectKey: "SEC", IssueType: "Bug"}}
 	row := dedupRow("1", "workload.run-as-non-root", "msg", "ns", "app")
 	row.Entry.Status = triage.StatusNew
 
 	got := a.jiraPreviewText(row)
-	if !strings.Contains(got, "CONFIRMED") {
-		t.Errorf("expected a note that the finding isn't confirmed yet, got:\n%s", got)
-	}
-	// Must be near the top (right after Project/Issue type), not buried
-	// after the full rendered ticket — it's the first thing a triager
-	// should notice, not something they discover after reading everything.
-	notConfirmedIdx := strings.Index(got, "Not yet filed")
-	summaryIdx := strings.Index(got, "Summary:")
-	if notConfirmedIdx < 0 || summaryIdx < 0 || notConfirmedIdx > summaryIdx {
-		t.Errorf("expected the 'Not yet filed' note before the Summary section, got:\n%s", got)
+	for _, unwanted := range []string{"Not yet filed", "Already filed", "CONFIRMED"} {
+		if strings.Contains(got, unwanted) {
+			t.Errorf("expected jiraPreviewText's body to no longer contain filing-status text %q, got:\n%s", unwanted, got)
+		}
 	}
 }

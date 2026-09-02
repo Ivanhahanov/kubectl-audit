@@ -1,6 +1,6 @@
 // Package tui is the interactive `kubectl audit triage` screen: a k9s-style
 // table of findings joined with their triage state (see internal/triage),
-// with hotkeys to mark a decision, add notes/tags, bulk-apply a decision to
+// with hotkeys to mark a decision, add notes, bulk-apply a decision to
 // every finding that looks like the same repeated per-tenant/per-namespace
 // pattern, and create Jira tickets directly. Every mutating action calls
 // straight through to internal/triage's State methods and saves

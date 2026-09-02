@@ -218,10 +218,13 @@ func (a *app) openDetail() {
 				}
 				preview = !preview
 				tv.SetText(render())
-				if preview {
-					flash("Jira ticket preview — 'v' to go back.")
-				} else {
+				switch {
+				case !preview:
 					flash("")
+				case jiraFilingStatus(sel) != "":
+					flash("Jira ticket preview — " + jiraFilingStatus(sel) + ". 'v' to go back.")
+				default:
+					flash("Jira ticket preview — 'v' to go back.")
 				}
 				return nil
 			case detailKeys[r]:

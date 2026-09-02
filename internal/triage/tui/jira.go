@@ -93,16 +93,6 @@ func (a *app) jiraPreviewText(r triage.Row) string {
 	f := *r.Finding
 	fmt.Fprintf(&b, "[yellow]Project:[white] %s      [yellow]Issue type:[white] %s\n", a.jira.ProjectKey, a.jira.IssueType)
 
-	// Filing status up top, not buried at the bottom — it's the first thing
-	// that should catch a triager's eye ("will 'j' actually do anything
-	// right now"), not something they only discover after reading the
-	// whole rendered ticket.
-	if r.Entry.JiraIssueKey != "" {
-		fmt.Fprintf(&b, "[green]Already filed:[white] %s (%s)\n", r.Entry.JiraIssueKey, r.Entry.JiraIssueURL)
-	} else if r.Entry.Status != triage.StatusConfirmed {
-		b.WriteString("[yellow]Not yet filed:[white] status isn't CONFIRMED — 'j' won't create a ticket until you confirm it ('c').\n")
-	}
-
 	if summary, err := triage.RenderIssueSummary(f, a.knowledgeBase, r.Entry, a.jira.SummaryTemplate); err != nil {
 		fmt.Fprintf(&b, "\n[red]Summary template error:[white] %v\n", err)
 	} else {
@@ -140,6 +130,24 @@ func (a *app) jiraPreviewText(r triage.Row) string {
 	}
 
 	return b.String()
+}
+
+// jiraFilingStatus reports whether 'j' would actually do anything for r
+// right now — "" if it would (CONFIRMED, not yet filed), otherwise a short
+// note explaining why not. Deliberately kept out of jiraPreviewText's body:
+// this is meta-information about the filing ACTION, not part of the
+// rendered ticket content itself, so it belongs in the hint/status bar
+// (flashed when entering preview — see openDetail's 'v' handler) rather
+// than mixed into the same scrollable text a triager is reading to review
+// the ticket.
+func jiraFilingStatus(r triage.Row) string {
+	if r.Entry.JiraIssueKey != "" {
+		return fmt.Sprintf("already filed as %s (%s)", r.Entry.JiraIssueKey, r.Entry.JiraIssueURL)
+	}
+	if r.Entry.Status != triage.StatusConfirmed {
+		return "not yet CONFIRMED — 'j' won't create a ticket until you confirm it ('c')"
+	}
+	return ""
 }
 
 // createJiraIssues creates a Jira issue for every marked-or-selected row

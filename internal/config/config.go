@@ -248,8 +248,9 @@ type JiraConfig struct {
 	SummaryTemplate     string `json:"summaryTemplate,omitempty"`
 	DescriptionTemplate string `json:"descriptionTemplate,omitempty"`
 	// ExtraLabels are static labels added to every created issue beyond
-	// the ones this tool derives automatically (severity, category, your
-	// triage tags) — e.g. a team or queue label your Jira project expects.
+	// the ones this tool derives automatically (severity, category, this
+	// check's own knowledge-base labels) — e.g. a team or queue label your
+	// Jira project expects.
 	ExtraLabels []string `json:"extraLabels,omitempty"`
 	// CustomFields are merged into every created issue's Jira fields,
 	// keyed by Jira field ID (e.g. "customfield_10050"). A string value is
@@ -265,8 +266,8 @@ type JiraConfig struct {
 
 // TriageConfig configures `kubectl audit triage` — see docs/triage.md.
 type TriageConfig struct {
-	// StateFile is where triage decisions (status/notes/tags/Jira links)
-	// are persisted — a local, git-diffable YAML file, not a database. See
+	// StateFile is where triage decisions (status/notes/Jira links) are
+	// persisted — a local, git-diffable YAML file, not a database. See
 	// internal/triage.State.
 	StateFile string     `json:"stateFile,omitempty"`
 	Jira      JiraConfig `json:"jira,omitempty"`

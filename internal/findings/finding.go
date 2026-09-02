@@ -155,12 +155,9 @@ type KnowledgeBaseEntry struct {
 	// (see internal/triage.ResolvedContent).
 	Description string `json:"description,omitempty"`
 	Remediation string `json:"remediation,omitempty"`
-	// Labels are extra Jira labels for this specific check — distinct from
-	// triage.Entry.Tags (a triager's own free-text annotations, added by
-	// hand per finding via the 't' hotkey/TUI). Labels is org-defined, per
-	// check, the same for every finding this policy produces — e.g. an
-	// internal compliance requirement id ("k-ose-5") that has nothing to
-	// do with any one analyst's triage notes. Merged into the auto-derived
+	// Labels are extra Jira labels for this specific check — org-defined,
+	// the same for every finding this policy produces, e.g. an internal
+	// compliance requirement id ("k-ose-5"). Merged into the auto-derived
 	// + triage.jira.extraLabels set (see triage.IssueLabels); each entry is
 	// sanitized the same way. Not Go-templated (unlike
 	// Title/Description/Remediation) — a Jira label is a short fixed slug,

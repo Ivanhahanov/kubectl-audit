@@ -129,9 +129,9 @@ func (a *app) footerText() string {
 
 	line1 := sec("nav") + key("↑/↓") + " move  " + key("enter") + " detail  " + key("/") + " search  " + key("p") + " policies  " +
 		sec("noise") + key("r") + " collapse  " + key("g") + " expand group  " + key("s") + " isolate system  " +
-		sec("select") + key("space") + " mark  " + key("a") + " mark visible  " + key("esc") + " clear  " + key("1-7") + " sort"
+		sec("select") + key("space") + " mark  " + key("a") + " mark visible  " + key("esc") + " clear  " + key("1-6") + " sort"
 	line2 := sec("triage") + key("c/x/w/d/i") + " confirm/false-pos/wont-fix/dup/needs-info  " + key("0") + " reset to new  " +
-		key("j") + " Jira ticket  " + key("n") + " note  " + key("t") + " tags  " + key("u") + " suppressed  " +
+		key("j") + " Jira ticket  " + key("n") + " note  " + key("u") + " suppressed  " +
 		key("q") + " quit  " + key("?") + " help"
 
 	status := fmt.Sprintf("[%s]%d/%d shown[-]", colorTag(theme.dim), len(a.rows), len(a.merged))
