@@ -120,6 +120,26 @@ type Finding struct {
 	// on top of a separate external knowledge-base file and decides what
 	// a Jira ticket (and the triage TUI's detail view) actually shows.
 	KnowledgeBase *KnowledgeBaseEntry `json:"knowledgeBase,omitempty"`
+	// DedupKey is an optional grouping hint for the triage TUI's bulk-noise
+	// collapsing (see internal/triage/tui/dedup.go): when set, findings that
+	// share PolicyID+Resource.Kind+DedupKey collapse together in the
+	// "roll up" view, instead of the default (PolicyID+Kind+Message).
+	//
+	// Only needed when Message legitimately embeds real per-resource detail
+	// (beyond the resource's own name/namespace, which the TUI already
+	// strips) that isn't the useful axis to bulk-triage on — e.g. Pod
+	// Security Standards' ForbiddenDetail names the specific container
+	// ("runAsNonRoot != true (container api-v2)"), so on a cluster with
+	// thousands of unrelated tenant workloads each independently missing
+	// the same securityContext field, the container name alone was enough
+	// to keep every one of them a separate row even though they're all the
+	// same actionable category of gap this tool can't fix on the tenant's
+	// behalf anyway. DedupKey lets an analyzer opt a check into a coarser
+	// grouping (e.g. just the violated rule names, no per-container/port/
+	// capability detail) for the collapsed view only — it never affects
+	// Message, Remediation, or a filed Jira ticket, and the full per-finding
+	// detail is still one keypress ('g') away.
+	DedupKey string `json:"dedupKey,omitempty"`
 }
 
 // KnowledgeBaseEntry is an organization's own ticket-facing content for one

@@ -21,6 +21,12 @@ func dedupRow(id, policyID, message, ns, name string) triage.Row {
 	}
 }
 
+func dedupRowWithKey(id, policyID, message, dedupKey, ns, name string) triage.Row {
+	r := dedupRow(id, policyID, message, ns, name)
+	r.Finding.DedupKey = dedupKey
+	return r
+}
+
 func TestDedupGroups_DifferentPoliciesNeverCollapseTogether(t *testing.T) {
 	rows := []triage.Row{
 		dedupRow("1", "policy.a", "msg-a", "tenant-1", "app"),
@@ -218,5 +224,44 @@ func TestDedupGroups_CollapsesAtRealClusterScale(t *testing.T) {
 	}
 	if len(members[result[0].Entry.FindingID]) != n {
 		t.Errorf("expected the representative's member list to contain all %d findings, got %d", n, len(members[result[0].Entry.FindingID]))
+	}
+}
+
+// TestDedupGroups_DedupKeyOverridesMessageForBucketing is the fix for a
+// real report: pss-analyzer.restricted's Message names the specific
+// violating container ("... (container api-v2)" vs "... (container
+// app-no-ssh-here)"), which differs per tenant workload even though the
+// resource's own namespace/name were already normalized away — every one
+// of them stayed a separate row. An analyzer can set Finding.DedupKey to a
+// coarser value (here: just the violated rule names, no container detail)
+// to opt the check into bulk-triage collapsing without losing the
+// per-container detail from Message itself.
+func TestDedupGroups_DedupKeyOverridesMessageForBucketing(t *testing.T) {
+	rows := []triage.Row{
+		dedupRowWithKey("1", "pss-analyzer.restricted",
+			`Does not satisfy the Pod Security Standards "restricted" profile: runAsNonRoot != true (container api-v2)`,
+			"pss-analyzer.restricted|runAsNonRoot != true", "usersvs-aaa", "api-v2-00001-deployment"),
+		dedupRowWithKey("2", "pss-analyzer.restricted",
+			`Does not satisfy the Pod Security Standards "restricted" profile: runAsNonRoot != true (container app-no-ssh-here)`,
+			"pss-analyzer.restricted|runAsNonRoot != true", "usersvs-bbb", "app-no-ssh-here-00001-deployment"),
+		dedupRowWithKey("3", "pss-analyzer.restricted",
+			`Does not satisfy the Pod Security Standards "restricted" profile: runAsNonRoot != true (container app-uptime-kuma)`,
+			"pss-analyzer.restricted|runAsNonRoot != true", "usersvs-ccc", "app-uptime-kuma-00002-deployment"),
+		// A different violated rule set must NOT join the same bucket, even
+		// with the same PolicyID+Kind.
+		dedupRowWithKey("4", "pss-analyzer.restricted",
+			`Does not satisfy the Pod Security Standards "restricted" profile: privileged containers (container sidecar)`,
+			"pss-analyzer.restricted|privileged containers", "usersvs-ddd", "other-app-00001-deployment"),
+	}
+	result, members := dedupGroups(rows, 3)
+	if len(result) != 2 {
+		t.Fatalf("expected 2 rows: 1 collapsed representative for the 3 matching-DedupKey findings + 1 for the different rule, got %d: %+v", len(result), result)
+	}
+	total := 0
+	for _, m := range members {
+		total += len(m)
+	}
+	if total != 3 {
+		t.Errorf("expected exactly the 3 same-DedupKey findings recorded as collapsed members, got %d", total)
 	}
 }

@@ -53,6 +53,22 @@ func restrictedViolatingPod(name string) loader.Resource {
 	}}, Source: "test"}
 }
 
+func restrictedViolatingPodWithContainer(name, containerName string) loader.Resource {
+	return loader.Resource{Object: &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "v1",
+		"kind":       "Pod",
+		"metadata":   map[string]any{"name": name, "namespace": "default"},
+		"spec": map[string]any{
+			"containers": []any{
+				map[string]any{
+					"name":  containerName,
+					"image": "nginx",
+				},
+			},
+		},
+	}}, Source: "test"}
+}
+
 func fullyRestrictedCompliantPod(name string) loader.Resource {
 	return loader.Resource{Object: &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "v1",
@@ -101,6 +117,54 @@ func TestAnalyzeRestrictedOnlyViolationDetected(t *testing.T) {
 	}
 	if len(out) != 1 || out[0].PolicyID != CheckIDRestricted {
 		t.Fatalf("expected exactly one restricted finding (baseline should pass), got %+v", out)
+	}
+}
+
+// TestAnalyze_DedupKeyIgnoresContainerNameButKeepsViolatedRules is the fix
+// for a real report: on a cluster with many unrelated tenant workloads each
+// independently missing the same securityContext field, ForbiddenDetail()
+// names the specific violating container ("runAsNonRoot != true (container
+// api-v2)" vs "... (container app-no-ssh-here)"), which kept the triage
+// TUI's dedup from ever collapsing them — the Message differed purely by
+// container name, not by which security rule was actually violated.
+// DedupKey (built from ForbiddenReason(), not ForbiddenDetail()) must be
+// identical across two pods that violate the exact same set of rules via
+// differently-named containers, so the TUI's dedup.go can bucket them
+// together while Message (checked separately) keeps the full per-container
+// detail for the single-finding view and any filed Jira ticket.
+func TestAnalyze_DedupKeyIgnoresContainerNameButKeepsViolatedRules(t *testing.T) {
+	outA, err := Analyze([]loader.Resource{restrictedViolatingPodWithContainer("app-a", "api-v2")}, "test", "", nil)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	outB, err := Analyze([]loader.Resource{restrictedViolatingPodWithContainer("app-b", "app-no-ssh-here")}, "test", "", nil)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if len(outA) != 1 || len(outB) != 1 {
+		t.Fatalf("expected exactly one finding each, got %d and %d", len(outA), len(outB))
+	}
+	if outA[0].Message == outB[0].Message {
+		t.Fatalf("expected Message to differ by container name (test setup assumption broken), got identical: %q", outA[0].Message)
+	}
+	if outA[0].DedupKey == "" {
+		t.Fatal("expected a non-empty DedupKey")
+	}
+	if outA[0].DedupKey != outB[0].DedupKey {
+		t.Errorf("expected identical DedupKey for the same violated rules via different containers, got %q vs %q", outA[0].DedupKey, outB[0].DedupKey)
+	}
+
+	// A pod violating a genuinely DIFFERENT set of rules (privileged,
+	// baseline-level) must get a different DedupKey.
+	outC, err := Analyze([]loader.Resource{privilegedPod("app-c")}, "test", "", nil)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if len(outC) != 1 {
+		t.Fatalf("expected exactly one finding, got %+v", outC)
+	}
+	if outC[0].DedupKey == outA[0].DedupKey {
+		t.Errorf("expected a different violated-rule set (baseline privileged vs restricted) to get a different DedupKey, both were %q", outC[0].DedupKey)
 	}
 }
 

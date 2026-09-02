@@ -30,7 +30,20 @@ import (
 // identical per-tenant rbac-analyzer.broad-secrets-access findings never
 // collapsed because one unrelated finding under the same PolicyID had a
 // differently-shaped message).
+//
+// r.Finding.DedupKey, when an analyzer sets it (see findings.Finding's doc
+// comment), overrides normalizedMessage entirely for the bucketing
+// dimension — for checks whose Message legitimately embeds real
+// per-resource detail that isn't the useful axis to bulk-triage on (e.g.
+// Pod Security Standards naming the specific violating container), letting
+// the analyzer opt into a coarser grouping without the TUI having to guess
+// which part of an arbitrary Message is "identity" versus "the actual
+// signal". Callers must only call dedupKey with r.Finding != nil (the same
+// contract normalizedMessage already assumes).
 func dedupKey(r triage.Row) string {
+	if r.Finding.DedupKey != "" {
+		return r.Entry.PolicyID + "|" + r.Entry.Resource.Kind + "|dk:" + r.Finding.DedupKey
+	}
 	return r.Entry.PolicyID + "|" + r.Entry.Resource.Kind + "|" + normalizedMessage(r)
 }
 

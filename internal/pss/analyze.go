@@ -118,6 +118,15 @@ func finding(checkID, level string, result policy.AggregateCheckResult, ref find
 		Category: "workload-security",
 		Resource: ref,
 		Message:  msg,
+		// DedupKey groups by which rules were violated (ForbiddenReason —
+		// no per-container/port/capability parenthetical detail), not the
+		// full Message. On a cluster with many unrelated tenant workloads
+		// each independently missing the same securityContext field, the
+		// container name alone in ForbiddenDetail() was enough to keep
+		// every one of them from collapsing in the triage TUI, even though
+		// "which rule is violated" — not which container — is the useful
+		// bulk-triage signal here. See findings.Finding.DedupKey.
+		DedupKey: checkID + "|" + result.ForbiddenReason(),
 		Remediation: fmt.Sprintf(
 			"See https://kubernetes.io/docs/concepts/security/pod-security-standards/#%s for the full %s profile requirements.",
 			level, level),
