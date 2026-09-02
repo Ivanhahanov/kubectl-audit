@@ -41,29 +41,39 @@ func (a *app) closeOverlay(name string) {
 
 // showFullScreenPage replaces the main view with a k9s-style full-screen
 // screen: a slim title bar naming the section (plus a one-line hotkey
-// hint), then content filling the rest. Used for views that are
-// themselves a list/table in their own right — the policy stats picker,
-// finding detail — which read as a real screen rather than a small
-// floating dialog, the same way k9s never shows a resource list or detail
-// view in a popup. closeOverlay(name) (the same one small modals use)
-// returns to the main table; nothing about closing differs between the
-// two, only how the page is built. Returns the header TextView so a caller
-// that wants to flash a transient status line on top of the hint (see
-// openDetail's copy/Jira feedback) can update it without rebuilding the
-// whole page.
-func (a *app) showFullScreenPage(name, title, hint string, content tview.Primitive) *tview.TextView {
+// hint), content filling the rest, and a one-line status bar pinned to the
+// bottom — the same place k9s flashes "copied to clipboard"/action-result
+// messages, kept separate from the title bar so the title/hint stays put
+// and only the bottom line changes. Used for views that are themselves a
+// list/table in their own right — the policy stats picker, finding
+// detail — which read as a real screen rather than a small floating
+// dialog, the same way k9s never shows a resource list or detail view in a
+// popup. closeOverlay(name) (the same one small modals use) returns to the
+// main table; nothing about closing differs between the two, only how the
+// page is built. Returns a flash func a caller can call with a transient
+// message (see openDetail's copy/Jira feedback) — flash("") clears it.
+func (a *app) showFullScreenPage(name, title, hint string, content tview.Primitive) (flash func(msg string)) {
 	header := tview.NewTextView().SetDynamicColors(true)
 	header.SetBorder(true).SetBorderColor(theme.borderFg)
 	header.SetText(fmt.Sprintf("[%s:%s:b] %s [-:-:-]\n%s",
 		colorTag(theme.titleFg), colorTag(theme.titleBg), title, hint))
 
+	status := tview.NewTextView().SetDynamicColors(true)
+
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(header, 4, 0, false).
-		AddItem(content, 0, 1, true)
+		AddItem(content, 0, 1, true).
+		AddItem(status, 1, 0, false)
 
 	a.pages.AddPage(name, layout, true, true)
 	a.tv.SetFocus(content)
-	return header
+	return func(msg string) {
+		if msg == "" {
+			status.SetText("")
+			return
+		}
+		status.SetText("[green::b]▸[-:-:-] " + msg)
+	}
 }
 
 // confirmBulkAction gates any action that would touch more than one
@@ -211,11 +221,7 @@ func (a *app) openDetail() {
 
 	title := "FINDING — " + sel.Entry.PolicyID
 	hint := keyHint("enter/esc") + " back   " + keyHint("y") + " copy   " + keyHint("j") + " jira   " + keyHint("c") + " confirm"
-	header := a.showFullScreenPage("detail", title, hint, tv)
-	flash := func(msg string) {
-		header.SetText(fmt.Sprintf("[%s:%s:b] %s [-:-:-]\n%s\n[green]▸ %s[-]",
-			colorTag(theme.titleFg), colorTag(theme.titleBg), title, hint, msg))
-	}
+	flash := a.showFullScreenPage("detail", title, hint, tv)
 
 	tv.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
