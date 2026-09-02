@@ -52,7 +52,11 @@ func LoadKnowledgeBase(path string) (map[string]findings.KnowledgeBaseEntry, err
 
 func parseKnowledgeBase(data []byte) (map[string]findings.KnowledgeBaseEntry, error) {
 	var out map[string]findings.KnowledgeBaseEntry
-	if err := yaml.Unmarshal(data, &out); err != nil {
+	// UnmarshalStrict: a typo'd field ("titel" instead of "title") in a
+	// hand-authored knowledgeBaseFile must fail loudly rather than silently
+	// produce an entry with an empty override that the tool then falls back
+	// past without any indication the entry was ever misspelled.
+	if err := yaml.UnmarshalStrict(data, &out); err != nil {
 		return nil, err
 	}
 	return out, nil

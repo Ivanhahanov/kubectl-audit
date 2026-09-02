@@ -375,7 +375,12 @@ func Load(path string) (*AuditConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading config %s: %w", path, err)
 	}
-	if err := yaml.Unmarshal(data, cfg); err != nil {
+	// UnmarshalStrict (not Unmarshal): a typo'd field name (e.g.
+	// "namespceGroupThreshold") must fail loudly. Silently falling back to
+	// the zero value/default for a misspelled security-relevant setting is
+	// worse than an error — the tool would just run with a config the user
+	// didn't actually intend, with no indication anything was ignored.
+	if err := yaml.UnmarshalStrict(data, cfg); err != nil {
 		return nil, fmt.Errorf("parsing config %s: %w", path, err)
 	}
 	if err := validateExclusions(cfg.Exclusions); err != nil {

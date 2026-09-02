@@ -3,6 +3,7 @@ package triage_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ivanhahanov/kubectl-audit/internal/findings"
@@ -153,6 +154,25 @@ func TestLoadKnowledgeBase_ReadsAndParses(t *testing.T) {
 	}
 	if kb["policy.custom"].Title != "Кастомный заголовок" {
 		t.Errorf("expected the custom entry to parse, got %+v", kb)
+	}
+}
+
+// TestLoadKnowledgeBase_UnknownFieldIsRejected guards against a typo'd
+// field name (e.g. "titel" instead of "title") in a hand-authored
+// knowledgeBaseFile silently producing an entry with the override simply
+// missing, with no indication anything was misspelled.
+func TestLoadKnowledgeBase_UnknownFieldIsRejected(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "knowledge-base.yaml")
+	content := "policy.custom:\n  titel: \"Опечатка в поле\"\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := triage.LoadKnowledgeBase(path)
+	if err == nil {
+		t.Fatal("expected an error for an unknown/misspelled field")
+	}
+	if !strings.Contains(err.Error(), "titel") {
+		t.Errorf("expected the error to name the offending field, got: %v", err)
 	}
 }
 

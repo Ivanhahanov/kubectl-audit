@@ -59,6 +59,25 @@ func TestDefault_JiraConfigHasNoCredentialField(t *testing.T) {
 	}
 }
 
+// TestLoad_UnknownFieldIsRejected guards against the class of bug where a
+// typo'd config field (e.g. "namespceGroupThreshold") is silently dropped
+// by a lenient YAML unmarshal, leaving the tool running on a default the
+// user never intended with no indication anything was ignored — a real
+// risk for a security tool's config.
+func TestLoad_UnknownFieldIsRejected(t *testing.T) {
+	path := writeConfig(t, `
+output:
+  namespceGroupThreshold: 5
+`)
+	_, err := config.Load(path)
+	if err == nil {
+		t.Fatal("expected an error for an unknown/misspelled config field")
+	}
+	if !strings.Contains(err.Error(), "namespceGroupThreshold") {
+		t.Errorf("expected the error to name the offending field, got: %v", err)
+	}
+}
+
 func TestLoad_ExclusionRequiresReason(t *testing.T) {
 	path := writeConfig(t, `
 exclusions:
