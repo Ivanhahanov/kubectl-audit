@@ -127,3 +127,50 @@ func TestUniformMessagePolicies(t *testing.T) {
 		t.Error("expected policy.b (differing messages) to not be uniform")
 	}
 }
+
+// TestDedupGroups_CollapsesTemplatedPerTenantResourceMessages is the fix for
+// a real report: rbac-analyzer.broad-secrets-access fires once per
+// generated per-tenant namespace ("pg-cl-<uuid>") for the same
+// ServiceAccount name ("checker-sa") via the same generated binding
+// pattern — the message embeds that namespace/name so it was never
+// literally identical across tenants and the policy never qualified as
+// "uniform", even though it's mechanically the same finding repeated.
+// normalizedMessage strips each finding's own resource identity before the
+// uniform comparison so this now collapses.
+func TestDedupGroups_CollapsesTemplatedPerTenantResourceMessages(t *testing.T) {
+	msg := func(ns string) string {
+		return `ServiceAccount "checker-sa" in namespace "` + ns + `" can read Secrets cluster-wide, via: ClusterRoleBinding "checker-sa-binding-` + ns + `" -> ClusterRole "checker-role".`
+	}
+	rows := []triage.Row{
+		dedupRow("1", "rbac-analyzer.broad-secrets-access", msg("pg-cl-aaa"), "pg-cl-aaa", "checker-sa"),
+		dedupRow("2", "rbac-analyzer.broad-secrets-access", msg("pg-cl-bbb"), "pg-cl-bbb", "checker-sa"),
+		dedupRow("3", "rbac-analyzer.broad-secrets-access", msg("pg-cl-ccc"), "pg-cl-ccc", "checker-sa"),
+	}
+	result, members := dedupGroups(rows, 3)
+	if len(result) != 1 {
+		t.Fatalf("expected the 3 per-tenant findings to collapse to 1 representative, got %d: %+v", len(result), result)
+	}
+	if len(members[result[0].Entry.FindingID]) != 3 {
+		t.Errorf("expected the representative's member list to contain all 3, got %d", len(members[result[0].Entry.FindingID]))
+	}
+}
+
+// TestDedupGroups_SubstantiveMessageDifferenceStillBlocksCollapse guards
+// against normalizedMessage over-collapsing: two findings on differently
+// named/namespaced resources whose messages ALSO differ in substance (a
+// different reachable secret set, not just the resource's own identity)
+// must still be treated as non-uniform.
+func TestDedupGroups_SubstantiveMessageDifferenceStillBlocksCollapse(t *testing.T) {
+	rows := []triage.Row{
+		dedupRow("1", "rbac-analyzer.broad-secrets-access", `ServiceAccount "sa" in namespace "ns-a" can read Secrets across 2 namespaces, via: RoleBinding "ns-a/rb".`, "ns-a", "sa"),
+		dedupRow("2", "rbac-analyzer.broad-secrets-access", `ServiceAccount "sa" in namespace "ns-b" can read Secrets cluster-wide, via: ClusterRoleBinding "crb".`, "ns-b", "sa"),
+		dedupRow("3", "rbac-analyzer.broad-secrets-access", `ServiceAccount "sa" in namespace "ns-c" can read Secrets across 5 namespaces, via: RoleBinding "ns-c/rb2".`, "ns-c", "sa"),
+	}
+	result, members := dedupGroups(rows, 3)
+	if len(result) != 3 {
+		t.Errorf("expected findings with substantively different messages to stay uncollapsed, got %d rows: %+v", len(result), result)
+	}
+	if len(members) != 0 {
+		t.Errorf("expected no dedup members recorded, got %d", len(members))
+	}
+}
