@@ -14,6 +14,14 @@ func (a *app) redraw() {
 	a.header.SetText(a.headerText())
 	a.redrawTable()
 	a.footer.SetText(a.footerText())
+	// Mirror the latest statusLine onto whichever full-screen page is
+	// currently showing (see the app.activeFlash doc comment) — this is
+	// what makes an async action's result (e.g. createJiraIssues' network
+	// call finishing after the key that started it) actually visible when
+	// the user never left that page.
+	if a.activeFlash != nil {
+		a.activeFlash(a.statusLine)
+	}
 }
 
 // headerText builds a compact status board: a colored title bar, then two

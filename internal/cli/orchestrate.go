@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -31,7 +32,7 @@ import (
 
 // loadEffectiveConfig merges audit.yaml with the persistent CLI flags.
 func loadEffectiveConfig(cmd *cobra.Command) (*config.AuditConfig, error) {
-	cfg, err := config.Load(flagConfig)
+	cfg, err := config.Load(resolveConfigPath())
 	if err != nil {
 		return nil, err
 	}
@@ -169,6 +170,38 @@ func warnf(format string, args ...any) {
 // troubleshooting why a check didn't fire.
 func debugf(format string, args ...any) {
 	logging.New(os.Stderr, flagVerbose).Debug(fmt.Sprintf(format, args...))
+}
+
+// homeConfigDir is where kubectl-audit looks for a default audit.yaml when
+// --config isn't passed — the same convention ~/.kube/config gives kubectl
+// itself: a per-user default an org's Jira/knowledge-base/template setup
+// can live in (kept out of any project's git history, see docs/triage.md)
+// without needing --config spelled out on every single invocation.
+const homeConfigDir = ".kubectl-audit"
+
+// resolveConfigPath decides which audit.yaml (if any) loadEffectiveConfig
+// reads: an explicit --config always wins. Otherwise, ~/.kubectl-audit/
+// audit.yaml is used if it exists — announced with warnf (not debugf:
+// silently changing scan/triage behavior based on a file the user may have
+// forgotten exists, or that a CI runner picks up unexpectedly because it
+// happens to share a home directory with a developer's config, is exactly
+// the kind of surprise worth always surfacing, not hiding behind
+// --verbose). Neither existing is not an error — the command just runs on
+// built-in defaults, same as always.
+func resolveConfigPath() string {
+	if flagConfig != "" {
+		return flagConfig
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	candidate := filepath.Join(home, homeConfigDir, "audit.yaml")
+	if _, err := os.Stat(candidate); err != nil {
+		return ""
+	}
+	warnf("using config from %s (pass --config to use a different one, or delete/rename this file to stop auto-loading it)", candidate)
+	return candidate
 }
 
 // loadResources loads resources per cfg.Target.Mode from static paths

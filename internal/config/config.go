@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/ivanhahanov/kubectl-audit/internal/findings"
@@ -395,7 +396,36 @@ func Load(path string) (*AuditConfig, error) {
 			cfg.Components.Extra[i].Category = thirdparty.CategoryApplication
 		}
 	}
+	expandTriagePaths(&cfg.Triage)
 	return cfg, nil
+}
+
+// expandTriagePaths expands a leading "~/" in the triage config's own
+// file-path fields — StateFile, KnowledgeBaseFile, and the Jira summary/
+// description templates — the same convenience `~/.kube/config` users
+// expect from a path, but that Go's os.ReadFile doesn't do on its own (no
+// shell involved to expand it). Lets an audit.yaml living in
+// ~/.kubectl-audit/ (see resolveConfigPath in internal/cli) reference
+// sibling files there — "~/.kubectl-audit/knowledge-base.yaml" — without
+// spelling out the full absolute path. A path not starting with "~/" is
+// left untouched, so ordinary CWD-relative paths (e.g. a project's own
+// checked-in audit.yaml) behave exactly as before.
+func expandTriagePaths(t *TriageConfig) {
+	t.StateFile = expandHome(t.StateFile)
+	t.KnowledgeBaseFile = expandHome(t.KnowledgeBaseFile)
+	t.Jira.SummaryTemplate = expandHome(t.Jira.SummaryTemplate)
+	t.Jira.DescriptionTemplate = expandHome(t.Jira.DescriptionTemplate)
+}
+
+func expandHome(p string) string {
+	if !strings.HasPrefix(p, "~/") {
+		return p
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return p
+	}
+	return filepath.Join(home, p[len("~/"):])
 }
 
 // validateExtraComponents rejects entries with neither Group nor Labels

@@ -1,6 +1,64 @@
 package cli
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+// TestResolveConfigPath_ExplicitFlagWins guards that --config always beats
+// the ~/.kubectl-audit/audit.yaml fallback, even when a home-directory
+// config exists.
+func TestResolveConfigPath_ExplicitFlagWins(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	writeHomeConfig(t, home, "target:\n  allNamespaces: false\n")
+
+	flagConfig = "/explicit/path/audit.yaml"
+	defer func() { flagConfig = "" }()
+
+	if got := resolveConfigPath(); got != "/explicit/path/audit.yaml" {
+		t.Errorf("expected the explicit --config path to win, got %q", got)
+	}
+}
+
+// TestResolveConfigPath_FallsBackToHomeConfigWhenPresent is the actual
+// feature: no --config, but ~/.kubectl-audit/audit.yaml exists.
+func TestResolveConfigPath_FallsBackToHomeConfigWhenPresent(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	want := writeHomeConfig(t, home, "target:\n  allNamespaces: false\n")
+
+	flagConfig = ""
+	if got := resolveConfigPath(); got != want {
+		t.Errorf("expected the home config path %q, got %q", want, got)
+	}
+}
+
+// TestResolveConfigPath_NoHomeConfigReturnsEmpty guards the "nothing set
+// up" case stays exactly like before this feature existed — no --config,
+// no ~/.kubectl-audit/audit.yaml, so the tool runs on built-in defaults,
+// not an error.
+func TestResolveConfigPath_NoHomeConfigReturnsEmpty(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // empty — no .kubectl-audit dir at all
+	flagConfig = ""
+	if got := resolveConfigPath(); got != "" {
+		t.Errorf("expected no config path when neither --config nor a home config exist, got %q", got)
+	}
+}
+
+func writeHomeConfig(t *testing.T, home, content string) string {
+	t.Helper()
+	dir := filepath.Join(home, homeConfigDir)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	path := filepath.Join(dir, "audit.yaml")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	return path
+}
 
 // TestLoadEffectiveConfig_BooleanFlagsCanOverrideConfigBackToFalse guards a
 // real bug found by an adversarial audit: loadEffectiveConfig used
@@ -35,6 +93,11 @@ func TestLoadEffectiveConfig_BooleanFlagsCanOverrideConfigBackToFalse(t *testing
 			flagNoBuiltinExceptions = false
 			flagConfig = ""
 			flagFiles = nil
+			// Isolate from whatever the machine running this test actually
+			// has at ~/.kubectl-audit/audit.yaml (see resolveConfigPath) —
+			// this test asserts Default()'s own values, which a real
+			// developer machine's config could otherwise silently change.
+			t.Setenv("HOME", t.TempDir())
 
 			cmd := newScanCmd()
 			if err := cmd.Flags().Parse([]string{c.arg}); err != nil {
@@ -86,6 +149,7 @@ func TestLoadEffectiveConfig_UnsetBooleanFlagsLeaveConfigAlone(t *testing.T) {
 	flagNoBuiltinExceptions = false
 	flagConfig = ""
 	flagFiles = nil
+	t.Setenv("HOME", t.TempDir())
 
 	cmd := newScanCmd()
 	if err := cmd.Flags().Parse(nil); err != nil {

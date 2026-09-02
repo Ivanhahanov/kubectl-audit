@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rivo/tview"
+
 	"github.com/ivanhahanov/kubectl-audit/internal/findings"
 	"github.com/ivanhahanov/kubectl-audit/internal/triage"
 )
@@ -28,6 +30,48 @@ func TestConfirmBulkAction_SingleTargetProceedsWithoutDialog(t *testing.T) {
 	if !called {
 		t.Error("expected proceed to run immediately for exactly 1 target")
 	}
+}
+
+// TestRedraw_MirrorsStatusLineOntoActiveFlash is the fix for a real report:
+// createJiraIssues' network call completes asynchronously (via
+// QueueUpdateDraw), well after the keypress that started it — its
+// completion handler only ever called a.redraw(), which used to touch
+// nothing but "main"'s header/table/footer. A triager who opened the
+// detail view, pressed 'j', and never left that page saw "Creating N Jira
+// issue(s)..." frozen forever: the real result (success or a specific
+// error) landed in a.statusLine and got redrawn into the invisible footer,
+// with no way to know anything had even finished. redraw() must mirror
+// a.statusLine onto whichever full-screen page's own status bar is
+// currently active (a.activeFlash), not just the footer.
+func TestRedraw_MirrorsStatusLineOntoActiveFlash(t *testing.T) {
+	a := &app{
+		header: tview.NewTextView(),
+		table:  tview.NewTable(),
+		footer: tview.NewTextView(),
+	}
+
+	var flashed string
+	a.activeFlash = func(msg string) { flashed = msg }
+
+	a.statusLine = "Created 0 Jira issue(s), 1 failed. Jira returned 401 Unauthorized"
+	a.redraw()
+
+	if flashed != a.statusLine {
+		t.Errorf("expected redraw() to mirror statusLine onto activeFlash, got %q, want %q", flashed, a.statusLine)
+	}
+}
+
+// TestRedraw_NilActiveFlashDoesNotPanic guards the common case ("main" is
+// showing, no full-screen page active) — redraw() must not assume
+// activeFlash is ever set.
+func TestRedraw_NilActiveFlashDoesNotPanic(t *testing.T) {
+	a := &app{
+		header: tview.NewTextView(),
+		table:  tview.NewTable(),
+		footer: tview.NewTextView(),
+	}
+	a.statusLine = "some status"
+	a.redraw() // must not panic with activeFlash == nil
 }
 
 // TestStripDetailColorTags_RemovesOnlyKnownTagsNotUserBrackets guards the

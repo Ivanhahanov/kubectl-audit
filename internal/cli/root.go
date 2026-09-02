@@ -48,7 +48,7 @@ func NewRootCmd() *cobra.Command {
 	// specific commands that actually use it — see addTargetFlags and
 	// friends below — instead of being a blanket persistent flag every
 	// leaf command's --help has to show regardless of relevance.
-	root.PersistentFlags().StringVar(&flagConfig, "config", "", "path to audit.yaml")
+	root.PersistentFlags().StringVar(&flagConfig, "config", "", "path to audit.yaml (default: ~/.kubectl-audit/audit.yaml, if it exists)")
 	// Also genuinely shared: every command hits the same diagnostic
 	// call sites (warnf/debugf in orchestrate.go) regardless of which
 	// leaf command runs. Debug-level detail is off by default (see

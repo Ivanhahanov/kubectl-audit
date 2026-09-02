@@ -198,9 +198,13 @@ func (a *app) createJiraIssues() {
 			a.tv.QueueUpdateDraw(func() {
 				now := time.Now()
 				created, failed := 0, 0
+				var firstErr error
 				for _, res := range results {
 					if res.err != nil {
 						failed++
+						if firstErr == nil {
+							firstErr = res.err
+						}
 						continue
 					}
 					e := a.state.Entries[res.id]
@@ -211,6 +215,14 @@ func (a *app) createJiraIssues() {
 					created++
 				}
 				a.statusLine = fmt.Sprintf("Created %d Jira issue(s), %d failed.", created, failed)
+				if firstErr != nil {
+					// The actual reason, not just a count — a bare "N
+					// failed" with no explanation was a real reported gap:
+					// a triager watching this from the detail/preview page
+					// (where there's no stderr to check, unlike
+					// `jira-sync`) had no way to find out why.
+					a.statusLine += " " + firstErr.Error()
+				}
 				a.marked = map[string]bool{}
 				a.save()
 				a.refresh()

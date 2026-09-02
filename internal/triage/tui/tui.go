@@ -74,6 +74,16 @@ type app struct {
 	saveErr    error
 	statusLine string // last-action feedback shown in the footer (Jira result, errors, ...)
 
+	// activeFlash is the currently-shown full-screen page's own status-bar
+	// closure (see showFullScreenPage/closeOverlay) — nil when "main" is
+	// showing. redraw() mirrors statusLine into it when set, so an action
+	// whose result arrives asynchronously after the key that triggered it
+	// (createJiraIssues' network call completing later, via
+	// QueueUpdateDraw) still surfaces on whichever page the user is
+	// actually looking at, not just the footer of a "main" page they may
+	// have long since navigated away from.
+	activeFlash func(string)
+
 	// termWidth is the terminal width as of the last redrawTable — tracked
 	// so the SetBeforeDrawFunc hook in Run only recomputes/redraws the
 	// table's column widths when the terminal has actually been resized,

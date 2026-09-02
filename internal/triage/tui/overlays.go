@@ -37,6 +37,11 @@ func (a *app) closeOverlay(name string) {
 	a.pages.RemovePage(name)
 	a.pages.SwitchToPage("main")
 	a.tv.SetFocus(a.table)
+	// No navigation stack (see showFullScreenPage's doc comment) — closing
+	// ANYTHING always lands on "main", so whatever full-screen page's
+	// status bar was active is no longer showing, regardless of which
+	// page name was actually closed.
+	a.activeFlash = nil
 }
 
 // showFullScreenPage replaces the main view with a k9s-style full-screen
@@ -51,7 +56,11 @@ func (a *app) closeOverlay(name string) {
 // popup. closeOverlay(name) (the same one small modals use) returns to the
 // main table; nothing about closing differs between the two, only how the
 // page is built. Returns a flash func a caller can call with a transient
-// message (see openDetail's copy/Jira feedback) — flash("") clears it.
+// message (see openDetail's copy/Jira feedback) — flash("") clears it. Also
+// registered as a.activeFlash (cleared by closeOverlay) so redraw() can
+// mirror a.statusLine onto it too — the fix for an async action (Jira
+// ticket creation completing later, via QueueUpdateDraw) otherwise landing
+// only in "main"'s footer, invisible if the user never left this page.
 func (a *app) showFullScreenPage(name, title, hint string, content tview.Primitive) (flash func(msg string)) {
 	header := tview.NewTextView().SetDynamicColors(true)
 	header.SetBorder(true).SetBorderColor(theme.borderFg)
@@ -67,13 +76,15 @@ func (a *app) showFullScreenPage(name, title, hint string, content tview.Primiti
 
 	a.pages.AddPage(name, layout, true, true)
 	a.tv.SetFocus(content)
-	return func(msg string) {
+	flash = func(msg string) {
 		if msg == "" {
 			status.SetText("")
 			return
 		}
 		status.SetText("[green::b]▸[-:-:-] " + msg)
 	}
+	a.activeFlash = flash
+	return flash
 }
 
 // confirmBulkAction gates any action that would touch more than one

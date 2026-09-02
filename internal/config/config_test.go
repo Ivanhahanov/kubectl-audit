@@ -78,6 +78,60 @@ output:
 	}
 }
 
+// TestLoad_ExpandsHomeTildeInTriagePaths is the fix for the ~/.kubectl-audit/
+// convention: a triage path field starting with "~/" should resolve
+// against the real home directory (Go's os.ReadFile does no shell-style
+// expansion on its own), so an audit.yaml living in ~/.kubectl-audit/ can
+// reference sibling files there without spelling out the full absolute
+// path.
+func TestLoad_ExpandsHomeTildeInTriagePaths(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	path := writeConfig(t, `
+triage:
+  stateFile: ~/.kubectl-audit/triage-state.yaml
+  knowledgeBaseFile: ~/.kubectl-audit/knowledge-base.yaml
+  jira:
+    summaryTemplate: ~/.kubectl-audit/summary.tpl
+    descriptionTemplate: ~/.kubectl-audit/description.tpl
+`)
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	want := func(rel string) string { return filepath.Join(home, rel) }
+	if cfg.Triage.StateFile != want(".kubectl-audit/triage-state.yaml") {
+		t.Errorf("StateFile: got %q", cfg.Triage.StateFile)
+	}
+	if cfg.Triage.KnowledgeBaseFile != want(".kubectl-audit/knowledge-base.yaml") {
+		t.Errorf("KnowledgeBaseFile: got %q", cfg.Triage.KnowledgeBaseFile)
+	}
+	if cfg.Triage.Jira.SummaryTemplate != want(".kubectl-audit/summary.tpl") {
+		t.Errorf("Jira.SummaryTemplate: got %q", cfg.Triage.Jira.SummaryTemplate)
+	}
+	if cfg.Triage.Jira.DescriptionTemplate != want(".kubectl-audit/description.tpl") {
+		t.Errorf("Jira.DescriptionTemplate: got %q", cfg.Triage.Jira.DescriptionTemplate)
+	}
+}
+
+// TestLoad_LeavesNonTildePathsUnchanged guards that ordinary CWD-relative
+// paths (the common case — a project's own checked-in audit.yaml) are
+// completely unaffected by the "~/" expansion.
+func TestLoad_LeavesNonTildePathsUnchanged(t *testing.T) {
+	path := writeConfig(t, `
+triage:
+  knowledgeBaseFile: knowledge-base.yaml
+`)
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Triage.KnowledgeBaseFile != "knowledge-base.yaml" {
+		t.Errorf("expected a plain relative path to be left untouched, got %q", cfg.Triage.KnowledgeBaseFile)
+	}
+}
+
 func TestLoad_ExclusionRequiresReason(t *testing.T) {
 	path := writeConfig(t, `
 exclusions:
