@@ -55,6 +55,9 @@ func newScanCmd() *cobra.Command {
 			if cfg.Output.CSV != "" {
 				fmt.Printf("Findings written to %s (CSV)\n", cfg.Output.CSV)
 			}
+			if cfg.Output.Confluence != "" {
+				fmt.Printf("Report written to %s (Confluence wiki markup)\n", cfg.Output.Confluence)
+			}
 
 			applyFailOnGate(cfg, result)
 			return nil

@@ -74,6 +74,13 @@ output:
   # CSV, one row per finding — for opening in a spreadsheet. Not written
   # unless set (no default path, unlike json/markdown above).
   csv: ""
+  # Confluence Server/Data Center wiki markup, ready to paste into a page
+  # (h2., ||tables||, {expand} blocks, ...). Not written unless set. Cloud's
+  # Storage Format (XHTML/ADF) is a different, unsupported format — see
+  # `kubectl audit template dump --format confluence` for the built-in
+  # template, and confluenceTemplate below to fully replace it.
+  confluence: ""
+  confluenceTemplate: ""
   # Minimum severity that makes `scan`/`rbac analyze` exit 1:
   # none|low|medium|high|critical.
   failOn: high

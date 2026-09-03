@@ -114,6 +114,16 @@ type OutputConfig struct {
 	// Template is a path to a custom report.md.tpl (Go text/template). Empty
 	// uses the embedded default template.
 	Template string `json:"template,omitempty"`
+	// Confluence is a path to write the report as Confluence Server/Data
+	// Center wiki markup (h2., {code}, [text|url], ...) — ready to paste
+	// into a Confluence page. Empty (the default) skips this output
+	// entirely, same convention as CSV above. Cloud's Storage Format
+	// (XHTML/ADF) is a different, unrelated format and out of scope here.
+	Confluence string `json:"confluence,omitempty"`
+	// ConfluenceTemplate is a path to a custom confluence.tpl (Go
+	// text/template) for Confluence output. Empty uses the embedded
+	// default Confluence template — same convention as Template above.
+	ConfluenceTemplate string `json:"confluenceTemplate,omitempty"`
 	// ReportView selects how the Markdown report's Findings section(s) are
 	// structured: "check" (default) groups findings by check/policy ID —
 	// each check's title/remediation shown once, followed by the resources

@@ -19,11 +19,22 @@ import (
 //go:embed templates/default.md.tpl
 var defaultTemplateSource string
 
+//go:embed templates/confluence.tpl
+var confluenceTemplateSource string
+
 // DefaultTemplate returns the built-in report.md.tpl source, e.g. for
 // `kubectl-audit template dump` to give users a starting point to
 // customize.
 func DefaultTemplate() string {
 	return defaultTemplateSource
+}
+
+// DefaultConfluenceTemplate returns the built-in confluence.tpl source
+// (Confluence Server/Data Center wiki markup), e.g. for `kubectl-audit
+// template dump --format confluence` to give users a starting point to
+// customize.
+func DefaultConfluenceTemplate() string {
+	return confluenceTemplateSource
 }
 
 // SeverityGroup is a bucket of findings sharing one severity, in the order
@@ -669,4 +680,56 @@ func RenderMarkdown(r Result, tplSource string) (string, error) {
 		return "", fmt.Errorf("executing report template: %w", err)
 	}
 	return buf.String(), nil
+}
+
+// RenderConfluence renders the report as Confluence Server/Data Center
+// wiki markup instead of Markdown — same TemplateData, a different .tpl
+// and funcMap (see confluenceTemplateFuncs). An empty tplSource uses the
+// embedded default template; a non-empty one (e.g. loaded from
+// --confluence-template) fully replaces it.
+func RenderConfluence(r Result, tplSource string) (string, error) {
+	if tplSource == "" {
+		tplSource = confluenceTemplateSource
+	}
+	tpl, err := template.New("confluence").Funcs(confluenceTemplateFuncs()).Parse(tplSource)
+	if err != nil {
+		return "", fmt.Errorf("parsing confluence template: %w", err)
+	}
+	var buf bytes.Buffer
+	if err := tpl.Execute(&buf, newTemplateData(r)); err != nil {
+		return "", fmt.Errorf("executing confluence template: %w", err)
+	}
+	return buf.String(), nil
+}
+
+// confluenceTemplateFuncs is templateFuncs() adapted for Confluence wiki
+// markup: reuses every format-agnostic helper as-is (escapeCell/orDash/
+// join/minus/rfc3339/bindingLabels/crossRefs/detectedVia/failingControls/
+// statusNotes all return plain or already-escaped strings, no Markdown
+// syntax baked in), drops slug (Confluence's own {toc} macro builds
+// anchors/navigation natively — no hand-built anchor scheme needed), and
+// adds severityStatus for the one Confluence-only enhancement with no
+// Markdown equivalent: a {status:...} colour lozenge next to each check
+// heading.
+func confluenceTemplateFuncs() template.FuncMap {
+	fns := templateFuncs()
+	delete(fns, "slug")
+	fns["severityStatus"] = severityStatus
+	return fns
+}
+
+// severityStatus renders a Confluence {status} macro for a severity —
+// colour-coded so a check's risk level is visible at a glance without
+// reading the heading text.
+func severityStatus(s findings.Severity) string {
+	colour := "Grey"
+	switch s {
+	case findings.SeverityCritical, findings.SeverityHigh:
+		colour = "Red"
+	case findings.SeverityMedium:
+		colour = "Yellow"
+	case findings.SeverityLow:
+		colour = "Blue"
+	}
+	return fmt.Sprintf("{status:colour=%s|title=%s}", colour, s)
 }

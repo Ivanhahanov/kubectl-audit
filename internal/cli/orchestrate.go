@@ -109,11 +109,17 @@ func loadEffectiveConfig(cmd *cobra.Command) (*config.AuditConfig, error) {
 	if flagOutputCSV != "" {
 		cfg.Output.CSV = flagOutputCSV
 	}
+	if flagOutputConfluence != "" {
+		cfg.Output.Confluence = flagOutputConfluence
+	}
 	if flagFailOn != "" {
 		cfg.Output.FailOn = flagFailOn
 	}
 	if flagReportTemplate != "" {
 		cfg.Output.Template = flagReportTemplate
+	}
+	if flagConfluenceTemplate != "" {
+		cfg.Output.ConfluenceTemplate = flagConfluenceTemplate
 	}
 	if flagReportView != "" {
 		cfg.Output.ReportView = flagReportView
@@ -683,6 +689,15 @@ func writeOutputs(cfg *config.AuditConfig, result report.Result) error {
 	if cfg.Output.CSV != "" {
 		if err := report.WriteCSV(cfg.Output.CSV, result); err != nil {
 			return fmt.Errorf("writing %s: %w", cfg.Output.CSV, err)
+		}
+	}
+	if cfg.Output.Confluence != "" {
+		tplSource, err := loadTemplateFile(cfg.Output.ConfluenceTemplate)
+		if err != nil {
+			return err
+		}
+		if err := report.WriteConfluence(cfg.Output.Confluence, result, tplSource); err != nil {
+			return fmt.Errorf("writing %s: %w", cfg.Output.Confluence, err)
 		}
 	}
 	return nil

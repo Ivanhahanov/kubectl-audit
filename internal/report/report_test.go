@@ -608,3 +608,79 @@ func TestRenderMarkdownCustomTemplate(t *testing.T) {
 		t.Errorf("expected the custom template to fully replace the default output, got:\n%s", md)
 	}
 }
+
+// TestRenderConfluence_UsesWikiMarkupNotMarkdown is the smoke test for the
+// Confluence Server/Data Center output: real Confluence wiki-markup syntax
+// (h1./h2./h3., ||table headers||, *bold*) must appear, and the equivalent
+// Markdown constructs (##, **bold**, | table |) must not — the exact
+// rendering mismatch this format exists to avoid (see the Jira Server/DC
+// wiki-markup work this format is modeled on).
+func TestRenderConfluence_UsesWikiMarkupNotMarkdown(t *testing.T) {
+	r := report.Result{
+		GeneratedAt: time.Now(),
+		Target:      "test",
+		Findings: []findings.Finding{
+			{ID: "1", PolicyID: "workload.x", Title: "Bad thing", Severity: findings.SeverityHigh, Category: "workload-security",
+				Resource: findings.ResourceRef{Kind: "Pod", Name: "p", Namespace: "default"}, Message: "bad thing happened", Remediation: "fix it"},
+		},
+	}
+	out, err := report.RenderConfluence(r, "")
+	if err != nil {
+		t.Fatalf("RenderConfluence: %v", err)
+	}
+	for _, want := range []string{"h1. Kubernetes Security Audit Report", "h2. Summary", "h3.", "||Policy ID||Title||Category||Affected||", "*Category:* workload-security", "bad thing happened", "{toc"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected Confluence wiki markup %q, got:\n%s", want, out)
+		}
+	}
+	for _, notWant := range []string{"## ", "**Category:**", "| Policy ID | Title", "<details>", "<summary>", `<a id="`} {
+		if strings.Contains(out, notWant) {
+			t.Errorf("expected no Markdown/HTML syntax %q in Confluence output, got:\n%s", notWant, out)
+		}
+	}
+}
+
+// TestRenderConfluence_CollapsesLargeCheckWithExpandMacro is the Confluence
+// equivalent of TestRenderMarkdown_CollapsesLargeCheckByDefault — {expand}
+// is Confluence's collapsible-section macro, the direct analog of
+// Markdown's <details>.
+func TestRenderConfluence_CollapsesLargeCheckWithExpandMacro(t *testing.T) {
+	mk := func(ns string, n int) findings.Finding {
+		return findings.Finding{
+			ID: ns, PolicyID: "workload.x", Title: "Bad thing", Severity: findings.SeverityHigh, Category: "workload-security",
+			Resource: findings.ResourceRef{Kind: "Pod", Name: "p", Namespace: ns}, Message: fmt.Sprintf("finding number %d", n),
+		}
+	}
+	var fs []findings.Finding
+	for i := 0; i < 9; i++ { // > checkCollapseThreshold (8)
+		fs = append(fs, mk(fmt.Sprintf("tenant-%d", i), i))
+	}
+	r := report.Result{GeneratedAt: time.Now(), Target: "test", Findings: fs}
+	out, err := report.RenderConfluence(r, "")
+	if err != nil {
+		t.Fatalf("RenderConfluence: %v", err)
+	}
+	if !strings.Contains(out, "{expand:9 findings") {
+		t.Errorf("expected a large check wrapped in an {expand} macro, got:\n%s", out)
+	}
+	for i := 0; i < 9; i++ {
+		want := fmt.Sprintf("finding number %d", i)
+		if !strings.Contains(out, want) {
+			t.Errorf("expected every finding still present behind {expand}, missing %q, got:\n%s", want, out)
+		}
+	}
+}
+
+// TestRenderConfluence_CustomTemplate mirrors
+// TestRenderMarkdownCustomTemplate: --confluence-template must fully
+// replace the built-in template.
+func TestRenderConfluence_CustomTemplate(t *testing.T) {
+	r := report.Result{GeneratedAt: time.Now(), Target: "my-cluster"}
+	out, err := report.RenderConfluence(r, "Custom report for {{ .Target }}\n")
+	if err != nil {
+		t.Fatalf("RenderConfluence: %v", err)
+	}
+	if out != "Custom report for my-cluster\n" {
+		t.Errorf("expected the custom template to fully replace the default output, got:\n%s", out)
+	}
+}

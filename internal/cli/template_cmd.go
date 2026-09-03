@@ -20,21 +20,32 @@ func newTemplateCmd() *cobra.Command {
 
 func newTemplateDumpCmd() *cobra.Command {
 	var out string
+	var format string
 	cmd := &cobra.Command{
 		Use:   "dump",
-		Short: "Write the built-in report.md.tpl to disk, as a starting point for --report-template customization.",
+		Short: "Write a built-in report template to disk, as a starting point for --report-template/--confluence-template customization.",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			var src string
+			switch format {
+			case "", "md":
+				src = report.DefaultTemplate()
+			case "confluence":
+				src = report.DefaultConfluenceTemplate()
+			default:
+				return fmt.Errorf("unknown --format %q: want md or confluence", format)
+			}
 			if out == "" {
-				fmt.Print(report.DefaultTemplate())
+				fmt.Print(src)
 				return nil
 			}
-			if err := os.WriteFile(out, []byte(report.DefaultTemplate()), 0o644); err != nil {
+			if err := os.WriteFile(out, []byte(src), 0o644); err != nil {
 				return fmt.Errorf("writing %s: %w", out, err)
 			}
-			fmt.Printf("Wrote default template to %s\n", out)
+			fmt.Printf("Wrote %s template to %s\n", format, out)
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&out, "out", "", "file to write (default: stdout)")
+	cmd.Flags().StringVar(&format, "format", "md", "which built-in template to dump: md|confluence")
 	return cmd
 }
