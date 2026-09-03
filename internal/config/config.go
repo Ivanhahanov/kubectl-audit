@@ -124,6 +124,17 @@ type OutputConfig struct {
 	// text/template) for Confluence output. Empty uses the embedded
 	// default Confluence template — same convention as Template above.
 	ConfluenceTemplate string `json:"confluenceTemplate,omitempty"`
+	// ReportLang selects which built-in Markdown template renders the
+	// report's section labels/headings: "en" (default) or "ru" — a
+	// ready-made Russian translation of the report skeleton (headings,
+	// "Category"/"Remediation"/... labels), not a general i18n system. A
+	// finding's own Title/Message/Remediation only change language if a
+	// Russian knowledge base (triage.knowledgeBaseFile — the bundled
+	// default already is one) overrides them; ReportLang only picks the
+	// surrounding template. Ignored when Template is set — a custom
+	// template always fully replaces the built-in one, same precedent as
+	// every other --report-template override.
+	ReportLang string `json:"reportLang,omitempty"`
 	// ReportView selects how the Markdown report's Findings section(s) are
 	// structured: "check" (default) groups findings by check/policy ID —
 	// each check's title/remediation shown once, followed by the resources
@@ -184,6 +195,9 @@ func (o OutputConfig) GroupByNamePatternEnabled() bool {
 
 // ValidReportViews are the accepted values for ReportView.
 var ValidReportViews = map[string]bool{"check": true, "namespace": true, "both": true}
+
+// ValidReportLangs are the accepted values for ReportLang.
+var ValidReportLangs = map[string]bool{"en": true, "ru": true}
 
 // ComplianceConfig selects which requirement frameworks to score against
 // (e.g. "cis", "fstec", "nsa" — see compliance-mappings/).
@@ -388,6 +402,7 @@ func Default() *AuditConfig {
 			Markdown:                "report.md",
 			FailOn:                  "high",
 			ReportView:              "check",
+			ReportLang:              "en",
 			NamespaceGroupThreshold: 3,
 		},
 		Compliance: ComplianceConfig{

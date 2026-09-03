@@ -91,6 +91,13 @@ output:
   # through triage.knowledgeBaseFile too (see below) — an org's own wording
   # shows up here the same way it already does in triage/Jira, no separate
   # config needed.
+  # Language for the built-in Markdown template's own headings/labels: en
+  # (default) or ru. Not a general i18n system — one ready-made Russian
+  # translation of the report skeleton (see `kubectl audit template dump
+  # --format ru`). A finding's own Title/Message/Remediation only change
+  # language via triage.knowledgeBaseFile (the bundled default already is a
+  # Russian one). Ignored when `template` above is set.
+  reportLang: en
   # How the Markdown report's Findings section(s) are structured:
   # check:     group by check/policy ID, title/remediation shown once per
   #            check followed by the resources it fired on (default).

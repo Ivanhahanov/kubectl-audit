@@ -684,3 +684,58 @@ func TestRenderConfluence_CustomTemplate(t *testing.T) {
 		t.Errorf("expected the custom template to fully replace the default output, got:\n%s", out)
 	}
 }
+
+// TestRenderMarkdown_RussianTemplate is the Part C smoke test: the report
+// skeleton (headings, labels) renders in Russian, and severity values
+// translate via severityRU rather than leaking the raw English constant.
+func TestRenderMarkdown_RussianTemplate(t *testing.T) {
+	r := report.Result{
+		GeneratedAt: time.Now(),
+		Target:      "test",
+		Findings: []findings.Finding{
+			{ID: "1", PolicyID: "workload.x", Title: "Bad thing", Severity: findings.SeverityHigh, Category: "workload-security",
+				Resource: findings.ResourceRef{Kind: "Pod", Name: "p", Namespace: "default"}, Message: "bad thing happened"},
+		},
+	}
+	md, err := report.RenderMarkdown(r, report.RussianTemplate())
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
+	for _, want := range []string{"Отчёт аудита безопасности Kubernetes", "## Сводка", "### Высокий", "Затронутые ресурсы", "bad thing happened"} {
+		if !strings.Contains(md, want) {
+			t.Errorf("expected Russian template output %q, got:\n%s", want, md)
+		}
+	}
+	if strings.Contains(md, "### HIGH") {
+		t.Errorf("expected the severity heading translated, not the raw English constant, got:\n%s", md)
+	}
+}
+
+// TestRenderMarkdown_RussianTemplate_KnowledgeBaseFieldsRenderAsTemplates
+// is the exact scenario the resolveCheckKB templating bugfix guards: the
+// bundled starter-ru.yaml knowledge base writes Remediation as a Go
+// template referencing {{.Finding.Resource...}} — it must render
+// substituted, not leak literal "{{...}}" syntax into the report.
+func TestRenderMarkdown_RussianTemplate_KnowledgeBaseFieldsRenderAsTemplates(t *testing.T) {
+	r := report.Result{
+		GeneratedAt: time.Now(),
+		Target:      "test",
+		Findings: []findings.Finding{
+			{ID: "1", PolicyID: "workload.x", Title: "Bad thing", Severity: findings.SeverityHigh, Category: "workload-security",
+				Resource: findings.ResourceRef{Kind: "Deployment", Name: "app", Namespace: "ns"}, Message: "bad thing happened"},
+		},
+		KnowledgeBase: map[string]findings.KnowledgeBaseEntry{
+			"workload.x": {Remediation: `Почините {{.Finding.Resource.Kind}} "{{.Finding.Resource.Name}}".`},
+		},
+	}
+	md, err := report.RenderMarkdown(r, report.RussianTemplate())
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
+	if !strings.Contains(md, `Почините Deployment "app".`) {
+		t.Errorf("expected the knowledge-base template rendered against the finding, got:\n%s", md)
+	}
+	if strings.Contains(md, "{{.Finding") {
+		t.Errorf("expected no literal Go template syntax leaked into the report, got:\n%s", md)
+	}
+}

@@ -22,6 +22,9 @@ var defaultTemplateSource string
 //go:embed templates/confluence.tpl
 var confluenceTemplateSource string
 
+//go:embed templates/ru.md.tpl
+var russianTemplateSource string
+
 // DefaultTemplate returns the built-in report.md.tpl source, e.g. for
 // `kubectl-audit template dump` to give users a starting point to
 // customize.
@@ -35,6 +38,50 @@ func DefaultTemplate() string {
 // customize.
 func DefaultConfluenceTemplate() string {
 	return confluenceTemplateSource
+}
+
+// RussianTemplate returns the built-in ru.md.tpl source — the same report
+// structure as the default (English) Markdown template, with Russian
+// section labels, e.g. for `kubectl-audit template dump --format ru` to
+// give users a starting point to customize. Selected via --report-lang ru
+// (config output.reportLang) when --report-template isn't set.
+func RussianTemplate() string {
+	return russianTemplateSource
+}
+
+// severityRU translates a Severity's built-in English constant
+// ("CRITICAL", ...) into its Russian equivalent, for ru.md.tpl. Falls back
+// to the raw value for anything unrecognized (defensive only — the 5
+// findings.Severity constants are exhaustive today).
+func severityRU(s findings.Severity) string {
+	switch s {
+	case findings.SeverityCritical:
+		return "Критический"
+	case findings.SeverityHigh:
+		return "Высокий"
+	case findings.SeverityMedium:
+		return "Средний"
+	case findings.SeverityLow:
+		return "Низкий"
+	case findings.SeverityInfo:
+		return "Информационный"
+	default:
+		return string(s)
+	}
+}
+
+// unitRU translates a RepeatGroup.Unit ("namespaces" or "objects", the
+// only two values groupAffectedResources ever produces) for ru.md.tpl.
+// Falls back to the raw value for anything unrecognized.
+func unitRU(unit string) string {
+	switch unit {
+	case "namespaces":
+		return "пространствах имён"
+	case "objects":
+		return "объектах"
+	default:
+		return unit
+	}
 }
 
 // SeverityGroup is a bucket of findings sharing one severity, in the order
@@ -355,25 +402,37 @@ func groupByCheck(sorted []findings.Finding, namespaceGroupThreshold int, byPatt
 // triage.Resolve uses (internal/triage/knowledgebase.go): f.KnowledgeBase
 // (inline, set via a VAP's kb-* annotations) first, then kb[f.PolicyID] (an
 // external triage.knowledgeBaseFile) layered on top, external always wins
-// field-by-field. Unlike triage.Resolve, deliberately no Go-template
-// rendering of the override fields: these are check-level values (the same
-// for every finding under the policy, taken from one representative
-// finding), not per-finding, so there's no single finding to template
-// against without being arbitrary. No "(org)"/"(knowledge base)" suffix is
-// added anywhere — overridden content blends in under the same plain
-// labels as default content, matching the triage TUI's existing detail
-// view.
+// field-by-field. Each field is rendered as a Go template against
+// {{.Finding}} (f — the same representative finding already hoisted for
+// Title/CIS/Remediation elsewhere in groupByCheck), same as
+// triage.Resolve/renderKBField: the bundled starter-ru.yaml knowledge base
+// (and any real-world custom one) writes Remediation as a template — e.g.
+// "...roles bound to {{.Finding.Resource.Kind}} {{.Finding.Resource.Name}}"
+// — so skipping rendering here would leak literal "{{...}}" syntax into
+// the report. A template parse/exec error leaves that field at whatever it
+// already was (the tool's default, or an earlier layer's value) rather
+// than showing broken syntax or failing the whole report — same
+// graceful-degradation behavior as triage.Resolve. No "(org)"/"(knowledge
+// base)" suffix is added anywhere — overridden content blends in under the
+// same plain labels as default content, matching the triage TUI's existing
+// detail view.
 func resolveCheckKB(f findings.Finding, kb map[string]findings.KnowledgeBaseEntry) (title, category, remediation string) {
 	title, category, remediation = f.Title, f.Category, f.Remediation
 	apply := func(e findings.KnowledgeBaseEntry) {
 		if e.Title != "" {
-			title = e.Title
+			if rendered, err := renderKBField("kb-title", e.Title, f); err == nil {
+				title = rendered
+			}
 		}
 		if e.Category != "" {
-			category = e.Category
+			if rendered, err := renderKBField("kb-category", e.Category, f); err == nil {
+				category = rendered
+			}
 		}
 		if e.Remediation != "" {
-			remediation = e.Remediation
+			if rendered, err := renderKBField("kb-remediation", e.Remediation, f); err == nil {
+				remediation = rendered
+			}
 		}
 	}
 	if f.KnowledgeBase != nil {
@@ -383,6 +442,23 @@ func resolveCheckKB(f findings.Finding, kb map[string]findings.KnowledgeBaseEntr
 		apply(e)
 	}
 	return title, category, remediation
+}
+
+// renderKBField parses and executes tplSource as a Go template against
+// {{.Finding}} — mirrors internal/triage/knowledgebase.go's renderKBField
+// (kept as a separate copy, not shared: report can't import triage, since
+// triage already imports report for NormalizedMessage/MessageBucketKey,
+// and the reverse would cycle).
+func renderKBField(name, tplSource string, f findings.Finding) (string, error) {
+	tpl, err := template.New(name).Funcs(templateFuncs()).Parse(tplSource)
+	if err != nil {
+		return "", fmt.Errorf("parsing %s: %w", name, err)
+	}
+	var buf bytes.Buffer
+	if err := tpl.Execute(&buf, struct{ Finding findings.Finding }{f}); err != nil {
+		return "", fmt.Errorf("executing %s: %w", name, err)
+	}
+	return buf.String(), nil
 }
 
 // groupByMessage buckets one check's findings by MessageBucketKey,
@@ -586,6 +662,8 @@ func templateFuncs() template.FuncMap {
 		"join":       func(elems []string, sep string) string { return strings.Join(elems, sep) },
 		"minus":      func(a, b int) int { return a - b },
 		"rfc3339":    func(t time.Time) string { return t.Format(time.RFC3339) },
+		"severityRU": severityRU,
+		"unitRU":     unitRU,
 		// bindingLabels names the actual Binding object(s) granting each
 		// row's Permissions, not just the Role/ClusterRole they point to —
 		// a shared ClusterRole can be bound by several different

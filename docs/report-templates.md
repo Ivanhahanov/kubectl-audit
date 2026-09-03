@@ -108,6 +108,28 @@ for the full field list if you're customizing that part of the template.
 Save it and run `kubectl audit scan --report-template minimal.md.tpl` — `report.md` will contain
 only this, nothing else from the default template.
 
+## Russian report template
+
+`--report-lang ru` (or `output.reportLang: ru`) switches the built-in Markdown template to
+`internal/report/templates/ru.md.tpl` — the same structure and anchors as `default.md.tpl`,
+with the report's own headings/labels ("Категория", "Рекомендация", "Затронутые ресурсы", ...)
+in Russian instead of English. This is one static translated template, not a general i18n
+system — it only changes the surrounding skeleton.
+
+A finding's own Title/Message/Remediation stay whatever language the policy/analyzer that
+produced it uses, unless a knowledge base overrides them (see [Knowledge
+base]({{ '/triage/#knowledge-base-your-organizations-own-ticket-content' | relative_url }})) —
+the bundled default knowledge base is already written in Russian, so `--report-lang ru` with no
+other configuration already gives fully Russian check titles/remediations, not just the
+skeleton. Ignored when `--report-template` is set — same precedent as everywhere else a custom
+template fully replaces a built-in one.
+
+```sh
+kubectl audit scan --report-lang ru
+# or dump it as a starting point to customize:
+kubectl audit template dump --format ru --out report.ru.md.tpl
+```
+
 ## Confluence output
 
 `--output-confluence <file>` (or `output.confluence` in `audit.yaml`) writes the same report as

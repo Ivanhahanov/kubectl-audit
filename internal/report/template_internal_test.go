@@ -82,3 +82,40 @@ func TestResolveCheckKB_ExternalFileOverridesInlineFinding(t *testing.T) {
 		t.Errorf("expected Category to fall back to the inline value when the external entry leaves it unset, got %q", category)
 	}
 }
+
+// TestResolveCheckKB_RendersFieldsAsTemplates is the regression test for a
+// real bug: the bundled starter-ru.yaml knowledge base (and any real-world
+// custom one) writes Remediation as a Go template referencing
+// {{.Finding.Resource...}} — resolveCheckKB used to copy the field
+// verbatim, so the report showed literal "{{.Finding.Resource.Name}}"
+// syntax instead of the substituted value. Fields must render against the
+// representative finding, same as triage.Resolve.
+func TestResolveCheckKB_RendersFieldsAsTemplates(t *testing.T) {
+	f := findings.Finding{
+		PolicyID: "policy.a",
+		Resource: findings.ResourceRef{Kind: "Deployment", Name: "app", Namespace: "ns"},
+	}
+	kb := map[string]findings.KnowledgeBaseEntry{
+		"policy.a": {Remediation: `Fix {{.Finding.Resource.Kind}} "{{.Finding.Resource.Name}}" in {{.Finding.Resource.Namespace}}.`},
+	}
+	_, _, remediation := resolveCheckKB(f, kb)
+	want := `Fix Deployment "app" in ns.`
+	if remediation != want {
+		t.Errorf("expected the template rendered against the finding, got %q, want %q", remediation, want)
+	}
+}
+
+// TestResolveCheckKB_TemplateErrorFallsBackToPreviousValue guards the
+// graceful-degradation behavior (matching triage.Resolve): a broken
+// template in one KB field must not leak "{{...}}" syntax into the report
+// — it falls back to whatever that field already was, not to blank.
+func TestResolveCheckKB_TemplateErrorFallsBackToPreviousValue(t *testing.T) {
+	f := findings.Finding{PolicyID: "policy.a", Remediation: "Default remediation"}
+	kb := map[string]findings.KnowledgeBaseEntry{
+		"policy.a": {Remediation: "{{.Finding.NoSuchField}}"}, // invalid — Finding has no NoSuchField
+	}
+	_, _, remediation := resolveCheckKB(f, kb)
+	if remediation != "Default remediation" {
+		t.Errorf("expected a broken template to fall back to the previous value, got %q", remediation)
+	}
+}

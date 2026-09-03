@@ -29,10 +29,12 @@ func newTemplateDumpCmd() *cobra.Command {
 			switch format {
 			case "", "md":
 				src = report.DefaultTemplate()
+			case "ru":
+				src = report.RussianTemplate()
 			case "confluence":
 				src = report.DefaultConfluenceTemplate()
 			default:
-				return fmt.Errorf("unknown --format %q: want md or confluence", format)
+				return fmt.Errorf("unknown --format %q: want md, ru, or confluence", format)
 			}
 			if out == "" {
 				fmt.Print(src)
@@ -46,6 +48,6 @@ func newTemplateDumpCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&out, "out", "", "file to write (default: stdout)")
-	cmd.Flags().StringVar(&format, "format", "md", "which built-in template to dump: md|confluence")
+	cmd.Flags().StringVar(&format, "format", "md", "which built-in template to dump: md|ru|confluence")
 	return cmd
 }

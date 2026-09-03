@@ -121,6 +121,9 @@ func loadEffectiveConfig(cmd *cobra.Command) (*config.AuditConfig, error) {
 	if flagConfluenceTemplate != "" {
 		cfg.Output.ConfluenceTemplate = flagConfluenceTemplate
 	}
+	if flagReportLang != "" {
+		cfg.Output.ReportLang = flagReportLang
+	}
 	if flagReportView != "" {
 		cfg.Output.ReportView = flagReportView
 	}
@@ -136,6 +139,9 @@ func loadEffectiveConfig(cmd *cobra.Command) (*config.AuditConfig, error) {
 	}
 	if !config.ValidReportViews[cfg.Output.ReportView] {
 		return nil, fmt.Errorf("invalid --report-view %q: must be one of check, namespace, both", cfg.Output.ReportView)
+	}
+	if !config.ValidReportLangs[cfg.Output.ReportLang] {
+		return nil, fmt.Errorf("invalid --report-lang %q: must be one of en, ru", cfg.Output.ReportLang)
 	}
 	if len(flagFrameworks) > 0 {
 		cfg.Compliance.Frameworks = splitCommaList(flagFrameworks)
@@ -681,6 +687,12 @@ func writeOutputs(cfg *config.AuditConfig, result report.Result) error {
 		tplSource, err := loadTemplateFile(cfg.Output.Template)
 		if err != nil {
 			return err
+		}
+		// ReportLang only picks a built-in template — an explicit
+		// --report-template always fully replaces the default, same
+		// precedent as --confluence-template below.
+		if tplSource == "" && cfg.Output.ReportLang == "ru" {
+			tplSource = report.RussianTemplate()
 		}
 		if err := report.WriteMarkdown(cfg.Output.Markdown, result, tplSource); err != nil {
 			return fmt.Errorf("writing %s: %w", cfg.Output.Markdown, err)
