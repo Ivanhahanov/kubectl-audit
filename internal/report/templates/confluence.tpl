@@ -70,14 +70,14 @@ h2. {{ .Title }} Compliance (v{{ .Version }})
 {{- $failing := failingControls . }}
 {{- if $failing }}
 
-h3. Failing controls — affected resources
-
+{expand:Failing controls — affected resources ({{ len $failing }})}
 Full detail (message, remediation) for each of these is in *Findings* below, grouped by check;
 this just shows which resources make each control fail.
 {{ range $failing }}
 h4. {{ .Control.ID }} — {{ escapeCell .Control.Title }}
 {{ range .Findings }}* *[{{ .Severity }}]* {{ .Resource.String }} — {{"{{"}}{{ .PolicyID }}{{"}}"}}
 {{ end }}{{ end -}}
+{expand}
 {{- end }}
 {{ end -}}
 {{- if .ConsolidatedSummary }}
@@ -126,7 +126,9 @@ h2. Findings
 No findings.
 {{- else -}}
 {{ range .FindingsBySeverity }}
-h3. {{ severityStatus .Severity }} {{ .Severity }} ({{ len .Findings }})
+h3. {{ .Severity }} ({{ len .Findings }})
+
+{{ severityStatus .Severity }}
 
 ||Policy ID||Title||Category||Affected||
 {{- range .Checks }}
@@ -144,12 +146,14 @@ h4. {{ .PolicyID }} — {{ .Title }}
 {expand:{{ len .Findings }} findings — click to expand}
 {{ end }}
 {{ range .MessageGroups }}
-_{{ .Message }}_
+{{ $msg := .Message }}{{ if eq (len .Rows) 1 }}{{ range .Rows }}{{ if .Repeat }}_{{ $msg }}_ — *{{ .Repeat.Kind }}/{{ escapeCell .Repeat.NameTemplate }}* — repeated identically across *{{ .Repeat.Count }} {{ .Repeat.Unit }}*: {{ join .Repeat.Examples ", " }}{{ if .Repeat.Truncated }} (+{{ minus .Repeat.Count (len .Repeat.Examples) }} more){{ end }}
+{{ else }}_{{ $msg }}_ — {{ escapeCell .Finding.Resource.Kind }}/{{ escapeCell .Finding.Resource.Name }}{{ if and .Finding.Source $.MultipleSources }} ({{"{{"}}{{ .Finding.Source }}{{"}}"}}){{ end }}{{ if .Finding.Resource.Namespace }} ({{ escapeCell .Finding.Resource.Namespace }}){{ end }}
+{{ end }}{{ end }}{{ else }}_{{ .Message }}_
 
 ||Resource||Namespace||
 {{ range .Rows }}{{ if .Repeat }}|*{{ .Repeat.Kind }}/{{ escapeCell .Repeat.NameTemplate }}* — repeated identically across *{{ .Repeat.Count }} {{ .Repeat.Unit }}*: {{ join .Repeat.Examples ", " }}{{ if .Repeat.Truncated }} (+{{ minus .Repeat.Count (len .Repeat.Examples) }} more){{ end }}|—|
 {{ else }}|{{ escapeCell .Finding.Resource.Kind }}/{{ escapeCell .Finding.Resource.Name }}{{ if and .Finding.Source $.MultipleSources }} ({{"{{"}}{{ .Finding.Source }}{{"}}"}}){{ end }}|{{ orDash (escapeCell .Finding.Resource.Namespace) }}|
-{{ end }}{{ end }}
+{{ end }}{{ end }}{{ end }}
 {{ end }}
 {{- if .Collapsible }}
 

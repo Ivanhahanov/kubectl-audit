@@ -113,7 +113,8 @@ Application components get no exception and are checked at full strength.
 {{- $failing := failingControls . }}
 {{- if $failing }}
 
-### Failing controls — affected resources
+<details>
+<summary>Failing controls — affected resources ({{ len $failing }}) — click to expand</summary>
 
 Full detail (message, remediation) for each of these is in **Findings** below, grouped by check;
 this just shows which resources make each control fail.
@@ -121,6 +122,8 @@ this just shows which resources make each control fail.
 #### {{ .Control.ID }} — {{ escapeCell .Control.Title }}
 {{ range .Findings }}- **[{{ .Severity }}]** {{ .Resource.String }} — `{{ .PolicyID }}`
 {{ end }}{{ end -}}
+
+</details>
 {{- end }}
 {{ end -}}
 {{- if .ConsolidatedSummary }}
@@ -205,13 +208,15 @@ No findings.
 <summary>{{ len .Findings }} findings — click to expand</summary>
 {{ end }}
 {{ range .MessageGroups }}
-  _{{ .Message }}_
+{{ $msg := .Message }}{{ if eq (len .Rows) 1 }}{{ range .Rows }}{{ if .Repeat }}  _{{ $msg }}_ — **{{ .Repeat.Kind }}/{{ escapeCell .Repeat.NameTemplate }}** — repeated identically across **{{ .Repeat.Count }} {{ .Repeat.Unit }}**: {{ join .Repeat.Examples ", " }}{{ if .Repeat.Truncated }} (+{{ minus .Repeat.Count (len .Repeat.Examples) }} more){{ end }}
+{{ else }}  _{{ $msg }}_ — {{ escapeCell .Finding.Resource.Kind }}/{{ escapeCell .Finding.Resource.Name }}{{ if and .Finding.Source $.MultipleSources }} (`{{ .Finding.Source }}`){{ end }}{{ if .Finding.Resource.Namespace }} ({{ escapeCell .Finding.Resource.Namespace }}){{ end }}
+{{ end }}{{ end }}{{ else }}  _{{ .Message }}_
 
   | Resource | Namespace |
   |---|---|
 {{ range .Rows }}{{ if .Repeat }}  | **{{ .Repeat.Kind }}/{{ escapeCell .Repeat.NameTemplate }}** — repeated identically across **{{ .Repeat.Count }} {{ .Repeat.Unit }}**: {{ join .Repeat.Examples ", " }}{{ if .Repeat.Truncated }} (+{{ minus .Repeat.Count (len .Repeat.Examples) }} more){{ end }} | — |
 {{ else }}  | {{ escapeCell .Finding.Resource.Kind }}/{{ escapeCell .Finding.Resource.Name }}{{ if and .Finding.Source $.MultipleSources }} (`{{ .Finding.Source }}`){{ end }} | {{ orDash (escapeCell .Finding.Resource.Namespace) }} |
-{{ end }}{{ end }}
+{{ end }}{{ end }}{{ end }}
 {{ end }}
 {{- if .Collapsible }}
 

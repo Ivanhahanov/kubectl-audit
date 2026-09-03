@@ -114,7 +114,8 @@ NetworkPolicy были доступны для наблюдения в рамк�
 {{- $failing := failingControls . }}
 {{- if $failing }}
 
-### Невыполненные требования — затронутые ресурсы
+<details>
+<summary>Невыполненные требования — затронутые ресурсы ({{ len $failing }}) — нажмите, чтобы развернуть</summary>
 
 Полная информация (сообщение, рекомендация) по каждому из них — в разделе **Находки** ниже,
 сгруппированная по проверке; здесь только показано, какие ресурсы приводят к невыполнению
@@ -123,6 +124,8 @@ NetworkPolicy были доступны для наблюдения в рамк�
 #### {{ .Control.ID }} — {{ escapeCell .Control.Title }}
 {{ range .Findings }}- **[{{ severityRU .Severity }}]** {{ .Resource.String }} — `{{ .PolicyID }}`
 {{ end }}{{ end -}}
+
+</details>
 {{- end }}
 {{ end -}}
 {{- if .ConsolidatedSummary }}
@@ -208,13 +211,15 @@ NetworkPolicy были доступны для наблюдения в рамк�
 <summary>{{ len .Findings }} находок — нажмите, чтобы развернуть</summary>
 {{ end }}
 {{ range .MessageGroups }}
-  _{{ .Message }}_
+{{ $msg := .Message }}{{ if eq (len .Rows) 1 }}{{ range .Rows }}{{ if .Repeat }}  _{{ $msg }}_ — **{{ .Repeat.Kind }}/{{ escapeCell .Repeat.NameTemplate }}** — повторяется идентично в **{{ .Repeat.Count }} {{ unitRU .Repeat.Unit }}**: {{ join .Repeat.Examples ", " }}{{ if .Repeat.Truncated }} (+ ещё {{ minus .Repeat.Count (len .Repeat.Examples) }}){{ end }}
+{{ else }}  _{{ $msg }}_ — {{ escapeCell .Finding.Resource.Kind }}/{{ escapeCell .Finding.Resource.Name }}{{ if and .Finding.Source $.MultipleSources }} (`{{ .Finding.Source }}`){{ end }}{{ if .Finding.Resource.Namespace }} ({{ escapeCell .Finding.Resource.Namespace }}){{ end }}
+{{ end }}{{ end }}{{ else }}  _{{ .Message }}_
 
   | Ресурс | Пространство имён |
   |---|---|
 {{ range .Rows }}{{ if .Repeat }}  | **{{ .Repeat.Kind }}/{{ escapeCell .Repeat.NameTemplate }}** — повторяется идентично в **{{ .Repeat.Count }} {{ unitRU .Repeat.Unit }}**: {{ join .Repeat.Examples ", " }}{{ if .Repeat.Truncated }} (+ ещё {{ minus .Repeat.Count (len .Repeat.Examples) }}){{ end }} | — |
 {{ else }}  | {{ escapeCell .Finding.Resource.Kind }}/{{ escapeCell .Finding.Resource.Name }}{{ if and .Finding.Source $.MultipleSources }} (`{{ .Finding.Source }}`){{ end }} | {{ orDash (escapeCell .Finding.Resource.Namespace) }} |
-{{ end }}{{ end }}
+{{ end }}{{ end }}{{ end }}
 {{ end }}
 {{- if .Collapsible }}
 

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ivanhahanov/kubectl-audit/internal/compliance"
 	"github.com/ivanhahanov/kubectl-audit/internal/findings"
 	"github.com/ivanhahanov/kubectl-audit/internal/report"
 	"github.com/ivanhahanov/kubectl-audit/internal/thirdparty"
@@ -737,5 +738,134 @@ func TestRenderMarkdown_RussianTemplate_KnowledgeBaseFieldsRenderAsTemplates(t *
 	}
 	if strings.Contains(md, "{{.Finding") {
 		t.Errorf("expected no literal Go template syntax leaked into the report, got:\n%s", md)
+	}
+}
+
+// TestRenderMarkdown_SingleResourceMessageGroupRendersInline is the fix
+// for a real report: a message shared by exactly one resource used to
+// still get a full "| Resource | Namespace |" table for that one row —
+// disproportionately heavy for a single piece of information. A singleton
+// MessageGroup now renders as one inline line instead.
+func TestRenderMarkdown_SingleResourceMessageGroupRendersInline(t *testing.T) {
+	r := report.Result{
+		GeneratedAt: time.Now(),
+		Target:      "test",
+		Findings: []findings.Finding{
+			{ID: "1", PolicyID: "workload.x", Title: "Bad thing", Severity: findings.SeverityHigh, Category: "workload-security",
+				Resource: findings.ResourceRef{Kind: "Pod", Name: "p", Namespace: "ns"}, Message: "only one resource affected"},
+		},
+	}
+	md, err := report.RenderMarkdown(r, "")
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
+	if strings.Contains(md, "| Resource | Namespace |") {
+		t.Errorf("expected no table for a single-resource message group, got:\n%s", md)
+	}
+	if !strings.Contains(md, "_only one resource affected_ — Pod/p (ns)") {
+		t.Errorf("expected the message and resource on one inline line, got:\n%s", md)
+	}
+}
+
+// TestRenderConfluence_SingleResourceMessageGroupRendersInline mirrors
+// TestRenderMarkdown_SingleResourceMessageGroupRendersInline for the
+// Confluence template.
+func TestRenderConfluence_SingleResourceMessageGroupRendersInline(t *testing.T) {
+	r := report.Result{
+		GeneratedAt: time.Now(),
+		Target:      "test",
+		Findings: []findings.Finding{
+			{ID: "1", PolicyID: "workload.x", Title: "Bad thing", Severity: findings.SeverityHigh, Category: "workload-security",
+				Resource: findings.ResourceRef{Kind: "Pod", Name: "p", Namespace: "ns"}, Message: "only one resource affected"},
+		},
+	}
+	out, err := report.RenderConfluence(r, "")
+	if err != nil {
+		t.Fatalf("RenderConfluence: %v", err)
+	}
+	if strings.Contains(out, "||Resource||Namespace||") {
+		t.Errorf("expected no table for a single-resource message group, got:\n%s", out)
+	}
+	if !strings.Contains(out, "_only one resource affected_ — Pod/p (ns)") {
+		t.Errorf("expected the message and resource on one inline line, got:\n%s", out)
+	}
+}
+
+// TestRenderConfluence_SeverityBadgeOnItsOwnLine guards the fix for a real
+// report: {status:...} placed inline on the same "h3." line as the
+// heading text didn't render as a lozenge in real Confluence — macros are
+// reliable on their own line/paragraph, not concatenated into heading
+// text.
+func TestRenderConfluence_SeverityBadgeOnItsOwnLine(t *testing.T) {
+	r := report.Result{
+		GeneratedAt: time.Now(),
+		Target:      "test",
+		Findings: []findings.Finding{
+			{ID: "1", PolicyID: "workload.x", Title: "Bad thing", Severity: findings.SeverityCritical, Category: "workload-security",
+				Resource: findings.ResourceRef{Kind: "Pod", Name: "p", Namespace: "ns"}, Message: "bad"},
+		},
+	}
+	out, err := report.RenderConfluence(r, "")
+	if err != nil {
+		t.Fatalf("RenderConfluence: %v", err)
+	}
+	if strings.Contains(out, "h3. {status:") {
+		t.Errorf("expected the {status} macro NOT concatenated into the h3. heading line, got:\n%s", out)
+	}
+	if !strings.Contains(out, "h3. CRITICAL (1)\n\n{status:colour=Red|title=CRITICAL}") {
+		t.Errorf("expected the {status} macro on its own line right after the heading, got:\n%s", out)
+	}
+}
+
+// TestRenderMarkdown_FailingControlsSectionCollapsed and its Confluence
+// counterpart guard the fix for a real report: "Failing controls —
+// affected resources" duplicates the Findings section (same findings,
+// grouped by control instead of by check) and could get enormous on a
+// large cluster. It now collapses behind <details>/{expand} like every
+// other long section, instead of always being fully expanded.
+func failingControlResult() report.Result {
+	f := findings.Finding{
+		ID: "1", PolicyID: "workload.x", Title: "Bad thing", Severity: findings.SeverityHigh, Category: "workload-security",
+		Resource: findings.ResourceRef{Kind: "Pod", Name: "p", Namespace: "ns"}, Message: "bad",
+	}
+	sc := compliance.Scorecard{
+		ID: "cis", Title: "CIS", Version: "1.0",
+		Results: []compliance.ControlResult{
+			{
+				Control:  compliance.Control{ID: "1.1", Title: "Some control", PolicyIDs: []string{"workload.x"}},
+				Status:   compliance.StatusFail,
+				Findings: []findings.Finding{f},
+			},
+		},
+	}
+	return report.Result{
+		GeneratedAt: time.Now(), Target: "test", Findings: []findings.Finding{f},
+		Frameworks: []compliance.Scorecard{sc},
+	}
+}
+
+func TestRenderMarkdown_FailingControlsSectionCollapsed(t *testing.T) {
+	md, err := report.RenderMarkdown(failingControlResult(), "")
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
+	if !strings.Contains(md, "<summary>Failing controls — affected resources (1) — click to expand</summary>") {
+		t.Errorf("expected the failing-controls section collapsed behind <details>, got:\n%s", md)
+	}
+	if !strings.Contains(md, "Some control") {
+		t.Errorf("expected the control detail still present (behind <details>), got:\n%s", md)
+	}
+}
+
+func TestRenderConfluence_FailingControlsSectionCollapsed(t *testing.T) {
+	out, err := report.RenderConfluence(failingControlResult(), "")
+	if err != nil {
+		t.Fatalf("RenderConfluence: %v", err)
+	}
+	if !strings.Contains(out, "{expand:Failing controls — affected resources (1)}") {
+		t.Errorf("expected the failing-controls section collapsed behind {expand}, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Some control") {
+		t.Errorf("expected the control detail still present (behind {expand}), got:\n%s", out)
 	}
 }
