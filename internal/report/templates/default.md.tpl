@@ -118,8 +118,8 @@ checked at full strength, no exceptions.
 <details>
 <summary>Failing controls — affected resources ({{ len $failing }}) — click to expand</summary>
 
-Full detail (message, remediation) for each of these is in **Findings** below, grouped by check;
-this just shows which resources make each control fail.
+Full detail (message, remediation) for each of these is in **Findings** below; this just shows
+which resources make each control fail.
 {{ range $failing }}
 #### {{ .Control.ID }} — {{ escapeCell .Control.Title }}
 {{ range .Findings }}- **[{{ .Severity }}]** {{ .Resource.String }} — `{{ .PolicyID }}`

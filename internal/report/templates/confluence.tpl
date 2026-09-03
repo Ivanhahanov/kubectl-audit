@@ -77,8 +77,8 @@ h2. {{ escapeCell .Title }} Compliance (v{{ .Version }})
 {{- if $failing }}
 
 {expand:Failing controls — affected resources ({{ len $failing }})}
-Full detail (message, remediation) for each of these is in *Findings* below, grouped by check;
-this just shows which resources make each control fail.
+Full detail (message, remediation) for each of these is in *Findings* below; this just shows
+which resources make each control fail.
 {{ range $failing }}
 h4. {{ .Control.ID }} — {{ escapeCell .Control.Title }}
 {{ range .Findings }}* *[{{ .Severity }}]* {{ .Resource.String }} — {{"{{"}}{{ .PolicyID }}{{"}}"}}
