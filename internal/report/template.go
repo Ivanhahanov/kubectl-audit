@@ -691,6 +691,20 @@ func templateFuncs() template.FuncMap {
 			}
 			return out
 		},
+		// anyCrossRefs reports whether any control in a framework's results
+		// has a CrossRefs entry — used to hide the "Related controls"
+		// column entirely for a framework where it's always empty (e.g.
+		// CIS's own table: crossRefs point *into* CIS from other
+		// frameworks like NSA/FSTEC, never *out* of it, so CIS's own
+		// scorecard never has anything to show there).
+		"anyCrossRefs": func(results []compliance.ControlResult) bool {
+			for _, r := range results {
+				if len(r.Control.CrossRefs) > 0 {
+					return true
+				}
+			}
+			return false
+		},
 		"crossRefs": func(c compliance.Control) string {
 			if len(c.CrossRefs) == 0 {
 				return ""

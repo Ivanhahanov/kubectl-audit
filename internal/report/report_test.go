@@ -1265,3 +1265,70 @@ func TestRenderConfluence_KeyValueTableHasNoHeaderRow(t *testing.T) {
 		t.Errorf("expected the header table's data rows still present, got:\n%s", out)
 	}
 }
+
+// TestRenderConfluence_ControlsTable_NoEmptyCellGap and
+// TestRenderConfluence_ControlsTable_HidesRelatedControlsWhenAlwaysEmpty
+// guard a real report: a PASS/N-A control's empty "Findings" cell, and
+// CIS's own always-empty "Related controls" column (crossRefs point *into*
+// CIS from other frameworks, never *out* of it — CIS's own scorecard never
+// has anything to show there), produced adjacent "||" in a data row —
+// Confluence's own header-cell syntax — which broke the table's rendering.
+// Empty cells now fall back to "-", and a framework's "Related controls"
+// column is omitted entirely when nothing in that framework's own
+// scorecard has a cross-reference.
+func controlsTableResult() report.Result {
+	f := findings.Finding{
+		ID: "1", PolicyID: "workload.x", Severity: findings.SeverityHigh,
+		Resource: findings.ResourceRef{Kind: "Pod", Name: "p", Namespace: "ns"}, Message: "bad",
+	}
+	cis := compliance.Scorecard{
+		ID: "cis", Title: "CIS", Version: "2.0.1",
+		Results: []compliance.ControlResult{
+			{Control: compliance.Control{ID: "1.1", Title: "Some control"}, Status: compliance.StatusFail, Findings: []findings.Finding{f}},
+			{Control: compliance.Control{ID: "1.2", Title: "Other control"}, Status: compliance.StatusPass},
+		},
+	}
+	nsa := compliance.Scorecard{
+		ID: "nsa", Title: "NSA", Version: "1.0",
+		Results: []compliance.ControlResult{
+			{Control: compliance.Control{ID: "n1", Title: "Some NSA control", CrossRefs: map[string][]string{"cis": {"1.1"}}}, Status: compliance.StatusPass},
+			{Control: compliance.Control{ID: "n2", Title: "No crossref here"}, Status: compliance.StatusFail, Findings: []findings.Finding{f}},
+		},
+	}
+	return report.Result{
+		GeneratedAt: time.Now(), Target: "test", Findings: []findings.Finding{f},
+		Frameworks: []compliance.Scorecard{cis, nsa},
+	}
+}
+
+func TestRenderConfluence_ControlsTable_NoEmptyCellGap(t *testing.T) {
+	out, err := report.RenderConfluence(controlsTableResult(), "")
+	if err != nil {
+		t.Fatalf("RenderConfluence: %v", err)
+	}
+	if strings.Contains(out, "|PASS||\n") {
+		t.Errorf("expected no trailing empty cell (adjacent \"||\", Confluence's own header-cell syntax) ending a data row, got:\n%s", out)
+	}
+	if !strings.Contains(out, "|1.2|Other control||PASS|-|") {
+		t.Errorf("expected the empty Findings cell for a PASS control to fall back to \"-\", got:\n%s", out)
+	}
+}
+
+func TestRenderConfluence_ControlsTable_HidesRelatedControlsWhenAlwaysEmpty(t *testing.T) {
+	out, err := report.RenderConfluence(controlsTableResult(), "")
+	if err != nil {
+		t.Fatalf("RenderConfluence: %v", err)
+	}
+	if !strings.Contains(out, "||Control||Title||Section||Status||Findings||\n") {
+		t.Errorf("expected CIS's own table header with no Related controls column, got:\n%s", out)
+	}
+	if !strings.Contains(out, "||Control||Title||Section||Status||Findings||Related controls||") {
+		t.Errorf("expected NSA's table header to keep the Related controls column, got:\n%s", out)
+	}
+	if !strings.Contains(out, "|n1|Some NSA control||PASS|-|CIS: 1.1|") {
+		t.Errorf("expected NSA's populated cross-reference cell, got:\n%s", out)
+	}
+	if !strings.Contains(out, "|n2|No crossref here||FAIL|1|-|") {
+		t.Errorf("expected NSA's own empty cross-reference cell to fall back to \"-\", got:\n%s", out)
+	}
+}

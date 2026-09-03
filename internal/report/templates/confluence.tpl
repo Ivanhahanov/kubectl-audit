@@ -59,10 +59,11 @@ h2. Summary
 {{ range .Frameworks }}
 h2. {{ escapeCell .Title }} Compliance (v{{ .Version }})
 
+{{ $hasCrossRefs := anyCrossRefs .Results }}
 {expand:Full control list ({{ len .Results }} controls) — click to expand}
-||Control||Title||Section||Status||Findings||Related controls||
+||Control||Title||Section||Status||Findings{{ if $hasCrossRefs }}||Related controls{{ end }}||
 {{- range .Results }}
-|{{ .Control.ID }}|{{ escapeCell .Control.Title }}|{{ escapeCell .Control.Section }}|{{ .Status }}|{{ if eq (print .Status) "FAIL" }}{{ len .Findings }}{{ end }}|{{ crossRefs .Control }}|
+|{{ .Control.ID }}|{{ escapeCell .Control.Title }}|{{ escapeCell .Control.Section }}|{{ .Status }}|{{ if eq (print .Status) "FAIL" }}{{ len .Findings }}{{ else }}-{{ end }}|{{ if $hasCrossRefs }}{{ orDash (crossRefs .Control) }}|{{ end }}
 {{- end }}
 {expand}
 {{- $notes := statusNotes . }}
