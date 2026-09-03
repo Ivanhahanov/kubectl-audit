@@ -10,6 +10,7 @@ import (
 
 	"github.com/ivanhahanov/kubectl-audit/internal/compliance"
 	"github.com/ivanhahanov/kubectl-audit/internal/findings"
+	"github.com/ivanhahanov/kubectl-audit/internal/rbac"
 	"github.com/ivanhahanov/kubectl-audit/internal/report"
 	"github.com/ivanhahanov/kubectl-audit/internal/thirdparty"
 )
@@ -762,7 +763,7 @@ func TestRenderMarkdown_SingleResourceMessageGroupRendersInline(t *testing.T) {
 	if strings.Contains(md, "| Resource | Namespace |") {
 		t.Errorf("expected no table for a single-resource message group, got:\n%s", md)
 	}
-	if !strings.Contains(md, "_only one resource affected_ — Pod/p (ns)") {
+	if !strings.Contains(md, "only one resource affected — Pod/p (ns)") {
 		t.Errorf("expected the message and resource on one inline line, got:\n%s", md)
 	}
 }
@@ -786,7 +787,7 @@ func TestRenderConfluence_SingleResourceMessageGroupRendersInline(t *testing.T) 
 	if strings.Contains(out, "||Resource||Namespace||") {
 		t.Errorf("expected no table for a single-resource message group, got:\n%s", out)
 	}
-	if !strings.Contains(out, "_only one resource affected_ — Pod/p (ns)") {
+	if !strings.Contains(out, "only one resource affected — Pod/p (ns)") {
 		t.Errorf("expected the message and resource on one inline line, got:\n%s", out)
 	}
 }
@@ -867,5 +868,141 @@ func TestRenderConfluence_FailingControlsSectionCollapsed(t *testing.T) {
 	}
 	if !strings.Contains(out, "Some control") {
 		t.Errorf("expected the control detail still present (behind {expand}), got:\n%s", out)
+	}
+}
+
+// TestRenderConfluence_EscapesCurlyBracesInFreeText is the regression
+// test for a real report: a finding's own Message/Remediation can contain
+// literal "{" from describing YAML/JSON-shaped content (an ArgoCD policy
+// quotes {group: "*", kind: "*"} — see
+// policies/thirdparty/argocd/appproject-wildcard-cluster-resources.yaml).
+// Confluence's wiki-markup parser reads "{group: ..." as an attempted
+// macro invocation named "group" and renders "Unknown macro: group"
+// instead of the literal text. Every free-text field must escape "{"/"}"
+// for Confluence (Markdown has no such risk and must NOT escape them).
+func TestRenderConfluence_EscapesCurlyBracesInFreeText(t *testing.T) {
+	r := report.Result{
+		GeneratedAt: time.Now(),
+		Target:      "test",
+		Findings: []findings.Finding{
+			{ID: "1", PolicyID: "argocd.x", Title: "Bad", Severity: findings.SeverityHigh, Category: "workload-security",
+				Resource:    findings.ResourceRef{Kind: "AppProject", Name: "default", Namespace: "argocd"},
+				Message:     `includes {group: "*", kind: "*"}, allowing arbitrary resources.`,
+				Remediation: `Restrict to specific {group, kind} pairs.`,
+			},
+		},
+	}
+	out, err := report.RenderConfluence(r, "")
+	if err != nil {
+		t.Fatalf("RenderConfluence: %v", err)
+	}
+	if !strings.Contains(out, `\{group: "*", kind: "*"\}`) {
+		t.Errorf("expected the Message's curly braces escaped, got:\n%s", out)
+	}
+	if !strings.Contains(out, `\{group, kind\}`) {
+		t.Errorf("expected the Remediation's curly braces escaped, got:\n%s", out)
+	}
+
+	md, err := report.RenderMarkdown(r, "")
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
+	if strings.Contains(md, `\{`) {
+		t.Errorf("expected Markdown NOT to escape curly braces (no macro-parsing risk there), got:\n%s", md)
+	}
+}
+
+// TestRenderMarkdown_MessageNotItalicized and its Confluence counterpart
+// guard a readability fix: wrapping a whole finding Message (often a full
+// sentence, sometimes a long one) in italics is hard to read at that
+// length — italics work for a short emphasis, not a paragraph. The
+// message now renders as plain text.
+func TestRenderMarkdown_MessageNotItalicized(t *testing.T) {
+	r := report.Result{
+		GeneratedAt: time.Now(),
+		Target:      "test",
+		Findings: []findings.Finding{
+			{ID: "1", PolicyID: "workload.x", Title: "Bad thing", Severity: findings.SeverityHigh, Category: "workload-security",
+				Resource: findings.ResourceRef{Kind: "Pod", Name: "p", Namespace: "default"}, Message: "bad thing happened"},
+			{ID: "2", PolicyID: "workload.x", Title: "Bad thing", Severity: findings.SeverityHigh, Category: "workload-security",
+				Resource: findings.ResourceRef{Kind: "Pod", Name: "q", Namespace: "default"}, Message: "a different bad thing"},
+		},
+	}
+	md, err := report.RenderMarkdown(r, "")
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
+	if strings.Contains(md, "_bad thing happened_") || strings.Contains(md, "_a different bad thing_") {
+		t.Errorf("expected the message NOT wrapped in italics, got:\n%s", md)
+	}
+	if !strings.Contains(md, "bad thing happened") {
+		t.Errorf("expected the message text still present, got:\n%s", md)
+	}
+}
+
+func TestRenderConfluence_MessageNotItalicized(t *testing.T) {
+	r := report.Result{
+		GeneratedAt: time.Now(),
+		Target:      "test",
+		Findings: []findings.Finding{
+			{ID: "1", PolicyID: "workload.x", Title: "Bad thing", Severity: findings.SeverityHigh, Category: "workload-security",
+				Resource: findings.ResourceRef{Kind: "Pod", Name: "p", Namespace: "default"}, Message: "bad thing happened"},
+			{ID: "2", PolicyID: "workload.x", Title: "Bad thing", Severity: findings.SeverityHigh, Category: "workload-security",
+				Resource: findings.ResourceRef{Kind: "Pod", Name: "q", Namespace: "default"}, Message: "a different bad thing"},
+		},
+	}
+	out, err := report.RenderConfluence(r, "")
+	if err != nil {
+		t.Fatalf("RenderConfluence: %v", err)
+	}
+	if strings.Contains(out, "_bad thing happened_") || strings.Contains(out, "_a different bad thing_") {
+		t.Errorf("expected the message NOT wrapped in italics, got:\n%s", out)
+	}
+	if !strings.Contains(out, "bad thing happened") {
+		t.Errorf("expected the message text still present, got:\n%s", out)
+	}
+}
+
+// TestRenderMarkdown_RBACModelCollapsed and its Confluence counterpart
+// guard a real complaint: the RBAC Role Model table lists every subject's
+// full permission set and gets very large — it now collapses behind
+// <details>/{expand} like every other long section, instead of always
+// being fully expanded.
+func rbacModelResult() report.Result {
+	return report.Result{
+		GeneratedAt: time.Now(),
+		Target:      "test",
+		RBACModel: []rbac.SubjectModel{
+			{
+				Subject:     rbac.SubjectKey{Kind: "ServiceAccount", Name: "sa", Namespace: "ns"},
+				Permissions: []string{"get secrets", "list pods"},
+			},
+		},
+	}
+}
+
+func TestRenderMarkdown_RBACModelCollapsed(t *testing.T) {
+	md, err := report.RenderMarkdown(rbacModelResult(), "")
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
+	if !strings.Contains(md, "<summary>1 subjects — click to expand</summary>") {
+		t.Errorf("expected the RBAC model collapsed behind <details>, got:\n%s", md)
+	}
+	if !strings.Contains(md, "get secrets") {
+		t.Errorf("expected the permissions still present (behind <details>), got:\n%s", md)
+	}
+}
+
+func TestRenderConfluence_RBACModelCollapsed(t *testing.T) {
+	out, err := report.RenderConfluence(rbacModelResult(), "")
+	if err != nil {
+		t.Fatalf("RenderConfluence: %v", err)
+	}
+	if !strings.Contains(out, "{expand:1 subjects — click to expand}") {
+		t.Errorf("expected the RBAC model collapsed behind {expand}, got:\n%s", out)
+	}
+	if !strings.Contains(out, "get secrets") {
+		t.Errorf("expected the permissions still present (behind {expand}), got:\n%s", out)
 	}
 }

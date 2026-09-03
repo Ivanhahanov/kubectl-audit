@@ -144,11 +144,16 @@ NetworkPolicy были доступны для наблюдения в рамк�
 
 ## Модель ролей RBAC
 
+<details>
+<summary>{{ len .RBACModel }} субъектов — нажмите, чтобы развернуть</summary>
+
 | Субъект | Пространство имён | Привязки | Права | Флаги риска |
 |---|---|---|---|---|
 {{- range .RBACModel }}
 | {{ .Subject.Kind }}/{{ escapeCell .Subject.Name }} | {{ orDash .Subject.Namespace }} | {{ escapeCell (join (bindingLabels .Bindings) "<br>") }} | {{ escapeCell (join .Permissions "<br>") }} | {{ escapeCell (join .RiskFlags "<br>") }} |
 {{- end }}
+
+</details>
 {{ end }}
 {{- if or .FindingsByNamespace .NamespaceDetailed }}
 <a id="findings-by-namespace"></a>
@@ -211,9 +216,9 @@ NetworkPolicy были доступны для наблюдения в рамк�
 <summary>{{ len .Findings }} находок — нажмите, чтобы развернуть</summary>
 {{ end }}
 {{ range .MessageGroups }}
-{{ $msg := .Message }}{{ if eq (len .Rows) 1 }}{{ range .Rows }}{{ if .Repeat }}  _{{ $msg }}_ — **{{ .Repeat.Kind }}/{{ escapeCell .Repeat.NameTemplate }}** — повторяется идентично в **{{ .Repeat.Count }} {{ unitRU .Repeat.Unit }}**: {{ join .Repeat.Examples ", " }}{{ if .Repeat.Truncated }} (+ ещё {{ minus .Repeat.Count (len .Repeat.Examples) }}){{ end }}
-{{ else }}  _{{ $msg }}_ — {{ escapeCell .Finding.Resource.Kind }}/{{ escapeCell .Finding.Resource.Name }}{{ if and .Finding.Source $.MultipleSources }} (`{{ .Finding.Source }}`){{ end }}{{ if .Finding.Resource.Namespace }} ({{ escapeCell .Finding.Resource.Namespace }}){{ end }}
-{{ end }}{{ end }}{{ else }}  _{{ .Message }}_
+{{ $msg := .Message }}{{ if eq (len .Rows) 1 }}{{ range .Rows }}{{ if .Repeat }}  {{ $msg }} — **{{ .Repeat.Kind }}/{{ escapeCell .Repeat.NameTemplate }}** — повторяется идентично в **{{ .Repeat.Count }} {{ unitRU .Repeat.Unit }}**: {{ join .Repeat.Examples ", " }}{{ if .Repeat.Truncated }} (+ ещё {{ minus .Repeat.Count (len .Repeat.Examples) }}){{ end }}
+{{ else }}  {{ $msg }} — {{ escapeCell .Finding.Resource.Kind }}/{{ escapeCell .Finding.Resource.Name }}{{ if and .Finding.Source $.MultipleSources }} (`{{ .Finding.Source }}`){{ end }}{{ if .Finding.Resource.Namespace }} ({{ escapeCell .Finding.Resource.Namespace }}){{ end }}
+{{ end }}{{ end }}{{ else }}  {{ .Message }}
 
   | Ресурс | Пространство имён |
   |---|---|

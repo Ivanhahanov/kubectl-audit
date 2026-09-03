@@ -793,7 +793,35 @@ func confluenceTemplateFuncs() template.FuncMap {
 	fns := templateFuncs()
 	delete(fns, "slug")
 	fns["severityStatus"] = severityStatus
+	// escapeCell is overridden (not just extended) here: any finding's own
+	// free text — Message, Remediation, a knowledge-base Title — can
+	// contain a literal "{" from describing YAML/JSON-shaped content (a
+	// real report hit this: an ArgoCD policy's message quotes
+	// {group: "*", kind: "*"}). Confluence's wiki-markup parser reads any
+	// "{word" sequence as a macro invocation attempt — {group: "*", ...}
+	// gets parsed as an unrecognized "group" macro and rendered as a
+	// broken "Unknown macro: group" box instead of the literal text. The
+	// Markdown escapeCell (just "|" and newlines, for table-cell safety)
+	// isn't enough here; the confluence template calls the same
+	// "escapeCell" function name everywhere, so overriding it here also
+	// covers every table cell already routed through it — no template
+	// text changes needed for those, only the previously-unescaped
+	// free-text spots (Message/Remediation/Reason/Title in prose) needed
+	// escapeCell added to their template call sites.
+	fns["escapeCell"] = escapeConfluenceCell
 	return fns
+}
+
+// escapeConfluenceCell is escapeCell's Confluence counterpart: escapes "|"
+// and newlines (table-cell safety, same as escapeCell) plus "{" and "}"
+// (macro-safety — see confluenceTemplateFuncs's doc comment). Confluence
+// wiki markup's own escape convention is a leading backslash.
+func escapeConfluenceCell(s string) string {
+	s = strings.ReplaceAll(s, "|", "\\|")
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "{", "\\{")
+	s = strings.ReplaceAll(s, "}", "\\}")
+	return s
 }
 
 // severityStatus renders a Confluence {status} macro for a severity —

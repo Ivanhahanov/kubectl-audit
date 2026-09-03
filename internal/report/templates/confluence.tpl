@@ -14,7 +14,7 @@ h2. Scope
 {{ if .Scope.OutOfScope -}}
 Not covered by this scan:
 
-{{ range .Scope.OutOfScope }}* *{{ .Title }}* — {{ .Reason }}
+{{ range .Scope.OutOfScope }}* *{{ escapeCell .Title }}* — {{ escapeCell .Reason }}
 {{ end -}}
 {{- else -}}
 Full scope: no structural gaps detected — control-plane, RBAC, and NetworkPolicy objects were all
@@ -23,7 +23,7 @@ observed for this target.
 {{- if .Scope.Caveats }}
 Checked, but with a lower-confidence caveat worth reading before trusting the result:
 
-{{ range .Scope.Caveats }}* *{{ .Title }}* — {{ .Reason }}
+{{ range .Scope.Caveats }}* *{{ escapeCell .Title }}* — {{ escapeCell .Reason }}
 {{ end -}}
 {{- end }}
 {{- if .DetectedComponents }}
@@ -37,7 +37,7 @@ Application components get no exception and are checked at full strength.
 
 ||Component||Category||Detected via||Helm-managed||
 {{- range .DetectedComponents }}
-|{{ escapeCell .Name }}|{{ .Category }}|{{ detectedVia . }}|{{ if .HelmManaged }}Yes{{ else }}No{{ end }}|
+|{{ escapeCell .Name }}|{{ escapeCell .Category }}|{{ escapeCell (detectedVia .) }}|{{ if .HelmManaged }}Yes{{ else }}No{{ end }}|
 {{- end }}
 {{- end }}
 
@@ -52,7 +52,7 @@ h2. Summary
 |*Suppressed*|*{{ len .Suppressed }}* (see Suppressed Findings below)|
 {{- end }}
 {{ range .Frameworks }}
-h2. {{ .Title }} Compliance (v{{ .Version }})
+h2. {{ escapeCell .Title }} Compliance (v{{ .Version }})
 
 {expand:Full control list ({{ len .Results }} controls) — click to expand}
 ||Control||Title||Section||Status||Findings||Related controls||
@@ -85,16 +85,18 @@ h2. Consolidated Compliance Summary
 
 ||Framework||Version||Pass||Fail||N/A||Not Implemented||Total||
 {{- range .ConsolidatedSummary }}
-|{{ .Title }}|{{ .Version }}|{{ .Pass }}|{{ .Fail }}|{{ .NotApplicable }}|{{ .NotImplemented }}|{{ .Total }}|
+|{{ escapeCell .Title }}|{{ .Version }}|{{ .Pass }}|{{ .Fail }}|{{ .NotApplicable }}|{{ .NotImplemented }}|{{ .Total }}|
 {{- end }}
 {{ end -}}
 {{- if .RBACModel }}
 h2. RBAC Role Model
 
+{expand:{{ len .RBACModel }} subjects — click to expand}
 ||Subject||Namespace||Bindings||Permissions||Risk Flags||
 {{- range .RBACModel }}
 |{{ .Subject.Kind }}/{{ escapeCell .Subject.Name }}|{{ orDash .Subject.Namespace }}|{{ escapeCell (join (bindingLabels .Bindings) "\\\\") }}|{{ escapeCell (join .Permissions "\\\\") }}|{{ escapeCell (join .RiskFlags "\\\\") }}|
 {{- end }}
+{expand}
 {{ end }}
 {{- if or .FindingsByNamespace .NamespaceDetailed }}
 {{ if .NamespaceDetailed }}h2. Findings by Namespace
@@ -105,7 +107,7 @@ h2. RBAC Role Model
 h3. {{ if eq .Namespace "" }}Cluster-scoped{{ else }}{{ .Namespace }}{{ end }}
 {{ range .Resources }}
 h4. {{ .Resource.Kind }}/{{ escapeCell .Resource.Name }}
-{{ range .Findings }}* *[{{ .Severity }}]* {{"{{"}}{{ .PolicyID }}{{"}}"}} — {{ .Message }}{{ if .Remediation }} _Remediation: {{ .Remediation }}_{{ end }}
+{{ range .Findings }}* *[{{ .Severity }}]* {{"{{"}}{{ .PolicyID }}{{"}}"}} — {{ escapeCell .Message }}{{ if .Remediation }} _Remediation: {{ escapeCell .Remediation }}_{{ end }}
 {{ end }}{{ end }}{{ end }}{{ end }}
 {{ else }}{expand:Findings by Namespace (index)}
 One place per app/team to see what's affecting it, one line per finding — no message/remediation
@@ -135,20 +137,20 @@ h3. {{ .Severity }} ({{ len .Findings }})
 |{{ escapeCell .PolicyID }}|{{ escapeCell .Title }}|{{ escapeCell .Category }}|{{ len .Findings }}|
 {{- end }}
 {{ range .Checks }}
-h4. {{ .PolicyID }} — {{ .Title }}
+h4. {{ .PolicyID }} — {{ escapeCell .Title }}
 
-* *Category:* {{ .Category }}{{ if .CIS }} · *CIS:* {{ join .CIS ", " }}{{ end }}
+* *Category:* {{ escapeCell .Category }}{{ if .CIS }} · *CIS:* {{ join .CIS ", " }}{{ end }}
 {{- if .Remediation }}
-* *Remediation:* {{ .Remediation }}
+* *Remediation:* {{ escapeCell .Remediation }}
 {{- end }}
 * *Affected resources ({{ len .Findings }}):*
 {{ if .Collapsible }}
 {expand:{{ len .Findings }} findings — click to expand}
 {{ end }}
 {{ range .MessageGroups }}
-{{ $msg := .Message }}{{ if eq (len .Rows) 1 }}{{ range .Rows }}{{ if .Repeat }}_{{ $msg }}_ — *{{ .Repeat.Kind }}/{{ escapeCell .Repeat.NameTemplate }}* — repeated identically across *{{ .Repeat.Count }} {{ .Repeat.Unit }}*: {{ join .Repeat.Examples ", " }}{{ if .Repeat.Truncated }} (+{{ minus .Repeat.Count (len .Repeat.Examples) }} more){{ end }}
-{{ else }}_{{ $msg }}_ — {{ escapeCell .Finding.Resource.Kind }}/{{ escapeCell .Finding.Resource.Name }}{{ if and .Finding.Source $.MultipleSources }} ({{"{{"}}{{ .Finding.Source }}{{"}}"}}){{ end }}{{ if .Finding.Resource.Namespace }} ({{ escapeCell .Finding.Resource.Namespace }}){{ end }}
-{{ end }}{{ end }}{{ else }}_{{ .Message }}_
+{{ $msg := escapeCell .Message }}{{ if eq (len .Rows) 1 }}{{ range .Rows }}{{ if .Repeat }}{{ $msg }} — *{{ .Repeat.Kind }}/{{ escapeCell .Repeat.NameTemplate }}* — repeated identically across *{{ .Repeat.Count }} {{ .Repeat.Unit }}*: {{ join .Repeat.Examples ", " }}{{ if .Repeat.Truncated }} (+{{ minus .Repeat.Count (len .Repeat.Examples) }} more){{ end }}
+{{ else }}{{ $msg }} — {{ escapeCell .Finding.Resource.Kind }}/{{ escapeCell .Finding.Resource.Name }}{{ if and .Finding.Source $.MultipleSources }} ({{"{{"}}{{ .Finding.Source }}{{"}}"}}){{ end }}{{ if .Finding.Resource.Namespace }} ({{ escapeCell .Finding.Resource.Namespace }}){{ end }}
+{{ end }}{{ end }}{{ else }}{{ $msg }}
 
 ||Resource||Namespace||
 {{ range .Rows }}{{ if .Repeat }}|*{{ .Repeat.Kind }}/{{ escapeCell .Repeat.NameTemplate }}* — repeated identically across *{{ .Repeat.Count }} {{ .Repeat.Unit }}*: {{ join .Repeat.Examples ", " }}{{ if .Repeat.Truncated }} (+{{ minus .Repeat.Count (len .Repeat.Examples) }} more){{ end }}|—|
@@ -168,7 +170,7 @@ h4. {{ .PolicyID }} — {{ .Title }}
 {expand:Suppressed Findings ({{ len .Suppressed }})}
 Matched an {{"{{"}}exclusions{{"}}"}} rule in {{"{{"}}audit.yaml{{"}}"}} — not counted in Summary and don't affect {{"{{"}}--fail-on{{"}}"}}.
 {{ range .Suppressed }}
-* *[{{ .Finding.Severity }}]* {{"{{"}}{{ .Finding.PolicyID }}{{"}}"}} {{ .Finding.Resource.String }} — _{{ .Reason }}_
+* *[{{ .Finding.Severity }}]* {{"{{"}}{{ .Finding.PolicyID }}{{"}}"}} {{ .Finding.Resource.String }} — _{{ escapeCell .Reason }}_
 {{- end }}
 
 {expand}

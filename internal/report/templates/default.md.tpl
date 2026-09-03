@@ -142,11 +142,16 @@ this just shows which resources make each control fail.
 
 ## RBAC Role Model
 
+<details>
+<summary>{{ len .RBACModel }} subjects — click to expand</summary>
+
 | Subject | Namespace | Bindings | Permissions | Risk Flags |
 |---|---|---|---|---|
 {{- range .RBACModel }}
 | {{ .Subject.Kind }}/{{ escapeCell .Subject.Name }} | {{ orDash .Subject.Namespace }} | {{ escapeCell (join (bindingLabels .Bindings) "<br>") }} | {{ escapeCell (join .Permissions "<br>") }} | {{ escapeCell (join .RiskFlags "<br>") }} |
 {{- end }}
+
+</details>
 {{ end }}
 {{- if or .FindingsByNamespace .NamespaceDetailed }}
 <a id="findings-by-namespace"></a>
@@ -208,9 +213,9 @@ No findings.
 <summary>{{ len .Findings }} findings — click to expand</summary>
 {{ end }}
 {{ range .MessageGroups }}
-{{ $msg := .Message }}{{ if eq (len .Rows) 1 }}{{ range .Rows }}{{ if .Repeat }}  _{{ $msg }}_ — **{{ .Repeat.Kind }}/{{ escapeCell .Repeat.NameTemplate }}** — repeated identically across **{{ .Repeat.Count }} {{ .Repeat.Unit }}**: {{ join .Repeat.Examples ", " }}{{ if .Repeat.Truncated }} (+{{ minus .Repeat.Count (len .Repeat.Examples) }} more){{ end }}
-{{ else }}  _{{ $msg }}_ — {{ escapeCell .Finding.Resource.Kind }}/{{ escapeCell .Finding.Resource.Name }}{{ if and .Finding.Source $.MultipleSources }} (`{{ .Finding.Source }}`){{ end }}{{ if .Finding.Resource.Namespace }} ({{ escapeCell .Finding.Resource.Namespace }}){{ end }}
-{{ end }}{{ end }}{{ else }}  _{{ .Message }}_
+{{ $msg := .Message }}{{ if eq (len .Rows) 1 }}{{ range .Rows }}{{ if .Repeat }}  {{ $msg }} — **{{ .Repeat.Kind }}/{{ escapeCell .Repeat.NameTemplate }}** — repeated identically across **{{ .Repeat.Count }} {{ .Repeat.Unit }}**: {{ join .Repeat.Examples ", " }}{{ if .Repeat.Truncated }} (+{{ minus .Repeat.Count (len .Repeat.Examples) }} more){{ end }}
+{{ else }}  {{ $msg }} — {{ escapeCell .Finding.Resource.Kind }}/{{ escapeCell .Finding.Resource.Name }}{{ if and .Finding.Source $.MultipleSources }} (`{{ .Finding.Source }}`){{ end }}{{ if .Finding.Resource.Namespace }} ({{ escapeCell .Finding.Resource.Namespace }}){{ end }}
+{{ end }}{{ end }}{{ else }}  {{ .Message }}
 
   | Resource | Namespace |
   |---|---|
