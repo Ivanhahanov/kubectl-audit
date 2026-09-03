@@ -39,28 +39,49 @@ type SeverityGroup struct {
 // by construction, so they're hoisted out and shown once instead of once per
 // affected resource — the fix for reports where the same VAP-based check
 // fires on many near-identical workloads and used to repeat its full message
-// and remediation text for each one. UniformMessage carries the shared
-// Message text when every finding in the group has the same one (true for
-// essentially every VAP-based check, whose message is a static string in the
-// policy YAML); it's left empty when messages differ per finding (true for
-// native checks like RBAC/PSS/control-plane, whose message is built
-// per-resource), in which case each finding's own Message is rendered.
+// and remediation text for each one.
+//
+// MessageGroups replaces an earlier single UniformMessage/Rows pair that
+// gated on the WHOLE policy's messages being identical — one outlier
+// finding anywhere under the same PolicyID (a real-cluster case: a native
+// analyzer message that's mostly identical across tenants but differs for
+// one unrelated subject) used to block collapsing for every other,
+// genuinely-identical, finding under that same check too, falling all the
+// way back to listing every single finding individually. See
+// MessageBucketKey.
 type CheckGroup struct {
-	PolicyID       string
-	Title          string
-	Category       string
-	CIS            []string
-	Remediation    string
-	UniformMessage string
-	Findings       []findings.Finding
-	// Rows is how the template actually renders "Affected resources" when
-	// UniformMessage is set: findings.Finding rows verbatim, except a group
-	// of findings sharing the same Kind and "name shape" (see NameTemplate)
-	// — at least namespaceGroupThreshold of them — collapses into one
-	// AffectedRow instead of one row each. Nil (falls back to ranging over
-	// Findings, today's behavior) when UniformMessage is empty or
-	// collapsing is disabled (threshold <= 0). See AffectedRow and
-	// groupAffectedResources.
+	PolicyID    string
+	Title       string
+	Category    string
+	CIS         []string
+	Remediation string
+	// Findings is every finding under this PolicyID, flat — used for the
+	// "Affected resources (N)" total count. See MessageGroups for how
+	// they're actually rendered.
+	Findings []findings.Finding
+	// MessageGroups buckets Findings by MessageBucketKey — findings under
+	// this policy that share an (post-normalization) identical message, or
+	// the same analyzer-provided DedupKey. Each bucket's affected
+	// resources are further collapsed by Kind/name-shape within
+	// themselves (see groupAffectedResources) once the bucket's own size
+	// reaches namespaceGroupThreshold — a check whose messages
+	// legitimately differ per resource (RBAC/PSS/control-plane) naturally
+	// produces multiple small buckets instead of one gated all-or-nothing
+	// decision for the whole policy.
+	MessageGroups []MessageGroup
+}
+
+// MessageGroup is every finding under one CheckGroup sharing an identical
+// MessageBucketKey — the report's "same problem, shown once" unit. Message
+// is one representative finding's own literal text (not the normalized/
+// placeholder form MessageBucketKey uses only for bucketing).
+type MessageGroup struct {
+	Message string
+	// Rows is how the template renders this bucket's "Affected resources":
+	// findings.Finding rows verbatim, except a group sharing the same Kind
+	// and "name shape" (see NameTemplate) — at least
+	// namespaceGroupThreshold of them — collapses into one AffectedRow
+	// instead of one row each. See AffectedRow and groupAffectedResources.
 	Rows []AffectedRow
 }
 
@@ -261,10 +282,16 @@ func newTemplateData(r Result) TemplateData {
 }
 
 // groupByCheck buckets a (severity-scoped) slice of findings by PolicyID,
-// preserving first-seen order. See CheckGroup's doc comment for why.
+// preserving first-seen order, then buckets each policy's findings again by
+// MessageBucketKey into MessageGroups (see CheckGroup's doc comment for
+// why: no whole-policy "are all messages uniform" gate — one outlier
+// finding must never block collapsing for the rest of the check).
 // namespaceGroupThreshold and byPattern are forwarded to
-// groupAffectedResources for each group's Rows; threshold <= 0 disables
-// collapsing (Rows stays nil, template falls back to Findings).
+// groupAffectedResources for each MessageGroup's own Rows; threshold <= 0
+// disables the *resource*-level RepeatGroup collapsing (groupAffectedResources
+// then returns one row per finding), but message-level grouping — sharing
+// one message line instead of repeating it per resource — still applies
+// regardless, same as it always has.
 func groupByCheck(sorted []findings.Finding, namespaceGroupThreshold int, byPattern bool) []CheckGroup {
 	var order []string
 	byPolicy := map[string][]findings.Finding{}
@@ -278,30 +305,41 @@ func groupByCheck(sorted []findings.Finding, namespaceGroupThreshold int, byPatt
 	out := make([]CheckGroup, 0, len(order))
 	for _, id := range order {
 		fs := byPolicy[id]
-		uniform := fs[0].Message
-		for _, f := range fs[1:] {
-			if f.Message != uniform {
-				uniform = ""
-				break
-			}
-		}
-		// Always built (not just when collapsing is possible) whenever the
-		// message is uniform: the template ranges over Rows for that
-		// branch unconditionally, so an empty Rows would render nothing
-		// rather than falling back to Findings.
-		var rows []AffectedRow
-		if uniform != "" {
-			rows = groupAffectedResources(fs, namespaceGroupThreshold, byPattern)
-		}
 		out = append(out, CheckGroup{
-			PolicyID:       id,
-			Title:          fs[0].Title,
-			Category:       fs[0].Category,
-			CIS:            fs[0].CIS,
-			Remediation:    fs[0].Remediation,
-			UniformMessage: uniform,
-			Findings:       fs,
-			Rows:           rows,
+			PolicyID:      id,
+			Title:         fs[0].Title,
+			Category:      fs[0].Category,
+			CIS:           fs[0].CIS,
+			Remediation:   fs[0].Remediation,
+			Findings:      fs,
+			MessageGroups: groupByMessage(fs, namespaceGroupThreshold, byPattern),
+		})
+	}
+	return out
+}
+
+// groupByMessage buckets one check's findings by MessageBucketKey,
+// preserving first-seen order, and builds each bucket's Rows via the
+// existing, unmodified groupAffectedResources (the Kind/name-shape
+// collapsing within a bucket is unchanged — only the outer bucketing that
+// used to gate on whole-policy uniformity is new).
+func groupByMessage(fs []findings.Finding, namespaceGroupThreshold int, byPattern bool) []MessageGroup {
+	var order []string
+	buckets := map[string][]findings.Finding{}
+	for _, f := range fs {
+		k := MessageBucketKey(f)
+		if _, ok := buckets[k]; !ok {
+			order = append(order, k)
+		}
+		buckets[k] = append(buckets[k], f)
+	}
+
+	out := make([]MessageGroup, 0, len(order))
+	for _, k := range order {
+		bucket := buckets[k]
+		out = append(out, MessageGroup{
+			Message: bucket[0].Message,
+			Rows:    groupAffectedResources(bucket, namespaceGroupThreshold, byPattern),
 		})
 	}
 	return out

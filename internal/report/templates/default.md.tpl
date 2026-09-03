@@ -195,13 +195,11 @@ No findings.
 - **Remediation:** {{ .Remediation }}
 {{- end }}
 - **Affected resources ({{ len .Findings }}):**
-{{ if .UniformMessage }}
-  _{{ .UniformMessage }}_
+{{ range .MessageGroups }}
+  _{{ .Message }}_
 {{ range .Rows }}{{ if .Repeat }}  - **{{ .Repeat.Kind }}/{{ escapeCell .Repeat.NameTemplate }}** — repeated identically across **{{ .Repeat.Count }} {{ .Repeat.Unit }}**: {{ join .Repeat.Examples ", " }}{{ if .Repeat.Truncated }} (+{{ minus .Repeat.Count (len .Repeat.Examples) }} more){{ end }}
 {{ else }}  - {{ .Finding.Resource.String }}{{ if and .Finding.Source $.MultipleSources }} (`{{ .Finding.Source }}`){{ end }}
-{{ end }}{{ end }}{{ else }}
-{{ range .Findings }}  - **{{ .Resource.String }}**{{ if and .Source $.MultipleSources }} (`{{ .Source }}`){{ end }} — {{ .Message }}
-{{ end }}{{ end }}
+{{ end }}{{ end }}{{ end }}
 {{ end -}}
 {{ end -}}
 {{- end }}

@@ -313,6 +313,50 @@ func TestNamespaceGroupThresholdNeverCollapsesNonUniformMessages(t *testing.T) {
 	}
 }
 
+// TestGroupByCheck_OutlierMessageDoesNotBlockOtherBucketsFromCollapsing is
+// the report-side mirror of the triage TUI's
+// TestDedupGroups_OutlierMessageDoesNotBlockOtherRowsFromCollapsing: the
+// previous groupByCheck gated collapsing on a per-PolicyID "are ALL of this
+// policy's messages identical" check — one outlier finding tripped that
+// gate for the ENTIRE policy, so even the 3 genuinely identical findings
+// below never collapsed. Bucketing by MessageBucketKey instead means the 3
+// identical findings still collapse into one repeated-group row, and the
+// outlier just renders as its own separate row alongside it.
+func TestGroupByCheck_OutlierMessageDoesNotBlockOtherBucketsFromCollapsing(t *testing.T) {
+	msg := func(ns string) string {
+		return `ServiceAccount "checker-sa" in namespace "` + ns + `" can read Secrets cluster-wide, via: ClusterRoleBinding "checker-sa-binding-` + ns + `".`
+	}
+	mk := func(ns, msg, name string) findings.Finding {
+		return findings.Finding{
+			ID: ns + name, PolicyID: "rbac-analyzer.broad-secrets-access", Title: "Broad Secrets access",
+			Severity: findings.SeverityHigh, Category: "rbac",
+			Resource: findings.ResourceRef{Kind: "ServiceAccount", Name: name, Namespace: ns},
+			Message:  msg,
+		}
+	}
+	r := report.Result{
+		GeneratedAt: time.Now(),
+		Target:      "test",
+		Findings: []findings.Finding{
+			mk("pg-cl-aaa", msg("pg-cl-aaa"), "checker-sa"),
+			mk("pg-cl-bbb", msg("pg-cl-bbb"), "checker-sa"),
+			mk("pg-cl-ccc", msg("pg-cl-ccc"), "checker-sa"),
+			mk("", `Group "kubeadm:cluster-admins" can read Secrets cluster-wide, via: ClusterRoleBinding "kubeadm:cluster-admins" -> ClusterRole "cluster-admin".`, "kubeadm:cluster-admins"),
+		},
+		NamespaceGroupThreshold: 3,
+	}
+	md, err := report.RenderMarkdown(r, "")
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
+	if !strings.Contains(md, "repeated identically") {
+		t.Errorf("expected the 3 identical tenant findings to still collapse despite the outlier, got:\n%s", md)
+	}
+	if !strings.Contains(md, "kubeadm:cluster-admins") {
+		t.Errorf("expected the outlier finding to still be shown on its own, got:\n%s", md)
+	}
+}
+
 // TestGroupByNamePatternCollapsesUUIDSuffixedClusterScopedNames reproduces
 // a real bug report: a Capsule-managed cluster with thousands of per-tenant
 // Namespace objects named "usersvs-<uuid>" produced one
