@@ -93,3 +93,24 @@ func TestDetect_NoneFound(t *testing.T) {
 		t.Errorf("expected no components detected, got %v", got)
 	}
 }
+
+// TestDetect_IstioMatchesRealWorldLabel is a regression test for a real
+// report: istiod was silently never detected because the bundled
+// components.yaml matched app.kubernetes.io/name: istiod, verified only
+// against the Helm chart's rendered labels — a real istiod Deployment
+// (istioctl install, Helm, or an IstioOperator CR) carries app: istiod
+// instead (also its Service/pod-template selector, so it's present
+// regardless of install method).
+func TestDetect_IstioMatchesRealWorldLabel(t *testing.T) {
+	resources := []loader.Resource{
+		resourceOf("apps/v1", "Deployment", "istiod", map[string]any{"app": "istiod", "istio": "pilot"}),
+	}
+	got := thirdparty.Detect(resources, thirdparty.Known)
+	byName := map[string]thirdparty.Detection{}
+	for _, d := range got {
+		byName[d.Name] = d
+	}
+	if istio := byName["Istio"]; istio.Name != "Istio" || istio.LabelCount != 1 {
+		t.Errorf("expected Istio detected via the real-world app: istiod label, got %+v", istio)
+	}
+}

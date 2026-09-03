@@ -42,14 +42,21 @@ components:
     labels:
       app.kubernetes.io/name: capsule
 
-  # Verified against istio/istiod chart's Deployment — istiod is the
-  # control-plane component that actually processes security.istio.io
-  # objects; the data-plane sidecars carry different labels entirely.
+  # istiod is the control-plane component that actually processes
+  # security.istio.io objects; the data-plane sidecars carry different
+  # labels entirely. `app: istiod` is Istio's own long-standing label
+  # (also the Service/pod-template selector, so it's present regardless of
+  # install method — istioctl install, the istiod Helm chart, or an
+  # IstioOperator CR) — confirmed against a real cluster's istiod
+  # Deployment; the previously-assumed app.kubernetes.io/name: istiod
+  # (verified only against the Helm chart's rendered labels, not real-world
+  # installs) never matched in practice, silently never detecting Istio at
+  # all.
   - name: Istio
     category: Application
     group: security.istio.io
     labels:
-      app.kubernetes.io/name: istiod
+      app: istiod
 
   # Verified against argo/argo-cd chart's application-controller
   # StatefulSet — the ArgoCD component that actually reconciles
