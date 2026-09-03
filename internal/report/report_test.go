@@ -147,6 +147,41 @@ func TestRenderMarkdownSourceSuffix(t *testing.T) {
 	}
 }
 
+// TestRenderMarkdown_KnowledgeBaseOverridesCheckContent is the report-side
+// half of the knowledge-base feature: an organization's own
+// Title/Category/Remediation for a check (already used by the triage TUI
+// and Jira ticket rendering, see internal/triage.Resolve) must also show
+// up in the static report, and blend in under the same plain labels — no
+// "(org)"/"(knowledge base)" suffix, matching the triage TUI's existing
+// precedent (TestDetailText_NoKnowledgeBaseLabelSuffix).
+func TestRenderMarkdown_KnowledgeBaseOverridesCheckContent(t *testing.T) {
+	r := report.Result{
+		GeneratedAt: time.Now(),
+		Target:      "test",
+		Findings: []findings.Finding{
+			{ID: "1", PolicyID: "workload.x", Title: "Default title", Severity: findings.SeverityHigh, Category: "workload-security",
+				Resource: findings.ResourceRef{Kind: "Pod", Name: "p", Namespace: "default"}, Message: "bad thing happened", Remediation: "default remediation"},
+		},
+		KnowledgeBase: map[string]findings.KnowledgeBaseEntry{
+			"workload.x": {Title: "Наш заголовок", Category: "custom-category", Remediation: "Наша рекомендация"},
+		},
+	}
+	md, err := report.RenderMarkdown(r, "")
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
+	for _, want := range []string{"Наш заголовок", "custom-category", "Наша рекомендация"} {
+		if !strings.Contains(md, want) {
+			t.Errorf("expected the knowledge-base override %q to appear, got:\n%s", want, md)
+		}
+	}
+	for _, notWant := range []string{"Default title", "default remediation", "(org", "knowledge base)"} {
+		if strings.Contains(md, notWant) {
+			t.Errorf("expected %q not to appear (overridden or no source annotation), got:\n%s", notWant, md)
+		}
+	}
+}
+
 func TestRenderCSV(t *testing.T) {
 	r := report.Result{
 		GeneratedAt: time.Now(),

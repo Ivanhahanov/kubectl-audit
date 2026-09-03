@@ -80,6 +80,10 @@ output:
   # Custom report.md.tpl (Go text/template). Empty uses the built-in
   # template — see `kubectl audit template dump` and Report Templates.
   template: ""
+  # Each check's Title/Category/Remediation in the report is resolved
+  # through triage.knowledgeBaseFile too (see below) — an org's own wording
+  # shows up here the same way it already does in triage/Jira, no separate
+  # config needed.
   # How the Markdown report's Findings section(s) are structured:
   # check:     group by check/policy ID, title/remediation shown once per
   #            check followed by the resources it fired on (default).
@@ -128,7 +132,9 @@ triage:
   # automatically (no config needed) — see Triage > Knowledge base. Point
   # this at a file to correct one entry or add your own organization's
   # wording; merged on top of the bundle, field by field. Read fresh on
-  # every run, no rebuild.
+  # every run, no rebuild. Also applied to the Markdown report's
+  # Title/Category/Remediation (see output.template above) — one knowledge
+  # base, used everywhere.
   # knowledgeBaseFile: knowledge-base.yaml
   jira:
     baseUrl: ""

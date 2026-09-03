@@ -1,6 +1,10 @@
 package report
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ivanhahanov/kubectl-audit/internal/findings"
+)
 
 // TestNameTemplate covers the name-shape normalization that
 // GroupByNamePattern relies on — see NameTemplate's doc comment for the
@@ -39,5 +43,42 @@ func TestNameTemplate_TwoDifferentUUIDsNormalizeToTheSameShape(t *testing.T) {
 	b := NameTemplate("usersvs-0006e164-99bc-4fac-aaec-079df475fa6b")
 	if a != b {
 		t.Errorf("expected both UUID-suffixed names to normalize identically, got %q vs %q", a, b)
+	}
+}
+
+// TestResolveCheckKB_NoOverrideKeepsDefaults is the common case (no
+// knowledge base configured, or no entry for this PolicyID): the report
+// shows the tool's own default content, unchanged.
+func TestResolveCheckKB_NoOverrideKeepsDefaults(t *testing.T) {
+	f := findings.Finding{Title: "Default title", Category: "workload-security", Remediation: "Default remediation"}
+	title, category, remediation := resolveCheckKB(f, nil)
+	if title != "Default title" || category != "workload-security" || remediation != "Default remediation" {
+		t.Errorf("expected defaults unchanged with no KB, got (%q, %q, %q)", title, category, remediation)
+	}
+}
+
+// TestResolveCheckKB_ExternalFileOverridesInlineFinding is the precedence
+// triage.Resolve already established: a policy's own inline
+// Finding.KnowledgeBase (set via a VAP's kb-* annotations) applies first,
+// then an external knowledgeBaseFile entry for the same PolicyID layers on
+// top and wins field-by-field — an explicit override should always beat
+// whatever the check author baked in.
+func TestResolveCheckKB_ExternalFileOverridesInlineFinding(t *testing.T) {
+	f := findings.Finding{
+		PolicyID: "policy.a", Title: "Inline title", Category: "inline-category", Remediation: "Inline remediation",
+		KnowledgeBase: &findings.KnowledgeBaseEntry{Title: "Inline title", Category: "inline-category", Remediation: "Inline remediation"},
+	}
+	kb := map[string]findings.KnowledgeBaseEntry{
+		"policy.a": {Title: "Org title", Remediation: "Org remediation"}, // Category deliberately left unset
+	}
+	title, category, remediation := resolveCheckKB(f, kb)
+	if title != "Org title" {
+		t.Errorf("expected external Title to win, got %q", title)
+	}
+	if remediation != "Org remediation" {
+		t.Errorf("expected external Remediation to win, got %q", remediation)
+	}
+	if category != "inline-category" {
+		t.Errorf("expected Category to fall back to the inline value when the external entry leaves it unset, got %q", category)
 	}
 }

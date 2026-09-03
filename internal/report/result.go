@@ -92,6 +92,14 @@ type Result struct {
 	// name repeated across namespaces — see
 	// config.OutputConfig.GroupByNamePattern.
 	GroupByNamePattern bool
+	// KnowledgeBase is an organization's own Title/Category/Remediation
+	// overrides per PolicyID (see findings.KnowledgeBaseEntry) — the same
+	// content triage.knowledgeBaseFile already provides for the triage TUI
+	// and Jira ticket rendering, now also applied to the report so a
+	// customized check reads the same everywhere. Nil (the zero value)
+	// means no overrides — every check renders its own default content,
+	// today's behavior.
+	KnowledgeBase map[string]findings.KnowledgeBaseEntry
 }
 
 // Summary counts findings by severity. Suppressed findings aren't counted.

@@ -28,6 +28,7 @@ import (
 	secretsanalyzer "github.com/ivanhahanov/kubectl-audit/internal/secrets"
 	"github.com/ivanhahanov/kubectl-audit/internal/suppress"
 	"github.com/ivanhahanov/kubectl-audit/internal/thirdparty"
+	"github.com/ivanhahanov/kubectl-audit/internal/triage"
 )
 
 // loadEffectiveConfig merges audit.yaml with the persistent CLI flags.
@@ -575,6 +576,14 @@ func runScan(ctx context.Context, cfg *config.AuditConfig) (report.Result, error
 	kept, suppressed := suppress.Apply(all, effectiveExclusions(cfg), suppress.BuildLabelIndex(unfiltered))
 	detected := thirdparty.Detect(unfiltered, effectiveComponents(cfg))
 
+	// Reuses triage.knowledgeBaseFile: an org's Title/Category/Remediation
+	// overrides should read the same whether triaging or reading the
+	// static report, not live in two separate places.
+	kb, err := triage.ResolveKnowledgeBase(cfg.Triage.KnowledgeBaseFile)
+	if err != nil {
+		return report.Result{}, fmt.Errorf("loading knowledge base: %w", err)
+	}
+
 	result := report.Result{
 		GeneratedAt:             time.Now(),
 		Target:                  target,
@@ -589,6 +598,7 @@ func runScan(ctx context.Context, cfg *config.AuditConfig) (report.Result, error
 		MultipleSources:         hasMultipleSources(resources),
 		NamespaceGroupThreshold: cfg.Output.NamespaceGroupThreshold,
 		GroupByNamePattern:      cfg.Output.GroupByNamePatternEnabled(),
+		KnowledgeBase:           kb,
 	}
 
 	validPolicyIDs := make(map[string]bool, len(policies))

@@ -148,6 +148,12 @@ type Finding struct {
 // internal/triage.Resolve.
 type KnowledgeBaseEntry struct {
 	Title string `json:"title,omitempty"`
+	// Category overrides Finding.Category for display purposes only (the
+	// Markdown/Confluence report heading, the CSV column, Jira's auto
+	// "category" label) — a free-text label with no structural role
+	// elsewhere (compliance scoring keys on PolicyID, not Category), so
+	// overriding it here is safe.
+	Category string `json:"category,omitempty"`
 	// Description is the organization's own explanation of the
 	// vulnerability — distinct from Finding.Message (the tool's own,
 	// sometimes per-resource, technical text), which is never replaced,

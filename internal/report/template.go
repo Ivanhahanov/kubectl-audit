@@ -249,7 +249,7 @@ func newTemplateData(r Result) TemplateData {
 	}
 	if wantCheck {
 		for i := range groups {
-			groups[i].Checks = groupByCheck(groups[i].Findings, r.NamespaceGroupThreshold, r.GroupByNamePattern)
+			groups[i].Checks = groupByCheck(groups[i].Findings, r.NamespaceGroupThreshold, r.GroupByNamePattern, r.KnowledgeBase)
 		}
 	}
 
@@ -291,8 +291,10 @@ func newTemplateData(r Result) TemplateData {
 // disables the *resource*-level RepeatGroup collapsing (groupAffectedResources
 // then returns one row per finding), but message-level grouping — sharing
 // one message line instead of repeating it per resource — still applies
-// regardless, same as it always has.
-func groupByCheck(sorted []findings.Finding, namespaceGroupThreshold int, byPattern bool) []CheckGroup {
+// regardless, same as it always has. kb applies an organization's own
+// Title/Category/Remediation overrides (see resolveCheckKB); nil means no
+// overrides, today's behavior.
+func groupByCheck(sorted []findings.Finding, namespaceGroupThreshold int, byPattern bool, kb map[string]findings.KnowledgeBaseEntry) []CheckGroup {
 	var order []string
 	byPolicy := map[string][]findings.Finding{}
 	for _, f := range sorted {
@@ -305,17 +307,53 @@ func groupByCheck(sorted []findings.Finding, namespaceGroupThreshold int, byPatt
 	out := make([]CheckGroup, 0, len(order))
 	for _, id := range order {
 		fs := byPolicy[id]
+		title, category, remediation := resolveCheckKB(fs[0], kb)
 		out = append(out, CheckGroup{
 			PolicyID:      id,
-			Title:         fs[0].Title,
-			Category:      fs[0].Category,
+			Title:         title,
+			Category:      category,
 			CIS:           fs[0].CIS,
-			Remediation:   fs[0].Remediation,
+			Remediation:   remediation,
 			Findings:      fs,
 			MessageGroups: groupByMessage(fs, namespaceGroupThreshold, byPattern),
 		})
 	}
 	return out
+}
+
+// resolveCheckKB applies an organization's own knowledge-base override to
+// one check's hoisted Title/Category/Remediation — the same precedence
+// triage.Resolve uses (internal/triage/knowledgebase.go): f.KnowledgeBase
+// (inline, set via a VAP's kb-* annotations) first, then kb[f.PolicyID] (an
+// external triage.knowledgeBaseFile) layered on top, external always wins
+// field-by-field. Unlike triage.Resolve, deliberately no Go-template
+// rendering of the override fields: these are check-level values (the same
+// for every finding under the policy, taken from one representative
+// finding), not per-finding, so there's no single finding to template
+// against without being arbitrary. No "(org)"/"(knowledge base)" suffix is
+// added anywhere — overridden content blends in under the same plain
+// labels as default content, matching the triage TUI's existing detail
+// view.
+func resolveCheckKB(f findings.Finding, kb map[string]findings.KnowledgeBaseEntry) (title, category, remediation string) {
+	title, category, remediation = f.Title, f.Category, f.Remediation
+	apply := func(e findings.KnowledgeBaseEntry) {
+		if e.Title != "" {
+			title = e.Title
+		}
+		if e.Category != "" {
+			category = e.Category
+		}
+		if e.Remediation != "" {
+			remediation = e.Remediation
+		}
+	}
+	if f.KnowledgeBase != nil {
+		apply(*f.KnowledgeBase)
+	}
+	if e, ok := kb[f.PolicyID]; ok {
+		apply(e)
+	}
+	return title, category, remediation
 }
 
 // groupByMessage buckets one check's findings by MessageBucketKey,
