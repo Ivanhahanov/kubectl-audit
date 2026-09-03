@@ -259,6 +259,8 @@ type TemplateData struct {
 	GeneratedAt         time.Time
 	Target              string
 	ClusterVersion      string
+	ClusterEndpoint     string
+	Owner               string
 	Scope               Scope
 	PoliciesLoaded      int
 	SeverityOrder       []findings.Severity
@@ -337,6 +339,8 @@ func newTemplateData(r Result) TemplateData {
 		GeneratedAt:         r.GeneratedAt,
 		Target:              r.Target,
 		ClusterVersion:      r.ClusterVersion,
+		ClusterEndpoint:     r.ClusterEndpoint,
+		Owner:               r.Owner,
 		Scope:               r.Scope,
 		PoliciesLoaded:      r.PoliciesLoaded,
 		SeverityOrder:       order,

@@ -98,6 +98,10 @@ output:
   # language via triage.knowledgeBaseFile (the bundled default already is a
   # Russian one). Ignored when `template` above is set.
   reportLang: en
+  # Who's responsible for this report (a name, team, or ticket queue) —
+  # purely informational, shown in the report header table. Not set unless
+  # you set it; never derived.
+  owner: ""
   # How the Markdown report's Findings section(s) are structured:
   # check:     group by check/policy ID, title/remediation shown once per
   #            check followed by the resources it fired on (default).

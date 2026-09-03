@@ -1,15 +1,22 @@
 h1. Kubernetes Security Audit Report
 
-* *Generated:* {{ rfc3339 .GeneratedAt }}
-* *Target:* {{ .Target }}
+||Field||Value||
+|Generated|{{ rfc3339 .GeneratedAt }}|
+|Target|{{ escapeCell .Target }}|
 {{- if .ClusterVersion }}
-* *Cluster version:* {{ .ClusterVersion }}
+|Cluster version|{{ .ClusterVersion }}|
 {{- end }}
-* *Policies loaded:* {{ .PoliciesLoaded }}
+{{- if .ClusterEndpoint }}
+|Cluster endpoint|{{ escapeCell .ClusterEndpoint }}|
+{{- end }}
+{{- if .Owner }}
+|Owner|{{ escapeCell .Owner }}|
+{{- end }}
+|Policies loaded|{{ .PoliciesLoaded }}|
 
 {toc:maxLevel=3}
 
-h2. Scope
+h2. Context
 
 {{ if .Scope.OutOfScope -}}
 Not covered by this scan:
@@ -28,12 +35,11 @@ Checked, but with a lower-confidence caveat worth reading before trusting the re
 {{- end }}
 {{- if .DetectedComponents }}
 
-h2. Detected Components
+h3. Detected Components
 
-Well-known third-party operators/CNIs this tool recognized in the scanned resources (see
-{{"{{"}}internal/thirdparty{{"}}"}}). System components have a matching built-in PSS exception
-({{"{{"}}internal/suppress/builtin-exclusions.yaml{{"}}"}}) for their documented, unavoidable privileges;
-Application components get no exception and are checked at full strength.
+Well-known third-party operators/CNIs recognized in the scanned resources. System components
+have a documented exception for their necessary elevated privileges; Application components are
+checked at full strength, no exceptions.
 
 ||Component||Category||Detected via||Helm-managed||
 {{- range .DetectedComponents }}
@@ -131,19 +137,19 @@ No findings.
 h3. {{ .Severity }} ({{ len .Findings }})
 
 {{ severityStatus .Severity }}
-
-||Policy ID||Title||Category||Affected||
-{{- range .Checks }}
-|{{ escapeCell .PolicyID }}|{{ escapeCell .Title }}|{{ escapeCell .Category }}|{{ len .Findings }}|
-{{- end }}
 {{ range .Checks }}
 h4. {{ .PolicyID }} — {{ escapeCell .Title }}
 
-* *Category:* {{ escapeCell .Category }}{{ if .CIS }} · *CIS:* {{ join .CIS ", " }}{{ end }}
-{{- if .Remediation }}
-* *Remediation:* {{ escapeCell .Remediation }}
+||Field||Value||
+|Category|{{ escapeCell .Category }}|
+{{- if .CIS }}
+|CIS|{{ join .CIS ", " }}|
 {{- end }}
-* *Affected resources ({{ len .Findings }}):*
+{{- if .Remediation }}
+|Remediation|{{ escapeCell .Remediation }}|
+{{- end }}
+
+*Affected resources ({{ len .Findings }}):*
 {{ if .Collapsible }}
 {expand:{{ len .Findings }} findings — click to expand}
 {{ end }}

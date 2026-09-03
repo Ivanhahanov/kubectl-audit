@@ -51,6 +51,16 @@ type Result struct {
 	// "v1.27.16"), empty for a static-manifest-only scan or if detection
 	// failed. See internal/k8sversion.
 	ClusterVersion string
+	// ClusterEndpoint is the API server URL from the resolved kubeconfig
+	// (rest.Config.Host, e.g. "https://10.0.5.2:6443" or a managed
+	// cluster's DNS name) — not always a literal IP address, hence the
+	// name, but the closest available "where is this cluster" signal.
+	// Empty for a static-manifest-only scan.
+	ClusterEndpoint string
+	// Owner is a free-text "who's responsible for this report" field —
+	// config output.owner / --owner, purely informational, never derived.
+	// Empty (the default) omits it from the report header.
+	Owner          string
 	Scope          Scope
 	PoliciesLoaded int
 	Findings       []findings.Finding

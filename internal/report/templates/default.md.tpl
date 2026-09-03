@@ -1,18 +1,23 @@
 # Kubernetes Security Audit Report
 
-- **Generated:** {{ rfc3339 .GeneratedAt }}
-- **Target:** {{ .Target }}
+| Field | Value |
+|---|---|
+| Generated | {{ rfc3339 .GeneratedAt }} |
+| Target | {{ escapeCell .Target }} |
 {{- if .ClusterVersion }}
-- **Cluster version:** {{ .ClusterVersion }}
+| Cluster version | {{ .ClusterVersion }} |
 {{- end }}
-- **Policies loaded:** {{ .PoliciesLoaded }}
+{{- if .ClusterEndpoint }}
+| Cluster endpoint | {{ escapeCell .ClusterEndpoint }} |
+{{- end }}
+{{- if .Owner }}
+| Owner | {{ escapeCell .Owner }} |
+{{- end }}
+| Policies loaded | {{ .PoliciesLoaded }} |
 
 ## Table of Contents
 
-- [Scope](#scope)
-{{- if .DetectedComponents }}
-- [Detected Components](#detected-components)
-{{- end }}
+- [Context](#context)
 - [Summary](#summary)
 {{- range .Frameworks }}
 - [{{ .Title }} Compliance](#compliance-{{ slug .ID }})
@@ -36,9 +41,9 @@
 - [Suppressed Findings](#suppressed-findings)
 {{- end }}
 
-<a id="scope"></a>
+<a id="context"></a>
 
-## Scope
+## Context
 
 {{ if .Scope.OutOfScope -}}
 Not covered by this scan:
@@ -57,14 +62,11 @@ Checked, but with a lower-confidence caveat worth reading before trusting the re
 {{- end }}
 {{- if .DetectedComponents }}
 
-<a id="detected-components"></a>
+### Detected Components
 
-## Detected Components
-
-Well-known third-party operators/CNIs this tool recognized in the scanned resources (see
-`internal/thirdparty`). System components have a matching built-in PSS exception
-(`internal/suppress/builtin-exclusions.yaml`) for their documented, unavoidable privileges;
-Application components get no exception and are checked at full strength.
+Well-known third-party operators/CNIs recognized in the scanned resources. System components
+have a documented exception for their necessary elevated privileges; Application components are
+checked at full strength, no exceptions.
 
 | Component | Category | Detected via | Helm-managed |
 |---|---|---|---|
@@ -192,22 +194,22 @@ No findings.
 <a id="findings-{{ slug (print .Severity) }}"></a>
 
 ### {{ .Severity }} ({{ len .Findings }})
-
-| Policy ID | Title | Category | Affected |
-|---|---|---|---|
-{{- range .Checks }}
-| [{{ escapeCell .PolicyID }}](#check-{{ slug .PolicyID }}) | {{ escapeCell .Title }} | {{ escapeCell .Category }} | {{ len .Findings }} |
-{{- end }}
 {{ range .Checks }}
 <a id="check-{{ slug .PolicyID }}"></a>
 
 #### [{{ .PolicyID }}] {{ .Title }}
 
-- **Category:** {{ .Category }}{{ if .CIS }} · **CIS:** {{ join .CIS ", " }}{{ end }}
-{{- if .Remediation }}
-- **Remediation:** {{ .Remediation }}
+| Field | Value |
+|---|---|
+| Category | {{ escapeCell .Category }} |
+{{- if .CIS }}
+| CIS | {{ join .CIS ", " }} |
 {{- end }}
-- **Affected resources ({{ len .Findings }}):**
+{{- if .Remediation }}
+| Remediation | {{ escapeCell .Remediation }} |
+{{- end }}
+
+**Affected resources ({{ len .Findings }}):**
 {{ if .Collapsible }}
 <details>
 <summary>{{ len .Findings }} findings — click to expand</summary>

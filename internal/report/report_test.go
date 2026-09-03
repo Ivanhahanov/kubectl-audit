@@ -149,11 +149,14 @@ func TestRenderMarkdownSourceSuffix(t *testing.T) {
 	}
 }
 
-// TestRenderMarkdown_SeverityJumpTableListsEveryCheck is the compact-layout
-// navigation aid: a per-severity table of every check (Policy ID/Title/
-// Category/Affected count) linking down to its own detail section, so a
-// large report can be scanned without endless scrolling.
-func TestRenderMarkdown_SeverityJumpTableListsEveryCheck(t *testing.T) {
+// TestRenderMarkdown_NoSeverityJumpTable guards the removal of the
+// per-severity "Policy ID/Title/Category/Affected" mini-table: it
+// duplicated the same three fields shown immediately below in each
+// check's own detail card, adding clutter without adding information —
+// removed per direct feedback. The check's own anchor stays (still a
+// valid link target, just nothing in-report links to it via a jump table
+// anymore).
+func TestRenderMarkdown_NoSeverityJumpTable(t *testing.T) {
 	r := report.Result{
 		GeneratedAt: time.Now(),
 		Target:      "test",
@@ -166,11 +169,11 @@ func TestRenderMarkdown_SeverityJumpTableListsEveryCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderMarkdown: %v", err)
 	}
-	if !strings.Contains(md, "| [workload.x](#check-workload-x) | Bad thing | workload-security | 1 |") {
-		t.Errorf("expected a jump-table row linking to the check's own anchor, got:\n%s", md)
+	if strings.Contains(md, "| Policy ID | Title | Category | Affected |") {
+		t.Errorf("expected the per-severity jump table removed, got:\n%s", md)
 	}
 	if !strings.Contains(md, `<a id="check-workload-x"></a>`) {
-		t.Errorf("expected the matching anchor above the check's detail section, got:\n%s", md)
+		t.Errorf("expected the check's own anchor to still be present, got:\n%s", md)
 	}
 }
 
@@ -630,7 +633,7 @@ func TestRenderConfluence_UsesWikiMarkupNotMarkdown(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderConfluence: %v", err)
 	}
-	for _, want := range []string{"h1. Kubernetes Security Audit Report", "h2. Summary", "h3.", "||Policy ID||Title||Category||Affected||", "*Category:* workload-security", "bad thing happened", "{toc"} {
+	for _, want := range []string{"h1. Kubernetes Security Audit Report", "h2. Summary", "h3.", "||Field||Value||", "|Category|workload-security|", "bad thing happened", "{toc"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected Confluence wiki markup %q, got:\n%s", want, out)
 		}
@@ -1030,5 +1033,159 @@ func TestRenderConfluence_DetectedComponentCategoryNamedType(t *testing.T) {
 	}
 	if !strings.Contains(out, "|cert-manager|System|") {
 		t.Errorf("expected the detected component row rendered, got:\n%s", out)
+	}
+}
+
+// TestRenderMarkdown_HeaderTableWithOwnerAndClusterEndpoint and its
+// Confluence/Russian counterparts guard the header-info-as-a-table
+// redesign, plus the two new optional fields (ClusterEndpoint, Owner) —
+// shown only when set, same convention as ClusterVersion.
+func headerFieldsResult() report.Result {
+	return report.Result{
+		GeneratedAt:     time.Now(),
+		Target:          "test-cluster",
+		ClusterVersion:  "v1.29.4",
+		ClusterEndpoint: "https://10.0.5.2:6443",
+		Owner:           "platform-security-team",
+	}
+}
+
+func TestRenderMarkdown_HeaderTableWithOwnerAndClusterEndpoint(t *testing.T) {
+	md, err := report.RenderMarkdown(headerFieldsResult(), "")
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
+	for _, want := range []string{"| Field | Value |", "| Cluster endpoint | https://10.0.5.2:6443 |", "| Owner | platform-security-team |"} {
+		if !strings.Contains(md, want) {
+			t.Errorf("expected %q in the header table, got:\n%s", want, md)
+		}
+	}
+}
+
+func TestRenderMarkdown_HeaderOmitsOwnerAndEndpointWhenUnset(t *testing.T) {
+	md, err := report.RenderMarkdown(report.Result{GeneratedAt: time.Now(), Target: "test"}, "")
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
+	if strings.Contains(md, "Cluster endpoint") || strings.Contains(md, "Owner") {
+		t.Errorf("expected no Cluster endpoint/Owner row when unset, got:\n%s", md)
+	}
+}
+
+func TestRenderConfluence_HeaderTableWithOwnerAndClusterEndpoint(t *testing.T) {
+	out, err := report.RenderConfluence(headerFieldsResult(), "")
+	if err != nil {
+		t.Fatalf("RenderConfluence: %v", err)
+	}
+	for _, want := range []string{"||Field||Value||", "|Cluster endpoint|https://10.0.5.2:6443|", "|Owner|platform-security-team|"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in the header table, got:\n%s", want, out)
+		}
+	}
+}
+
+// TestRenderMarkdown_ContextSectionMergesScopeAndDetectedComponents
+// guards the section merge: Scope and Detected Components used to be two
+// separate top-level sections; they're now one "Context" section with
+// Detected Components as a subsection, per direct feedback.
+func TestRenderMarkdown_ContextSectionMergesScopeAndDetectedComponents(t *testing.T) {
+	r := report.Result{
+		GeneratedAt: time.Now(),
+		Target:      "test",
+		DetectedComponents: []thirdparty.Detection{
+			{Component: thirdparty.Component{Name: "cert-manager", Category: thirdparty.CategorySystem}, LabelCount: 3},
+		},
+	}
+	md, err := report.RenderMarkdown(r, "")
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
+	if !strings.Contains(md, `<a id="context"></a>`) || !strings.Contains(md, "## Context") {
+		t.Errorf("expected a single Context section, got:\n%s", md)
+	}
+	if strings.Contains(md, "\n## Detected Components") {
+		t.Errorf("expected Detected Components as a subsection (###), not its own top-level section, got:\n%s", md)
+	}
+	if !strings.Contains(md, "### Detected Components") {
+		t.Errorf("expected Detected Components as a subsection under Context, got:\n%s", md)
+	}
+	if strings.Contains(md, "internal/thirdparty") || strings.Contains(md, "internal/suppress") {
+		t.Errorf("expected no internal Go package references in the report, got:\n%s", md)
+	}
+}
+
+// TestRenderMarkdown_CheckDetailIsATable and its Confluence counterpart
+// guard the Category/CIS/Remediation redesign: a bullet-list ("* *X:*
+// value") read as unpolished for an enterprise security report — replaced
+// with a compact key-value table, per direct feedback.
+func TestRenderMarkdown_CheckDetailIsATable(t *testing.T) {
+	r := report.Result{
+		GeneratedAt: time.Now(),
+		Target:      "test",
+		Findings: []findings.Finding{
+			{ID: "1", PolicyID: "workload.x", Title: "Bad thing", Severity: findings.SeverityHigh, Category: "workload-security",
+				CIS: []string{"5.1.1"}, Resource: findings.ResourceRef{Kind: "Pod", Name: "p", Namespace: "default"},
+				Message: "bad thing happened", Remediation: "fix it"},
+		},
+	}
+	md, err := report.RenderMarkdown(r, "")
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
+	for _, want := range []string{"| Field | Value |", "| Category | workload-security |", "| CIS | 5.1.1 |", "| Remediation | fix it |"} {
+		if !strings.Contains(md, want) {
+			t.Errorf("expected %q in the check detail table, got:\n%s", want, md)
+		}
+	}
+	if strings.Contains(md, "- **Category:**") {
+		t.Errorf("expected the old bullet-list format gone, got:\n%s", md)
+	}
+}
+
+func TestRenderConfluence_CheckDetailIsATable(t *testing.T) {
+	r := report.Result{
+		GeneratedAt: time.Now(),
+		Target:      "test",
+		Findings: []findings.Finding{
+			{ID: "1", PolicyID: "workload.x", Title: "Bad thing", Severity: findings.SeverityHigh, Category: "workload-security",
+				CIS: []string{"5.1.1"}, Resource: findings.ResourceRef{Kind: "Pod", Name: "p", Namespace: "default"},
+				Message: "bad thing happened", Remediation: "fix it"},
+		},
+	}
+	out, err := report.RenderConfluence(r, "")
+	if err != nil {
+		t.Fatalf("RenderConfluence: %v", err)
+	}
+	for _, want := range []string{"||Field||Value||", "|Category|workload-security|", "|CIS|5.1.1|", "|Remediation|fix it|"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in the check detail table, got:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "* *Category:*") {
+		t.Errorf("expected the old bullet-list format gone, got:\n%s", out)
+	}
+}
+
+// TestRenderMarkdown_RussianTemplate_ContextAndOwnerFields is the RU
+// counterpart: header table, merged "Контекст" section, no
+// "суб-ресурс"-style forced translation of technical terms.
+func TestRenderMarkdown_RussianTemplate_ContextAndOwnerFields(t *testing.T) {
+	r := report.Result{
+		GeneratedAt: time.Now(), Target: "test", Owner: "team-x", ClusterEndpoint: "https://10.0.5.2:6443",
+		DetectedComponents: []thirdparty.Detection{
+			{Component: thirdparty.Component{Name: "cert-manager", Category: thirdparty.CategorySystem}, LabelCount: 3},
+		},
+	}
+	md, err := report.RenderMarkdown(r, report.RussianTemplate())
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
+	for _, want := range []string{"## Контекст", "### Обнаруженные компоненты", "| Ответственный | team-x |", "| API-сервер кластера | https://10.0.5.2:6443 |"} {
+		if !strings.Contains(md, want) {
+			t.Errorf("expected %q, got:\n%s", want, md)
+		}
+	}
+	if strings.Contains(md, "## Область проверки") {
+		t.Errorf("expected the old separate \"Область проверки\" heading gone, got:\n%s", md)
 	}
 }

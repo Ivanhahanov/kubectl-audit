@@ -36,6 +36,9 @@ The template executes against a `report.TemplateData` value:
 |---|---|---|
 | `.GeneratedAt` | `time.Time` | Use `{{ rfc3339 .GeneratedAt }}` or call `.Format` directly. |
 | `.Target` | `string` | e.g. `cluster:my-context` or `static:./manifests`. |
+| `.ClusterVersion` | `string` | e.g. `v1.29.4`. Empty for a static-manifest-only scan. |
+| `.ClusterEndpoint` | `string` | The kubeconfig's API server URL (`rest.Config.Host`) — not always a literal IP, despite the name. Empty for a static-manifest-only scan. |
+| `.Owner` | `string` | Free-text "who's responsible for this report" — `output.owner`/`--owner`. Empty unless set. |
 | `.PoliciesLoaded` | `int` | |
 | `.SeverityOrder` | `[]findings.Severity` | `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`, `INFO`, in that order. |
 | `.Summary` | `map[Severity]int` | Index with `{{ index .Summary . }}` inside a `range .SeverityOrder`. |
@@ -58,11 +61,14 @@ have any `triage.knowledgeBaseFile` override applied (see [Knowledge
 base]({{ '/triage/#knowledge-base-your-organizations-own-ticket-content' | relative_url }})) — one
 knowledge base, same content in triage, Jira, and the report.
 
+A `CheckGroup`'s Category/CIS/Remediation render as a compact key-value table (not a bullet list —
+reads better for an enterprise report at a glance), followed by its Affected resources.
+
 Each `CheckGroup` buckets its findings again by message (`.MessageGroups`, `[]report.MessageGroup`:
 `.Message`, `.Rows`) — findings whose message is identical after stripping their own resource
 name/namespace, or that share an analyzer-provided `DedupKey` (see `findings.Finding.DedupKey`),
-land in the same bucket and get their own `_message_` line instead of repeating it once per
-resource. Within a bucket, findings sharing a Kind and a "name shape" — either an identical literal
+land in the same bucket and get their own message line instead of repeating it once per resource.
+Within a bucket, findings sharing a Kind and a "name shape" — either an identical literal
 Name, or (with `output.groupByNamePattern`, on by default) names that only differ in a
 generated-identifier segment (a UUID, or another long hex/digit run) — appearing at least
 `output.namespaceGroupThreshold` times (default `3`; see [Noise

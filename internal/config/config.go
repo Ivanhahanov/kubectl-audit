@@ -135,6 +135,11 @@ type OutputConfig struct {
 	// template always fully replaces the built-in one, same precedent as
 	// every other --report-template override.
 	ReportLang string `json:"reportLang,omitempty"`
+	// Owner is a free-text "who's responsible for this report" field (a
+	// name, team, or ticket queue) shown in the report header. Purely
+	// informational, never derived or validated. Empty (the default)
+	// omits it from the report entirely.
+	Owner string `json:"owner,omitempty"`
 	// ReportView selects how the Markdown report's Findings section(s) are
 	// structured: "check" (default) groups findings by check/policy ID —
 	// each check's title/remediation shown once, followed by the resources

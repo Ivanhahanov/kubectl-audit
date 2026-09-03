@@ -1180,22 +1180,22 @@ rbac.no-cluster-admin-binding:
 rbac.no-csr-approval-access:
   description: '{{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
     в пространстве имён {{.Finding.Resource.Namespace}}{{end}} предоставляет доступ
-    update/patch к суб-ресурсу certificatesigningrequests/approval.'
+    update/patch к sub-resource certificatesigningrequests/approval.'
   remediation: Уберите доступ update/patch к certificatesigningrequests/approval из
     {{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}», если субъект не является
     доверенным, контролируемым контроллером одобрения сертификатов. Этот доступ позволяет
     одобрять произвольные CertificateSigningRequests, что даёт возможность выпускать
     новые доверенные клиентские учётные данные для кластера.
-  title: Role/ClusterRole предоставляет доступ к суб-ресурсу certificatesigningrequests/approval
+  title: Role/ClusterRole предоставляет доступ к sub-resource certificatesigningrequests/approval
 rbac.no-node-proxy-access:
   description: '{{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
     в пространстве имён {{.Finding.Resource.Namespace}}{{end}} предоставляет доступ
-    get/list/watch/create к суб-ресурсу nodes/proxy.'
+    get/list/watch/create к sub-resource nodes/proxy.'
   remediation: Уберите доступ get/list/watch/create к nodes/proxy из {{.Finding.Resource.Kind}}
     «{{.Finding.Resource.Name}}», если субъекту он не нужен по существу. Этот доступ
     маршрутизирует запросы через kubelet API, минуя обычный admission control и авторизацию
     API-сервера — по сути это эквивалентно прямому доступу к kubelet на узле.
-  title: Role/ClusterRole предоставляет доступ к суб-ресурсу nodes/proxy
+  title: Role/ClusterRole предоставляет доступ к sub-resource nodes/proxy
 rbac.no-persistentvolume-create-access:
   description: '{{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
     в пространстве имён {{.Finding.Resource.Namespace}}{{end}} предоставляет доступ
@@ -1210,13 +1210,13 @@ rbac.no-persistentvolume-create-access:
 rbac.no-serviceaccount-token-create-access:
   description: '{{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
     в пространстве имён {{.Finding.Resource.Namespace}}{{end}} предоставляет доступ
-    create к суб-ресурсу serviceaccounts/token.'
+    create к sub-resource serviceaccounts/token.'
   remediation: Уберите доступ create к serviceaccounts/token из {{.Finding.Resource.Kind}}
     «{{.Finding.Resource.Name}}», если субъект не является доверенным, контролируемым
     контроллером выпуска токенов. Этот доступ позволяет выпускать новые, потенциально
     долгоживущие токены для любого ServiceAccount в области действия, независимо от
     собственных прав этого ServiceAccount.
-  title: Role/ClusterRole предоставляет доступ create к суб-ресурсу serviceaccounts/token
+  title: Role/ClusterRole предоставляет доступ create к sub-resource serviceaccounts/token
 rbac.no-webhook-config-write-access:
   description: '{{.Finding.Resource.Kind}} «{{.Finding.Resource.Name}}»{{if .Finding.Resource.Namespace}}
     в пространстве имён {{.Finding.Resource.Namespace}}{{end}} предоставляет доступ

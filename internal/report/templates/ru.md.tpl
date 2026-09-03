@@ -1,18 +1,23 @@
 # Отчёт аудита безопасности Kubernetes
 
-- **Сформирован:** {{ rfc3339 .GeneratedAt }}
-- **Цель:** {{ .Target }}
+| Поле | Значение |
+|---|---|
+| Сформирован | {{ rfc3339 .GeneratedAt }} |
+| Цель | {{ escapeCell .Target }} |
 {{- if .ClusterVersion }}
-- **Версия кластера:** {{ .ClusterVersion }}
+| Версия кластера | {{ .ClusterVersion }} |
 {{- end }}
-- **Загружено политик:** {{ .PoliciesLoaded }}
+{{- if .ClusterEndpoint }}
+| API-сервер кластера | {{ escapeCell .ClusterEndpoint }} |
+{{- end }}
+{{- if .Owner }}
+| Ответственный | {{ escapeCell .Owner }} |
+{{- end }}
+| Загружено политик | {{ .PoliciesLoaded }} |
 
 ## Содержание
 
-- [Область проверки](#scope)
-{{- if .DetectedComponents }}
-- [Обнаруженные компоненты](#detected-components)
-{{- end }}
+- [Контекст](#context)
 - [Сводка](#summary)
 {{- range .Frameworks }}
 - [Соответствие {{ .Title }}](#compliance-{{ slug .ID }})
@@ -36,9 +41,9 @@
 - [Подавленные находки](#suppressed-findings)
 {{- end }}
 
-<a id="scope"></a>
+<a id="context"></a>
 
-## Область проверки
+## Контекст
 
 {{ if .Scope.OutOfScope -}}
 Не охвачено этим сканированием:
@@ -58,14 +63,11 @@ NetworkPolicy были доступны для наблюдения в рамк�
 {{- end }}
 {{- if .DetectedComponents }}
 
-<a id="detected-components"></a>
+### Обнаруженные компоненты
 
-## Обнаруженные компоненты
-
-Известные сторонние операторы/CNI, распознанные этим инструментом среди просканированных
-ресурсов (см. `internal/thirdparty`). Системные компоненты имеют соответствующее встроенное
-исключение PSS (`internal/suppress/builtin-exclusions.yaml`) для их документированных,
-неизбежных привилегий; прикладные компоненты проверяются без исключений, в полном объёме.
+Известные сторонние операторы/CNI, распознанные среди просканированных ресурсов. Системные
+компоненты имеют документированное исключение для необходимых им повышенных привилегий;
+прикладные компоненты проверяются без исключений, в полном объёме.
 
 | Компонент | Категория | Как обнаружен | Управляется Helm |
 |---|---|---|---|
@@ -195,22 +197,22 @@ NetworkPolicy были доступны для наблюдения в рамк�
 <a id="findings-{{ slug (print .Severity) }}"></a>
 
 ### {{ severityRU .Severity }} ({{ len .Findings }})
-
-| ID проверки | Название | Категория | Затронуто |
-|---|---|---|---|
-{{- range .Checks }}
-| [{{ escapeCell .PolicyID }}](#check-{{ slug .PolicyID }}) | {{ escapeCell .Title }} | {{ escapeCell .Category }} | {{ len .Findings }} |
-{{- end }}
 {{ range .Checks }}
 <a id="check-{{ slug .PolicyID }}"></a>
 
 #### [{{ .PolicyID }}] {{ .Title }}
 
-- **Категория:** {{ .Category }}{{ if .CIS }} · **CIS:** {{ join .CIS ", " }}{{ end }}
-{{- if .Remediation }}
-- **Рекомендация:** {{ .Remediation }}
+| Поле | Значение |
+|---|---|
+| Категория | {{ escapeCell .Category }} |
+{{- if .CIS }}
+| CIS | {{ join .CIS ", " }} |
 {{- end }}
-- **Затронутые ресурсы ({{ len .Findings }}):**
+{{- if .Remediation }}
+| Рекомендация | {{ escapeCell .Remediation }} |
+{{- end }}
+
+**Затронутые ресурсы ({{ len .Findings }}):**
 {{ if .Collapsible }}
 <details>
 <summary>{{ len .Findings }} находок — нажмите, чтобы развернуть</summary>

@@ -124,6 +124,9 @@ func loadEffectiveConfig(cmd *cobra.Command) (*config.AuditConfig, error) {
 	if flagReportLang != "" {
 		cfg.Output.ReportLang = flagReportLang
 	}
+	if flagOwner != "" {
+		cfg.Output.Owner = flagOwner
+	}
 	if flagReportView != "" {
 		cfg.Output.ReportView = flagReportView
 	}
@@ -222,13 +225,16 @@ func resolveConfigPath() string {
 // unfiltered set (before the default kube-public/kube-node-lease exclusion
 // — needed so the control-plane analyzer can still see static pods like
 // kube-apiserver-* there even on a -n allowlist that would otherwise
-// exclude them), a human-readable target label, and the detected cluster's
+// exclude them), a human-readable target label, the detected cluster's
 // Kubernetes version (e.g. "v1.27.16"; empty for a static-manifest-only
-// scan, or if the version couldn't be fetched).
-func loadResources(ctx context.Context, cfg *config.AuditConfig) ([]loader.Resource, []loader.Resource, string, string, error) {
+// scan, or if the version couldn't be fetched), and the resolved
+// kubeconfig's API server URL (rest.Config.Host; empty in the same cases
+// as the version — see report.Result.ClusterEndpoint).
+func loadResources(ctx context.Context, cfg *config.AuditConfig) ([]loader.Resource, []loader.Resource, string, string, string, error) {
 	var all []loader.Resource
 	var targetParts []string
 	var k8sVersion string
+	var apiServerHost string
 
 	wantStatic := cfg.Target.Mode == config.ModeStatic || cfg.Target.Mode == config.ModeBoth
 	wantCluster := cfg.Target.Mode == config.ModeCluster || cfg.Target.Mode == config.ModeBoth
@@ -236,7 +242,7 @@ func loadResources(ctx context.Context, cfg *config.AuditConfig) ([]loader.Resou
 	if wantStatic && len(cfg.Target.Paths) > 0 {
 		res, err := loader.LoadStatic(cfg.Target.Paths)
 		if err != nil {
-			return nil, nil, "", "", fmt.Errorf("loading static manifests: %w", err)
+			return nil, nil, "", "", "", fmt.Errorf("loading static manifests: %w", err)
 		}
 		all = append(all, res...)
 		targetParts = append(targetParts, fmt.Sprintf("static:%s", strings.Join(cfg.Target.Paths, ",")))
@@ -246,16 +252,19 @@ func loadResources(ctx context.Context, cfg *config.AuditConfig) ([]loader.Resou
 		client, err := k8sclient.New(cfg.Target.Kubeconfig, cfg.Target.Context)
 		if err != nil {
 			if cfg.Target.Mode == config.ModeCluster {
-				return nil, nil, "", "", fmt.Errorf("connecting to cluster: %w", err)
+				return nil, nil, "", "", "", fmt.Errorf("connecting to cluster: %w", err)
 			}
 			warnf("cluster unreachable, skipping cluster scan: %v", err)
 		} else if versionInfo, verr := client.Discovery.ServerVersion(); verr != nil {
 			if cfg.Target.Mode == config.ModeCluster {
-				return nil, nil, "", "", fmt.Errorf("connecting to cluster: %w", verr)
+				return nil, nil, "", "", "", fmt.Errorf("connecting to cluster: %w", verr)
 			}
 			warnf("cluster unreachable, skipping cluster scan: %v", verr)
 		} else {
 			k8sVersion = versionInfo.GitVersion
+			if client.Config != nil {
+				apiServerHost = client.Config.Host
+			}
 			src := loader.SourceLabel(cfg.Target.Context)
 			if cfg.Target.ClusterName != "" {
 				src = "cluster:" + cfg.Target.ClusterName
@@ -271,7 +280,7 @@ func loadResources(ctx context.Context, cfg *config.AuditConfig) ([]loader.Resou
 				ReadSecretValues: cfg.Target.ReadSecretValues,
 			})
 			if err != nil {
-				return nil, nil, "", "", fmt.Errorf("loading cluster resources: %w", err)
+				return nil, nil, "", "", "", fmt.Errorf("loading cluster resources: %w", err)
 			}
 			all = append(all, res...)
 			targetParts = append(targetParts, src)
@@ -311,10 +320,10 @@ func loadResources(ctx context.Context, cfg *config.AuditConfig) ([]loader.Resou
 	}
 
 	if len(all) == 0 {
-		return nil, nil, "", "", fmt.Errorf("no resources loaded; check -f/--filename/target.paths, cluster connectivity, or your namespace/kind filters")
+		return nil, nil, "", "", "", fmt.Errorf("no resources loaded; check -f/--filename/target.paths, cluster connectivity, or your namespace/kind filters")
 	}
 
-	return all, unfiltered, strings.Join(targetParts, " + "), k8sVersion, nil
+	return all, unfiltered, strings.Join(targetParts, " + "), k8sVersion, apiServerHost, nil
 }
 
 func namespaceIndex(resources []loader.Resource) map[string]*loader.Resource {
@@ -485,7 +494,7 @@ func buildScope(cfg *config.AuditConfig, resources []loader.Resource, k8sVersion
 // NetworkPolicy coverage, Pod Security Standards, and compliance
 // scorecards. The single entry point behind `scan`.
 func runScan(ctx context.Context, cfg *config.AuditConfig) (report.Result, error) {
-	resources, unfiltered, target, k8sVersion, err := loadResources(ctx, cfg)
+	resources, unfiltered, target, k8sVersion, apiServerHost, err := loadResources(ctx, cfg)
 	if err != nil {
 		return report.Result{}, err
 	}
@@ -600,6 +609,8 @@ func runScan(ctx context.Context, cfg *config.AuditConfig) (report.Result, error
 		GeneratedAt:             time.Now(),
 		Target:                  target,
 		ClusterVersion:          k8sVersion,
+		ClusterEndpoint:         apiServerHost,
+		Owner:                   cfg.Output.Owner,
 		Scope:                   buildScope(cfg, resources, k8sVersion, cpResult.Observed, detected),
 		PoliciesLoaded:          len(policies),
 		Findings:                kept,

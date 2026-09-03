@@ -46,7 +46,7 @@ func newRBACAnalyzeCmd() *cobra.Command {
 				cfg.Output.Markdown = "rbac-report.md"
 			}
 
-			resources, unfiltered, target, _, err := loadResources(cmd.Context(), cfg)
+			resources, unfiltered, target, _, _, err := loadResources(cmd.Context(), cfg)
 			if err != nil {
 				return err
 			}
@@ -62,6 +62,7 @@ func newRBACAnalyzeCmd() *cobra.Command {
 			result := report.Result{
 				GeneratedAt:             time.Now(),
 				Target:                  target,
+				Owner:                   cfg.Output.Owner,
 				Findings:                kept,
 				Suppressed:              toReportSuppressed(suppressed),
 				RBACModel:               rbacResult.Model,
