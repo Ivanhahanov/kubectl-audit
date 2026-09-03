@@ -266,8 +266,8 @@ func TestBuiltinPoliciesLoadAndCompile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadBuiltin: %v", err)
 	}
-	if len(policies) != 126 {
-		t.Fatalf("expected 126 built-in policies, got %d", len(policies))
+	if len(policies) != 130 {
+		t.Fatalf("expected 130 built-in policies, got %d", len(policies))
 	}
 }
 

@@ -1,0 +1,43 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: strimzi.kafka-no-authorization-configured
+  annotations:
+    audit.k8s-auditor.io/title: "Kafka cluster has no authorization configured"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: strimzi
+    audit.k8s-auditor.io/remediation: >-
+      Set spec.kafka.authorization (type: simple is Kafka's own built-in
+      ACL authorizer; type: custom for a third-party implementation).
+      Verified directly against the real CRD schema
+      (install/cluster-operator/040-Crd-kafka.yaml:
+      spec.properties.kafka.properties.authorization) — this field is
+      entirely optional, and Strimzi passes it straight through to the
+      Kafka broker's own authorizer configuration: with no authorizer
+      configured, Kafka's default behavior is to allow every operation to
+      every client, so there is no ACL enforcement of any kind — any
+      client that can authenticate (or connect at all, on a listener with
+      no authentication either) can produce/consume/manage any topic.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live Kafka object genuinely has no spec.kafka.authorization
+      (`kubectl get kafka <name> -n <ns> -o yaml`). 2. Check who can reach the
+      cluster's listeners at all — a cluster-internal-only listener set
+      with no external exposure narrows the practical blast radius, but
+      still means any workload in the cluster (or namespace, depending on
+      NetworkPolicy) has unrestricted topic access with no ACL boundary
+      between tenants/teams sharing the cluster.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      # kafka.strimzi.io has shipped only v1 since Strimzi consolidated its
+      # CRDs off v1beta2 — "*" used for consistency with this tool's other
+      # CRD-backed policies.
+      - apiGroups: ["kafka.strimzi.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["kafkas"]
+  validations:
+    - expression: |-
+        has(object.spec.kafka) && has(object.spec.kafka.authorization)
+      message: "Kafka.spec.kafka.authorization is not set — the cluster has no ACL authorizer configured, so Kafka's default is to allow every operation to every client with no access-control boundary at all."

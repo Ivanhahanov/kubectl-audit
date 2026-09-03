@@ -39,6 +39,9 @@ var kindToResource = map[string]string{
 	"DestinationRule":     "destinationrules",
 	"Gateway":             "gateways",
 	"Sidecar":             "sidecars",
+	// Strimzi kafka.strimzi.io/v1 CRDs — see policies/thirdparty/strimzi/*.yaml.
+	"Kafka":     "kafkas",
+	"KafkaUser": "kafkausers",
 	// ArgoCD argoproj.io/v1alpha1 CRDs — see policies/thirdparty/argocd/*.yaml.
 	"AppProject":  "appprojects",
 	"Application": "applications",

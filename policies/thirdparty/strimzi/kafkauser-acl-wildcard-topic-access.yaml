@@ -1,0 +1,50 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: strimzi.kafkauser-acl-wildcard-topic-access
+  annotations:
+    audit.k8s-auditor.io/title: "KafkaUser ACL grants access to all topics via a literal wildcard"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: strimzi
+    audit.k8s-auditor.io/remediation: >-
+      Replace resource.name: "*" (patternType literal, the default) with
+      the specific topic name(s) this user needs, or a prefix pattern
+      scoped to a real per-team/per-service naming convention
+      (patternType: prefix with a non-empty name). Verified directly
+      against the real CRD schema
+      (install/cluster-operator/044-Crd-kafkauser.yaml:
+      spec.properties.authorization.properties.acls.items.properties.resource) —
+      a literal "*" resource name is Kafka's own well-known ACL wildcard
+      convention (ResourcePattern with PatternType.LITERAL and name "*"
+      matches every resource of that type), not a general glob — this
+      grants the user the ACL's operations against every topic in the
+      cluster, including ones created after this KafkaUser was defined.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live KafkaUser genuinely has this ACL
+      (`kubectl get kafkauser <name> -n <ns> -o yaml`). 2. Check which
+      operations the rule allows (Read/Write/Describe/All, ...) and
+      whether this user's credentials are scoped to a single
+      application/team — an all-topics grant is a much larger blast
+      radius for a shared/service-account identity than for a genuinely
+      cluster-wide admin tool.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      # kafka.strimzi.io has shipped only v1 since Strimzi consolidated its
+      # CRDs off v1beta2 — "*" used for consistency with this tool's other
+      # CRD-backed policies.
+      - apiGroups: ["kafka.strimzi.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["kafkausers"]
+  validations:
+    - expression: |-
+        !has(object.spec.authorization) || !has(object.spec.authorization.acls) ||
+        !object.spec.authorization.acls.exists(a,
+          (!has(a.type) || a.type == "allow") &&
+          has(a.resource) && has(a.resource.type) && a.resource.type == "topic" &&
+          has(a.resource.name) && a.resource.name == "*" &&
+          (!has(a.resource.patternType) || a.resource.patternType == "literal")
+        )
+      message: "KafkaUser.spec.authorization.acls has an allow rule on resource.type: topic with a literal name: \"*\" — Kafka's own wildcard convention for \"every topic\", granting this user's rule against the whole cluster's topics."

@@ -357,6 +357,36 @@ Investigated and declined, with the underlying risk's actual mitigation noted:
   **Mitigated already, more strongly than any check this tool could add**: the behavior is
   guaranteed by the operator itself, not something a scan needs to verify per-Cluster.
 
+## Strimzi (`kafka.strimzi.io/v1` — no version history, never promoted)
+
+- `strimzi.kafka-no-authorization-configured` (High) — `Kafka.spec.kafka.authorization` is unset.
+  Verified directly against the real CRD schema
+  (`install/cluster-operator/040-Crd-kafka.yaml`): the field is entirely optional and passed
+  straight through to the broker's own authorizer config — with no authorizer configured, Kafka's
+  default is to allow every operation to every client, no ACL boundary at all.
+- `strimzi.kafka-external-listener-tls-disabled` (High) — a `Kafka.spec.kafka.listeners` entry
+  whose `type` is not `internal` (`route`/`tlsroute`/`loadbalancer`/`nodeport`/`ingress`/
+  `cluster-ip` all reach the broker from outside the cluster's pod network) has `tls` not set to
+  `true`. `tls` is a required field on every listener (verified against the schema), so this is
+  always an explicit `false`, never an omission.
+- `strimzi.kafka-external-listener-no-authentication` (High) — same external-listener scope as
+  above, but `authentication` is unset entirely: any client that can reach the listener can
+  connect with no credentials at all (only `spec.kafka.authorization`, checked separately, could
+  still gate what an unauthenticated client is allowed to do).
+- `strimzi.kafkauser-acl-wildcard-topic-access` (High) — a `KafkaUser.spec.authorization.acls`
+  `allow` rule has `resource.type: topic`, `resource.name: "*"`, `patternType: literal` (the
+  default). A literal `"*"` resource name is Kafka's own well-known ACL wildcard convention
+  (`ResourcePattern` with `PatternType.LITERAL` and name `"*"` matches every resource of that
+  type), not a general glob — this grants the rule's operations against every topic in the
+  cluster, including ones created later.
+
+Component detection (`internal/thirdparty/components.yaml`) matches the `strimzi-cluster-operator`
+Deployment's own `app: strimzi` label, verified against the real install manifest
+(`install/cluster-operator/060-Deployment-strimzi-cluster-operator.yaml` in
+strimzi/strimzi-kafka-operator) — not the pod-template-only `strimzi.io/kind: cluster-operator`
+label, which this tool doesn't match on (see [Component inventory](#component-inventory-internalthirdparty)
+above: matching is against an object's own `metadata.labels`, not its pod template).
+
 ## Kyverno (`kyverno.io/v1` ClusterPolicy/Policy)
 
 - `kyverno.policy-validation-not-enforced` (Medium) — a policy with at least one `validate` rule has

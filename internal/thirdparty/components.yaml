@@ -58,6 +58,18 @@ components:
     labels:
       app: istiod
 
+  # Verified against the real strimzi-cluster-operator Deployment
+  # (install/cluster-operator/060-Deployment-strimzi-cluster-operator.yaml
+  # in strimzi/strimzi-kafka-operator) — its own metadata.labels is
+  # {app: strimzi}, not the pod-template-only strimzi.io/kind: cluster-operator
+  # label, which this tool doesn't match on (see detect.go's labelsMatch:
+  # it checks the object's own metadata.labels, not its pod template).
+  - name: Strimzi
+    category: Application
+    group: kafka.strimzi.io
+    labels:
+      app: strimzi
+
   # Verified against argo/argo-cd chart's application-controller
   # StatefulSet — the ArgoCD component that actually reconciles
   # AppProject/Application objects (argocd-server and argocd-repo-server

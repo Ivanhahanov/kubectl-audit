@@ -1,0 +1,18 @@
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaUser
+metadata:
+  name: good
+  namespace: default
+spec:
+  authentication:
+    type: scram-sha-512
+  authorization:
+    type: simple
+    acls:
+      - resource:
+          type: topic
+          name: orders-events
+          patternType: literal
+        operations:
+          - Read
+          - Describe

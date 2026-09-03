@@ -1,0 +1,15 @@
+apiVersion: kafka.strimzi.io/v1
+kind: Kafka
+metadata:
+  name: good
+  namespace: default
+spec:
+  kafka:
+    replicas: 3
+    listeners:
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+    authorization:
+      type: simple

@@ -1,0 +1,43 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: strimzi.kafka-external-listener-tls-disabled
+  annotations:
+    audit.k8s-auditor.io/title: "Kafka external listener has TLS disabled"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: strimzi
+    audit.k8s-auditor.io/remediation: >-
+      Set tls: true on every listener whose type is not internal
+      (route/tlsroute/loadbalancer/nodeport/ingress/cluster-ip all reach
+      the broker from outside the Kubernetes cluster's own pod network).
+      Verified directly against the real CRD schema
+      (install/cluster-operator/040-Crd-kafka.yaml:
+      spec.properties.kafka.properties.listeners.items.properties.tls) —
+      tls is a required field on every listener (no cluster-wide default),
+      so this is always an explicit false, not an oversight.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live Kafka object's listener genuinely has tls: false
+      (`kubectl get kafka <name> -n <ns> -o yaml`). 2. Check the listener's
+      type — route and ingress listener types actually always enforce TLS
+      regardless of this field per Strimzi's own docs, so the practical
+      exposure is specific to loadbalancer/nodeport/tlsroute/cluster-ip
+      listeners genuinely serving plaintext Kafka protocol traffic outside
+      the cluster network.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      # kafka.strimzi.io has shipped only v1 since Strimzi consolidated its
+      # CRDs off v1beta2 — "*" used for consistency with this tool's other
+      # CRD-backed policies.
+      - apiGroups: ["kafka.strimzi.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["kafkas"]
+  validations:
+    - expression: |-
+        !has(object.spec.kafka) || !has(object.spec.kafka.listeners) ||
+        !object.spec.kafka.listeners.exists(l,
+          has(l.type) && l.type != "internal" && (!has(l.tls) || l.tls != true)
+        )
+      message: "A Kafka.spec.kafka.listeners entry reaches the broker from outside the cluster (type is not internal) with tls not set to true — broker traffic on that listener is unencrypted."

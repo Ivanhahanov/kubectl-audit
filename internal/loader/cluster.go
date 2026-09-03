@@ -92,6 +92,10 @@ var optionalResources = []crdResource{
 	{Group: "networking.istio.io", Resource: "destinationrules", Namespaced: true, Name: "destinationrules"},
 	{Group: "networking.istio.io", Resource: "gateways", Namespaced: true, Name: "istio-gateways"},
 	{Group: "networking.istio.io", Resource: "sidecars", Namespaced: true, Name: "istio-sidecars"},
+	// kafka.strimzi.io (Strimzi) — see policies/thirdparty/strimzi/*.yaml.
+	// Both CRDs are namespace-scoped.
+	{Group: "kafka.strimzi.io", Resource: "kafkas", Namespaced: true, Name: "kafkas"},
+	{Group: "kafka.strimzi.io", Resource: "kafkausers", Namespaced: true, Name: "kafkausers"},
 	// argoproj.io — see policies/thirdparty/argocd/*.yaml. AppProject is
 	// cluster-scoped; Application is namespaced.
 	{Group: "argoproj.io", Resource: "appprojects", Namespaced: false, Name: "appprojects"},

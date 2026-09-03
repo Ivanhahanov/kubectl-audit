@@ -1,0 +1,47 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: strimzi.kafka-external-listener-no-authentication
+  annotations:
+    audit.k8s-auditor.io/title: "Kafka external listener has no authentication configured"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: strimzi
+    audit.k8s-auditor.io/remediation: >-
+      Set authentication.type on every listener whose type is not
+      internal (route/tlsroute/loadbalancer/nodeport/ingress/cluster-ip
+      all reach the broker from outside the Kubernetes cluster's own pod
+      network) — tls (mutual TLS) or scram-sha-512 are Kafka's own
+      built-in mechanisms. Verified directly against the real CRD schema
+      (install/cluster-operator/040-Crd-kafka.yaml:
+      spec.properties.kafka.properties.listeners.items.properties.authentication)
+      — authentication is entirely optional per listener; with it unset,
+      Strimzi configures that listener with no client authentication at
+      all, so any client that can reach it can produce/consume without
+      any credentials (only spec.kafka.authorization, a separate field,
+      could still gate what an unauthenticated client is allowed to do —
+      see strimzi.kafka-no-authorization-configured).
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm the live Kafka object's listener genuinely has no
+      authentication block (`kubectl get kafka <name> -n <ns> -o yaml`).
+      2. Check whether spec.kafka.authorization is configured and whether
+      it meaningfully restricts an unauthenticated/anonymous principal —
+      Kafka's ANONYMOUS principal can still be denied by ACLs, but only if
+      authorization is actually enabled and explicitly scoped that way.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      # kafka.strimzi.io has shipped only v1 since Strimzi consolidated its
+      # CRDs off v1beta2 — "*" used for consistency with this tool's other
+      # CRD-backed policies.
+      - apiGroups: ["kafka.strimzi.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["kafkas"]
+  validations:
+    - expression: |-
+        !has(object.spec.kafka) || !has(object.spec.kafka.listeners) ||
+        !object.spec.kafka.listeners.exists(l,
+          has(l.type) && l.type != "internal" && !has(l.authentication)
+        )
+      message: "A Kafka.spec.kafka.listeners entry reaches the broker from outside the cluster (type is not internal) with no authentication configured — any client that can reach it can connect with no credentials."

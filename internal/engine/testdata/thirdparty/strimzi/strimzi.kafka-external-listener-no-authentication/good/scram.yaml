@@ -1,0 +1,15 @@
+apiVersion: kafka.strimzi.io/v1
+kind: Kafka
+metadata:
+  name: good
+  namespace: default
+spec:
+  kafka:
+    replicas: 3
+    listeners:
+      - name: external
+        port: 9094
+        type: loadbalancer
+        tls: true
+        authentication:
+          type: scram-sha-512
