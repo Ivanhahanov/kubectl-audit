@@ -1006,3 +1006,29 @@ func TestRenderConfluence_RBACModelCollapsed(t *testing.T) {
 		t.Errorf("expected the permissions still present (behind {expand}), got:\n%s", out)
 	}
 }
+
+// TestRenderConfluence_DetectedComponentCategoryNamedType is the
+// regression test for a real crash: thirdparty.Detection.Category is
+// thirdparty.Category, a named string type, not string. escapeCell used
+// to take a plain `string` parameter — Go templates require an exact type
+// match for a function's declared parameter, so escapeCell .Category
+// failed at execution with "wrong type for value; expected string; got
+// thirdparty.Category" the moment Confluence output was rendered for a
+// scan with any detected component. escapeCell/escapeConfluenceCell now
+// take `any` and stringify internally.
+func TestRenderConfluence_DetectedComponentCategoryNamedType(t *testing.T) {
+	r := report.Result{
+		GeneratedAt: time.Now(),
+		Target:      "test",
+		DetectedComponents: []thirdparty.Detection{
+			{Component: thirdparty.Component{Name: "cert-manager", Category: thirdparty.CategorySystem}, LabelCount: 3},
+		},
+	}
+	out, err := report.RenderConfluence(r, "")
+	if err != nil {
+		t.Fatalf("RenderConfluence: %v", err)
+	}
+	if !strings.Contains(out, "|cert-manager|System|") {
+		t.Errorf("expected the detected component row rendered, got:\n%s", out)
+	}
+}

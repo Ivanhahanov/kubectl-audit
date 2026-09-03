@@ -815,8 +815,10 @@ func confluenceTemplateFuncs() template.FuncMap {
 // escapeConfluenceCell is escapeCell's Confluence counterpart: escapes "|"
 // and newlines (table-cell safety, same as escapeCell) plus "{" and "}"
 // (macro-safety — see confluenceTemplateFuncs's doc comment). Confluence
-// wiki markup's own escape convention is a leading backslash.
-func escapeConfluenceCell(s string) string {
+// wiki markup's own escape convention is a leading backslash. Takes `any`
+// for the same reason escapeCell does — see its doc comment.
+func escapeConfluenceCell(v any) string {
+	s := fmt.Sprint(v)
 	s = strings.ReplaceAll(s, "|", "\\|")
 	s = strings.ReplaceAll(s, "\n", " ")
 	s = strings.ReplaceAll(s, "{", "\\{")
