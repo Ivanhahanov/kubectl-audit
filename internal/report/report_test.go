@@ -633,7 +633,7 @@ func TestRenderConfluence_UsesWikiMarkupNotMarkdown(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderConfluence: %v", err)
 	}
-	for _, want := range []string{"h1. Kubernetes Security Audit Report", "h2. Summary", "h3.", "||Field||Value||", "|Category|workload-security|", "bad thing happened", "{toc"} {
+	for _, want := range []string{"h1. Kubernetes Security Audit Report", "h2. Summary", "h3.", "|Category|workload-security|", "bad thing happened", "{toc"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected Confluence wiki markup %q, got:\n%s", want, out)
 		}
@@ -706,7 +706,7 @@ func TestRenderMarkdown_RussianTemplate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderMarkdown: %v", err)
 	}
-	for _, want := range []string{"Отчёт аудита безопасности Kubernetes", "## Сводка", "### Высокий", "Затронутые ресурсы", "bad thing happened"} {
+	for _, want := range []string{"Отчёт аудита безопасности Kubernetes", "## Сводка", "### Высокий", "Категория", "bad thing happened"} {
 		if !strings.Contains(md, want) {
 			t.Errorf("expected Russian template output %q, got:\n%s", want, md)
 		}
@@ -1055,7 +1055,7 @@ func TestRenderMarkdown_HeaderTableWithOwnerAndClusterEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderMarkdown: %v", err)
 	}
-	for _, want := range []string{"| Field | Value |", "| Cluster endpoint | https://10.0.5.2:6443 |", "| Owner | platform-security-team |"} {
+	for _, want := range []string{"| Cluster endpoint | https://10.0.5.2:6443 |", "| Owner | platform-security-team |"} {
 		if !strings.Contains(md, want) {
 			t.Errorf("expected %q in the header table, got:\n%s", want, md)
 		}
@@ -1077,7 +1077,7 @@ func TestRenderConfluence_HeaderTableWithOwnerAndClusterEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderConfluence: %v", err)
 	}
-	for _, want := range []string{"||Field||Value||", "|Cluster endpoint|https://10.0.5.2:6443|", "|Owner|platform-security-team|"} {
+	for _, want := range []string{"|Cluster endpoint|https://10.0.5.2:6443|", "|Owner|platform-security-team|"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected %q in the header table, got:\n%s", want, out)
 		}
@@ -1132,7 +1132,7 @@ func TestRenderMarkdown_CheckDetailIsATable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderMarkdown: %v", err)
 	}
-	for _, want := range []string{"| Field | Value |", "| Category | workload-security |", "| CIS | 5.1.1 |", "| Remediation | fix it |"} {
+	for _, want := range []string{"| Category | workload-security |", "| CIS | 5.1.1 |", "| Remediation | fix it |"} {
 		if !strings.Contains(md, want) {
 			t.Errorf("expected %q in the check detail table, got:\n%s", want, md)
 		}
@@ -1156,7 +1156,7 @@ func TestRenderConfluence_CheckDetailIsATable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderConfluence: %v", err)
 	}
-	for _, want := range []string{"||Field||Value||", "|Category|workload-security|", "|CIS|5.1.1|", "|Remediation|fix it|"} {
+	for _, want := range []string{"|Category|workload-security|", "|CIS|5.1.1|", "|Remediation|fix it|"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected %q in the check detail table, got:\n%s", want, out)
 		}
@@ -1187,5 +1187,81 @@ func TestRenderMarkdown_RussianTemplate_ContextAndOwnerFields(t *testing.T) {
 	}
 	if strings.Contains(md, "## Область проверки") {
 		t.Errorf("expected the old separate \"Область проверки\" heading gone, got:\n%s", md)
+	}
+}
+
+// TestRenderMarkdown_NoAffectedResourcesLabel and its Confluence
+// counterpart guard the removal of the "Affected resources (N):" label:
+// the count is already visible via the <details>/{expand} summary
+// ("N findings — click to expand") once a check collapses, and the resource
+// list/table right below the check's metadata table makes the "these are
+// the affected resources" context obvious without a redundant label.
+func TestRenderMarkdown_NoAffectedResourcesLabel(t *testing.T) {
+	r := report.Result{
+		GeneratedAt: time.Now(),
+		Target:      "test",
+		Findings: []findings.Finding{
+			{ID: "1", PolicyID: "workload.x", Title: "Bad thing", Severity: findings.SeverityHigh, Category: "workload-security",
+				Resource: findings.ResourceRef{Kind: "Pod", Name: "p", Namespace: "default"}, Message: "bad thing happened"},
+		},
+	}
+	md, err := report.RenderMarkdown(r, "")
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
+	if strings.Contains(md, "Affected resources") {
+		t.Errorf("expected no \"Affected resources\" label, got:\n%s", md)
+	}
+}
+
+func TestRenderConfluence_NoAffectedResourcesLabel(t *testing.T) {
+	r := report.Result{
+		GeneratedAt: time.Now(),
+		Target:      "test",
+		Findings: []findings.Finding{
+			{ID: "1", PolicyID: "workload.x", Title: "Bad thing", Severity: findings.SeverityHigh, Category: "workload-security",
+				Resource: findings.ResourceRef{Kind: "Pod", Name: "p", Namespace: "default"}, Message: "bad thing happened"},
+		},
+	}
+	out, err := report.RenderConfluence(r, "")
+	if err != nil {
+		t.Fatalf("RenderConfluence: %v", err)
+	}
+	if strings.Contains(out, "Affected resources") {
+		t.Errorf("expected no \"Affected resources\" label, got:\n%s", out)
+	}
+}
+
+// TestRenderMarkdown_KeyValueTableHasNoHeaderRowText and its Confluence
+// counterpart guard the "Field/Value" header removal: a generic column
+// label adds no information over the already-descriptive row labels
+// (Category/CIS/Remediation, ...) — Markdown keeps an empty header row
+// (GFM tables require one syntactically); Confluence just omits the
+// ||...|| header line entirely (not required there).
+func TestRenderMarkdown_KeyValueTableHasNoHeaderRowText(t *testing.T) {
+	r := report.Result{GeneratedAt: time.Now(), Target: "test"}
+	md, err := report.RenderMarkdown(r, "")
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
+	if strings.Contains(md, "Field") || strings.Contains(md, "Value") {
+		t.Errorf("expected no \"Field\"/\"Value\" header text, got:\n%s", md)
+	}
+	if !strings.Contains(md, "|  |  |\n|---|---|") {
+		t.Errorf("expected an empty-but-valid GFM header row before the delimiter, got:\n%s", md)
+	}
+}
+
+func TestRenderConfluence_KeyValueTableHasNoHeaderRow(t *testing.T) {
+	r := report.Result{GeneratedAt: time.Now(), Target: "test"}
+	out, err := report.RenderConfluence(r, "")
+	if err != nil {
+		t.Fatalf("RenderConfluence: %v", err)
+	}
+	if strings.Contains(out, "||Field||Value||") {
+		t.Errorf("expected the ||Field||Value|| header row removed entirely, got:\n%s", out)
+	}
+	if !strings.Contains(out, "|Generated|") {
+		t.Errorf("expected the header table's data rows still present, got:\n%s", out)
 	}
 }

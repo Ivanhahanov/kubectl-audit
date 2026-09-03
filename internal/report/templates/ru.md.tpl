@@ -1,6 +1,6 @@
 # Отчёт аудита безопасности Kubernetes
 
-| Поле | Значение |
+|  |  |
 |---|---|
 | Сформирован | {{ rfc3339 .GeneratedAt }} |
 | Цель | {{ escapeCell .Target }} |
@@ -29,16 +29,16 @@
 - [Модель ролей RBAC](#rbac-role-model)
 {{- end }}
 {{- if .FindingsByNamespace }}
-- [Находки по пространствам имён{{ if not .NamespaceDetailed }} (индекс){{ end }}](#findings-by-namespace)
+- [Сработки по пространствам имён{{ if not .NamespaceDetailed }} (индекс){{ end }}](#findings-by-namespace)
 {{- end }}
 {{- if ne .ReportView "namespace" }}
-- [Находки](#findings)
+- [Сработки](#findings)
 {{- range .FindingsBySeverity }}
   - [{{ severityRU .Severity }} ({{ len .Findings }})](#findings-{{ slug (print .Severity) }})
 {{- end }}
 {{- end }}
 {{- if .Suppressed }}
-- [Подавленные находки](#suppressed-findings)
+- [Подавленные сработки](#suppressed-findings)
 {{- end }}
 
 <a id="context"></a>
@@ -87,7 +87,7 @@ NetworkPolicy были доступны для наблюдения в рамк�
 {{- end }}
 | **Всего** | **{{ .TotalFindings }}** |
 {{- if .Suppressed }}
-| **Подавлено** | **{{ len .Suppressed }}** (см. [Подавленные находки](#suppressed-findings)) |
+| **Подавлено** | **{{ len .Suppressed }}** (см. [Подавленные сработки](#suppressed-findings)) |
 {{- end }}
 {{ range .Frameworks }}
 <a id="compliance-{{ slug .ID }}"></a>
@@ -97,7 +97,7 @@ NetworkPolicy были доступны для наблюдения в рамк�
 <details>
 <summary>Полный список требований ({{ len .Results }}) — нажмите, чтобы развернуть</summary>
 
-| Требование | Название | Раздел | Статус | Находок | Связанные требования |
+| Требование | Название | Раздел | Статус | Сработок | Связанные требования |
 |---|---|---|---|---|---|
 {{- range .Results }}
 | {{ .Control.ID }} | {{ escapeCell .Control.Title }} | {{ escapeCell .Control.Section }} | {{ .Status }} | {{ if eq (print .Status) "FAIL" }}{{ len .Findings }}{{ end }} | {{ crossRefs .Control }} |
@@ -119,7 +119,7 @@ NetworkPolicy были доступны для наблюдения в рамк�
 <details>
 <summary>Невыполненные требования — затронутые ресурсы ({{ len $failing }}) — нажмите, чтобы развернуть</summary>
 
-Полная информация (сообщение, рекомендация) по каждому из них — в разделе **Находки** ниже,
+Полная информация (сообщение, рекомендация) по каждому из них — в разделе **Сработки** ниже,
 сгруппированная по проверке; здесь только показано, какие ресурсы приводят к невыполнению
 требования.
 {{ range $failing }}
@@ -160,10 +160,10 @@ NetworkPolicy были доступны для наблюдения в рамк�
 {{- if or .FindingsByNamespace .NamespaceDetailed }}
 <a id="findings-by-namespace"></a>
 
-{{ if .NamespaceDetailed }}## Находки по пространствам имён
+{{ if .NamespaceDetailed }}## Сработки по пространствам имён
 
-{{ if not .FindingsByNamespace }}Находок нет.
-{{ else }}Каждая находка, сгруппированная по пространству имён, затем по ресурсу.
+{{ if not .FindingsByNamespace }}Сработок нет.
+{{ else }}Каждая сработка, сгруппированная по пространству имён, затем по ресурсу.
 {{ range .FindingsByNamespace }}
 ### {{ if eq .Namespace "" }}Кластерный уровень{{ else }}{{ .Namespace }}{{ end }}
 {{ range .Resources }}
@@ -171,10 +171,10 @@ NetworkPolicy были доступны для наблюдения в рамк�
 {{ range .Findings }}- **[{{ severityRU .Severity }}] `{{ .PolicyID }}`** — {{ .Message }}{{ if .Remediation }} _Рекомендация: {{ .Remediation }}_{{ end }}
 {{ end }}{{ end }}{{ end }}{{ end }}
 {{ else }}<details>
-<summary><h2 style="display:inline">Находки по пространствам имён (индекс)</h2></summary>
+<summary><h2 style="display:inline">Сработки по пространствам имён (индекс)</h2></summary>
 
-Одно место на приложение/команду, чтобы увидеть, что на него влияет, одна строка на находку —
-текст сообщения/рекомендации здесь не повторяется; ищите ID проверки в разделе **Находки** ниже
+Одно место на приложение/команду, чтобы увидеть, что на него влияет, одна строка на сработку —
+текст сообщения/рекомендации здесь не повторяется; ищите ID проверки в разделе **Сработки** ниже
 для полной информации по любой из них.
 {{ range .FindingsByNamespace }}
 ### {{ if eq .Namespace "" }}Кластерный уровень{{ else }}{{ .Namespace }}{{ end }}
@@ -189,9 +189,9 @@ NetworkPolicy были доступны для наблюдения в рамк�
 {{- if ne .ReportView "namespace" }}
 <a id="findings"></a>
 
-## Находки
+## Сработки
 {{ if not .Findings }}
-Находок нет.
+Сработок нет.
 {{- else -}}
 {{ range .FindingsBySeverity }}
 <a id="findings-{{ slug (print .Severity) }}"></a>
@@ -202,7 +202,7 @@ NetworkPolicy были доступны для наблюдения в рамк�
 
 #### [{{ .PolicyID }}] {{ .Title }}
 
-| Поле | Значение |
+|  |  |
 |---|---|
 | Категория | {{ escapeCell .Category }} |
 {{- if .CIS }}
@@ -212,10 +212,9 @@ NetworkPolicy были доступны для наблюдения в рамк�
 | Рекомендация | {{ escapeCell .Remediation }} |
 {{- end }}
 
-**Затронутые ресурсы ({{ len .Findings }}):**
 {{ if .Collapsible }}
 <details>
-<summary>{{ len .Findings }} находок — нажмите, чтобы развернуть</summary>
+<summary>{{ len .Findings }} сработок — нажмите, чтобы развернуть</summary>
 {{ end }}
 {{ range .MessageGroups }}
 {{ $msg := .Message }}{{ if eq (len .Rows) 1 }}{{ range .Rows }}{{ if .Repeat }}  {{ $msg }} — **{{ .Repeat.Kind }}/{{ escapeCell .Repeat.NameTemplate }}** — повторяется идентично в **{{ .Repeat.Count }} {{ unitRU .Repeat.Unit }}**: {{ join .Repeat.Examples ", " }}{{ if .Repeat.Truncated }} (+ ещё {{ minus .Repeat.Count (len .Repeat.Examples) }}){{ end }}
@@ -241,7 +240,7 @@ NetworkPolicy были доступны для наблюдения в рамк�
 <a id="suppressed-findings"></a>
 
 <details>
-<summary><h2 style="display:inline">Подавленные находки ({{ len .Suppressed }})</h2></summary>
+<summary><h2 style="display:inline">Подавленные сработки ({{ len .Suppressed }})</h2></summary>
 
 Совпало с правилом `exclusions` в `audit.yaml` — не учитывается в Сводке и не влияет на
 `--fail-on`.

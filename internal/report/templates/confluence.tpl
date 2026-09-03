@@ -1,6 +1,5 @@
 h1. Kubernetes Security Audit Report
 
-||Field||Value||
 |Generated|{{ rfc3339 .GeneratedAt }}|
 |Target|{{ escapeCell .Target }}|
 {{- if .ClusterVersion }}
@@ -140,7 +139,6 @@ h3. {{ .Severity }} ({{ len .Findings }})
 {{ range .Checks }}
 h4. {{ .PolicyID }} — {{ escapeCell .Title }}
 
-||Field||Value||
 |Category|{{ escapeCell .Category }}|
 {{- if .CIS }}
 |CIS|{{ join .CIS ", " }}|
@@ -149,7 +147,6 @@ h4. {{ .PolicyID }} — {{ escapeCell .Title }}
 |Remediation|{{ escapeCell .Remediation }}|
 {{- end }}
 
-*Affected resources ({{ len .Findings }}):*
 {{ if .Collapsible }}
 {expand:{{ len .Findings }} findings — click to expand}
 {{ end }}

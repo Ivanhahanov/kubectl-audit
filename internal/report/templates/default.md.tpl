@@ -1,6 +1,6 @@
 # Kubernetes Security Audit Report
 
-| Field | Value |
+|  |  |
 |---|---|
 | Generated | {{ rfc3339 .GeneratedAt }} |
 | Target | {{ escapeCell .Target }} |
@@ -199,7 +199,7 @@ No findings.
 
 #### [{{ .PolicyID }}] {{ .Title }}
 
-| Field | Value |
+|  |  |
 |---|---|
 | Category | {{ escapeCell .Category }} |
 {{- if .CIS }}
@@ -209,7 +209,6 @@ No findings.
 | Remediation | {{ escapeCell .Remediation }} |
 {{- end }}
 
-**Affected resources ({{ len .Findings }}):**
 {{ if .Collapsible }}
 <details>
 <summary>{{ len .Findings }} findings — click to expand</summary>
