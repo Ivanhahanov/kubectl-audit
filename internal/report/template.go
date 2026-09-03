@@ -69,7 +69,24 @@ type CheckGroup struct {
 	// produces multiple small buckets instead of one gated all-or-nothing
 	// decision for the whole policy.
 	MessageGroups []MessageGroup
+	// Collapsible is true when this check has more than
+	// checkCollapseThreshold findings — the template wraps its Affected
+	// resources section in a <details>/{expand} block so a check that
+	// fires on many resources doesn't push everything below it off screen
+	// by default. Independent of namespaceGroupThreshold (which controls
+	// RepeatGroup collapsing within a bucket): a check with, say, 40
+	// distinct per-resource messages that never collapse into a
+	// RepeatGroup still benefits from being tucked behind a click.
+	Collapsible bool
 }
+
+// checkCollapseThreshold is the finding-count above which a CheckGroup's
+// Affected resources section renders collapsed by default (see
+// CheckGroup.Collapsible). Deliberately not tied to namespaceGroupThreshold
+// — that threshold is about whether individual rows collapse into one
+// RepeatGroup, a different question from how many rows are comfortable to
+// show open by default regardless of whether they collapsed.
+const checkCollapseThreshold = 8
 
 // MessageGroup is every finding under one CheckGroup sharing an identical
 // MessageBucketKey — the report's "same problem, shown once" unit. Message
@@ -316,6 +333,7 @@ func groupByCheck(sorted []findings.Finding, namespaceGroupThreshold int, byPatt
 			Remediation:   remediation,
 			Findings:      fs,
 			MessageGroups: groupByMessage(fs, namespaceGroupThreshold, byPattern),
+			Collapsible:   len(fs) > checkCollapseThreshold,
 		})
 	}
 	return out

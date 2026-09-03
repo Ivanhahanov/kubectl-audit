@@ -147,6 +147,89 @@ func TestRenderMarkdownSourceSuffix(t *testing.T) {
 	}
 }
 
+// TestRenderMarkdown_SeverityJumpTableListsEveryCheck is the compact-layout
+// navigation aid: a per-severity table of every check (Policy ID/Title/
+// Category/Affected count) linking down to its own detail section, so a
+// large report can be scanned without endless scrolling.
+func TestRenderMarkdown_SeverityJumpTableListsEveryCheck(t *testing.T) {
+	r := report.Result{
+		GeneratedAt: time.Now(),
+		Target:      "test",
+		Findings: []findings.Finding{
+			{ID: "1", PolicyID: "workload.x", Title: "Bad thing", Severity: findings.SeverityHigh, Category: "workload-security",
+				Resource: findings.ResourceRef{Kind: "Pod", Name: "p", Namespace: "default"}, Message: "bad thing happened"},
+		},
+	}
+	md, err := report.RenderMarkdown(r, "")
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
+	if !strings.Contains(md, "| [workload.x](#check-workload-x) | Bad thing | workload-security | 1 |") {
+		t.Errorf("expected a jump-table row linking to the check's own anchor, got:\n%s", md)
+	}
+	if !strings.Contains(md, `<a id="check-workload-x"></a>`) {
+		t.Errorf("expected the matching anchor above the check's detail section, got:\n%s", md)
+	}
+}
+
+// TestRenderMarkdown_CollapsesLargeCheckByDefault is the compact-layout
+// scroll-reduction fix: a check with more than checkCollapseThreshold
+// findings wraps its Affected resources in a <details> block instead of
+// dumping every row inline — but every row is still present, just behind a
+// click, so no information is lost.
+func TestRenderMarkdown_CollapsesLargeCheckByDefault(t *testing.T) {
+	// Distinct messages that don't embed their own namespace as a
+	// standalone word (NormalizedMessage would strip that, bucketing them
+	// together — not what this test is exercising) so each finding lands
+	// in its own MessageGroup and stays individually visible.
+	mk := func(ns string, n int) findings.Finding {
+		return findings.Finding{
+			ID: ns, PolicyID: "workload.x", Title: "Bad thing", Severity: findings.SeverityHigh, Category: "workload-security",
+			Resource: findings.ResourceRef{Kind: "Pod", Name: "p", Namespace: ns}, Message: fmt.Sprintf("finding number %d", n),
+		}
+	}
+	var fs []findings.Finding
+	namespaces := []string{"tenant-0", "tenant-1", "tenant-2", "tenant-3", "tenant-4", "tenant-5", "tenant-6", "tenant-7", "tenant-8"}
+	for i, ns := range namespaces { // 9 > checkCollapseThreshold (8)
+		fs = append(fs, mk(ns, i))
+	}
+	r := report.Result{GeneratedAt: time.Now(), Target: "test", Findings: fs}
+	md, err := report.RenderMarkdown(r, "")
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
+	if !strings.Contains(md, "<details>") || !strings.Contains(md, "</details>") {
+		t.Errorf("expected a large check's Affected resources wrapped in <details>, got:\n%s", md)
+	}
+	for i := range namespaces {
+		want := fmt.Sprintf("finding number %d", i)
+		if !strings.Contains(md, want) {
+			t.Errorf("expected every finding's message still present (behind <details>), missing %q, got:\n%s", want, md)
+		}
+	}
+}
+
+// TestRenderMarkdown_SmallCheckNotCollapsed guards the complementary case:
+// a check at or below checkCollapseThreshold renders fully open, no click
+// needed for the common (small) case.
+func TestRenderMarkdown_SmallCheckNotCollapsed(t *testing.T) {
+	r := report.Result{
+		GeneratedAt: time.Now(),
+		Target:      "test",
+		Findings: []findings.Finding{
+			{ID: "1", PolicyID: "workload.x", Title: "Bad thing", Severity: findings.SeverityHigh, Category: "workload-security",
+				Resource: findings.ResourceRef{Kind: "Pod", Name: "p", Namespace: "default"}, Message: "bad thing happened"},
+		},
+	}
+	md, err := report.RenderMarkdown(r, "")
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
+	if strings.Contains(md, "<details>") {
+		t.Errorf("expected a small check to render fully open, not wrapped in <details>, got:\n%s", md)
+	}
+}
+
 // TestRenderMarkdown_KnowledgeBaseOverridesCheckContent is the report-side
 // half of the knowledge-base feature: an organization's own
 // Title/Category/Remediation for a check (already used by the triage TUI
@@ -283,7 +366,7 @@ func TestNamespaceGroupThresholdBelowThresholdNotCollapsed(t *testing.T) {
 	if strings.Contains(md, "repeated identically") {
 		t.Errorf("expected no collapsing below the threshold, got:\n%s", md)
 	}
-	if !strings.Contains(md, "/Deployment tenant-a/app") || !strings.Contains(md, "/Deployment tenant-b/app") {
+	if !strings.Contains(md, "| Deployment/app | tenant-a |") || !strings.Contains(md, "| Deployment/app | tenant-b |") {
 		t.Errorf("expected both namespaces listed individually, got:\n%s", md)
 	}
 }

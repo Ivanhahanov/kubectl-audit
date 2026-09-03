@@ -184,22 +184,39 @@ No findings.
 <a id="findings-{{ slug (print .Severity) }}"></a>
 
 ### {{ .Severity }} ({{ len .Findings }})
+
+| Policy ID | Title | Category | Affected |
+|---|---|---|---|
+{{- range .Checks }}
+| [{{ escapeCell .PolicyID }}](#check-{{ slug .PolicyID }}) | {{ escapeCell .Title }} | {{ escapeCell .Category }} | {{ len .Findings }} |
+{{- end }}
 {{ range .Checks }}
+<a id="check-{{ slug .PolicyID }}"></a>
+
 #### [{{ .PolicyID }}] {{ .Title }}
 
-- **Category:** {{ .Category }}
-{{- if .CIS }}
-- **CIS:** {{ join .CIS ", " }}
-{{- end }}
+- **Category:** {{ .Category }}{{ if .CIS }} · **CIS:** {{ join .CIS ", " }}{{ end }}
 {{- if .Remediation }}
 - **Remediation:** {{ .Remediation }}
 {{- end }}
 - **Affected resources ({{ len .Findings }}):**
+{{ if .Collapsible }}
+<details>
+<summary>{{ len .Findings }} findings — click to expand</summary>
+{{ end }}
 {{ range .MessageGroups }}
   _{{ .Message }}_
-{{ range .Rows }}{{ if .Repeat }}  - **{{ .Repeat.Kind }}/{{ escapeCell .Repeat.NameTemplate }}** — repeated identically across **{{ .Repeat.Count }} {{ .Repeat.Unit }}**: {{ join .Repeat.Examples ", " }}{{ if .Repeat.Truncated }} (+{{ minus .Repeat.Count (len .Repeat.Examples) }} more){{ end }}
-{{ else }}  - {{ .Finding.Resource.String }}{{ if and .Finding.Source $.MultipleSources }} (`{{ .Finding.Source }}`){{ end }}
-{{ end }}{{ end }}{{ end }}
+
+  | Resource | Namespace |
+  |---|---|
+{{ range .Rows }}{{ if .Repeat }}  | **{{ .Repeat.Kind }}/{{ escapeCell .Repeat.NameTemplate }}** — repeated identically across **{{ .Repeat.Count }} {{ .Repeat.Unit }}**: {{ join .Repeat.Examples ", " }}{{ if .Repeat.Truncated }} (+{{ minus .Repeat.Count (len .Repeat.Examples) }} more){{ end }} | — |
+{{ else }}  | {{ escapeCell .Finding.Resource.Kind }}/{{ escapeCell .Finding.Resource.Name }}{{ if and .Finding.Source $.MultipleSources }} (`{{ .Finding.Source }}`){{ end }} | {{ orDash (escapeCell .Finding.Resource.Namespace) }} |
+{{ end }}{{ end }}
+{{ end }}
+{{- if .Collapsible }}
+
+</details>
+{{ end }}
 {{ end -}}
 {{ end -}}
 {{- end }}
