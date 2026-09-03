@@ -97,25 +97,46 @@ func RenderIssueDescription(f findings.Finding, kb map[string]findings.Knowledge
 // summary/description (so e.g. "{{.Content.Title}}" works); any other
 // JSON-shaped value (number, bool, or a nested object/array — e.g.
 // {"value": "Prod"} for a Jira select-list field) passes through
-// unchanged, since there's nothing to template. Returns nil for an empty
-// map, so callers can omit "fields" merging entirely when there's nothing
-// configured.
-func RenderCustomFields(fields map[string]any, f findings.Finding, kb map[string]findings.KnowledgeBaseEntry, e Entry) (map[string]any, error) {
-	if len(fields) == 0 {
-		return nil, nil
+// unchanged, since there's nothing to template.
+//
+// owner (output.owner/--owner — the same "who's responsible" field shown
+// in the Markdown/Confluence report header) becomes the created issue's
+// assignee (fields.assignee = {"name": owner}, the Jira Server/DC v2
+// shape — Cloud's v3 API expects accountId instead, out of scope here per
+// this tool's existing Server/DC-only Jira support) whenever it's set and
+// customFields doesn't already set "assignee" explicitly — an explicit
+// customFields.assignee always wins, since it's a deliberate per-project
+// override of the tool's default. owner is expected to already be a valid
+// Jira username; unlike Title/Category/CIS/Remediation elsewhere, this
+// tool doesn't (and can't) validate or transform it.
+//
+// Returns nil only when there is truly nothing to send (no customFields
+// and no owner), so callers can omit "fields" merging entirely in that
+// case.
+func RenderCustomFields(fields map[string]any, f findings.Finding, kb map[string]findings.KnowledgeBaseEntry, e Entry, owner string) (map[string]any, error) {
+	var out map[string]any
+	if len(fields) > 0 {
+		out = make(map[string]any, len(fields))
+		for k, v := range fields {
+			s, ok := v.(string)
+			if !ok {
+				out[k] = v
+				continue
+			}
+			rendered, err := renderIssueTemplate("customFields."+k, s, s, f, kb, e)
+			if err != nil {
+				return nil, fmt.Errorf("customFields[%s]: %w", k, err)
+			}
+			out[k] = rendered
+		}
 	}
-	out := make(map[string]any, len(fields))
-	for k, v := range fields {
-		s, ok := v.(string)
-		if !ok {
-			out[k] = v
-			continue
+	if owner != "" {
+		if out == nil {
+			out = map[string]any{}
 		}
-		rendered, err := renderIssueTemplate("customFields."+k, s, s, f, kb, e)
-		if err != nil {
-			return nil, fmt.Errorf("customFields[%s]: %w", k, err)
+		if _, ok := out["assignee"]; !ok {
+			out["assignee"] = jiraRef{Name: owner}
 		}
-		out[k] = rendered
 	}
 	return out, nil
 }

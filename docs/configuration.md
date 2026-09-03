@@ -99,8 +99,10 @@ output:
   # Russian one). Ignored when `template` above is set.
   reportLang: en
   # Who's responsible for this report (a name, team, or ticket queue) —
-  # purely informational, shown in the report header table. Not set unless
-  # you set it; never derived.
+  # shown in the report header table, purely informational there. Also
+  # used by triage: if set to a Jira username, every issue triage creates
+  # is assigned to it automatically (see Triage > Custom fields). Not set
+  # unless you set it; never derived.
   owner: ""
   # How the Markdown report's Findings section(s) are structured:
   # check:     group by check/policy ID, title/remediation shown once per

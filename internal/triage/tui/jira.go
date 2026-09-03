@@ -43,6 +43,9 @@ type JiraConfig struct {
 	// CustomFields (triage.jira.customFields) are merged into every
 	// created issue's fields — see triage.RenderCustomFields.
 	CustomFields map[string]any
+	// Owner (output.owner/--owner) becomes the created issue's assignee —
+	// see triage.RenderCustomFields.
+	Owner string
 }
 
 func (c JiraConfig) configured() bool {
@@ -64,7 +67,7 @@ func (a *app) createOneIssue(ctx context.Context, client triage.JiraClient, r tr
 	if err != nil {
 		return "", "", err
 	}
-	customFields, err := triage.RenderCustomFields(a.jira.CustomFields, f, a.knowledgeBase, r.Entry)
+	customFields, err := triage.RenderCustomFields(a.jira.CustomFields, f, a.knowledgeBase, r.Entry, a.jira.Owner)
 	if err != nil {
 		return "", "", err
 	}
@@ -109,8 +112,8 @@ func (a *app) jiraPreviewText(r triage.Row) string {
 		fmt.Fprintf(&b, "\n[yellow]Labels:[white] %s\n", strings.Join(labels, ", "))
 	}
 
-	if len(a.jira.CustomFields) > 0 {
-		if fields, err := triage.RenderCustomFields(a.jira.CustomFields, f, a.knowledgeBase, r.Entry); err != nil {
+	if len(a.jira.CustomFields) > 0 || a.jira.Owner != "" {
+		if fields, err := triage.RenderCustomFields(a.jira.CustomFields, f, a.knowledgeBase, r.Entry, a.jira.Owner); err != nil {
 			fmt.Fprintf(&b, "\n[red]Custom fields template error:[white] %v\n", err)
 		} else {
 			b.WriteString("\n[yellow]Custom fields:[white]\n")

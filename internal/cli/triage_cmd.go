@@ -90,6 +90,7 @@ func resolveJiraConfig(cmd *cobra.Command) (tui.JiraConfig, error) {
 			Category: cfg.Triage.Jira.AutoLabels.CategoryEnabled(),
 		},
 		CustomFields: cfg.Triage.Jira.CustomFields,
+		Owner:        cfg.Output.Owner,
 	}
 	if flagTriageJiraURL != "" {
 		jc.BaseURL = flagTriageJiraURL
@@ -310,7 +311,7 @@ func newTriageJiraSyncCmd() *cobra.Command {
 					failed++
 					continue
 				}
-				customFields, err := triage.RenderCustomFields(jiraCfg.CustomFields, *r.Finding, kb, r.Entry)
+				customFields, err := triage.RenderCustomFields(jiraCfg.CustomFields, *r.Finding, kb, r.Entry, jiraCfg.Owner)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "warning: failed to render custom fields for %s: %v\n", r.Finding.ID, err)
 					failed++

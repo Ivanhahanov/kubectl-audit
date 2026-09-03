@@ -198,6 +198,12 @@ triage:
     descriptionTemplate: /path/to/description.tpl
 ```
 
+If `output.owner` is set (a Jira username — the same "who's responsible" field shown in the
+Markdown/Confluence report header, see [Configuration]({{ '/configuration/' | relative_url }})),
+every created issue is assigned to it automatically (`fields.assignee = {name: owner}`). Set
+`customFields.assignee` yourself to override this per-project — an explicit value there always
+wins over the owner-derived default.
+
 Get a starting point to restructure with:
 
 ```sh

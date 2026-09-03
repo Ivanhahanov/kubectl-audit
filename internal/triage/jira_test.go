@@ -307,7 +307,7 @@ func TestRenderCustomFields(t *testing.T) {
 		"customfield_10010": "severity is {{.Finding.Severity}}",
 		"customfield_10020": map[string]any{"value": "Prod"},
 		"customfield_10030": float64(42),
-	}, f, nil, triage.Entry{})
+	}, f, nil, triage.Entry{}, "")
 	if err != nil {
 		t.Fatalf("RenderCustomFields: %v", err)
 	}
@@ -323,11 +323,49 @@ func TestRenderCustomFields(t *testing.T) {
 }
 
 func TestRenderCustomFields_EmptyMapReturnsNil(t *testing.T) {
-	out, err := triage.RenderCustomFields(nil, mustFinding("f1"), nil, triage.Entry{})
+	out, err := triage.RenderCustomFields(nil, mustFinding("f1"), nil, triage.Entry{}, "")
 	if err != nil {
 		t.Fatalf("RenderCustomFields: %v", err)
 	}
 	if out != nil {
-		t.Errorf("expected nil for an empty/nil customFields map, got %v", out)
+		t.Errorf("expected nil for an empty/nil customFields map and no owner, got %v", out)
+	}
+}
+
+// TestRenderCustomFields_OwnerBecomesAssignee is the fix for a real
+// request: output.owner (the "who's responsible" field also shown in the
+// Markdown/Confluence report header) should drive who a filed Jira ticket
+// gets assigned to, not just be report decoration.
+func TestRenderCustomFields_OwnerBecomesAssignee(t *testing.T) {
+	out, err := triage.RenderCustomFields(nil, mustFinding("f1"), nil, triage.Entry{}, "jsmith")
+	if err != nil {
+		t.Fatalf("RenderCustomFields: %v", err)
+	}
+	assignee, ok := out["assignee"]
+	if !ok {
+		t.Fatalf("expected an assignee field derived from owner, got %v", out)
+	}
+	data, err := json.Marshal(assignee)
+	if err != nil {
+		t.Fatalf("marshaling assignee: %v", err)
+	}
+	if string(data) != `{"name":"jsmith"}` {
+		t.Errorf("expected the Jira Server/DC assignee shape {\"name\":\"jsmith\"}, got %s", data)
+	}
+}
+
+// TestRenderCustomFields_ExplicitAssigneeWinsOverOwner guards that an
+// explicit customFields.assignee (a deliberate per-project override) is
+// never clobbered by the owner-derived default.
+func TestRenderCustomFields_ExplicitAssigneeWinsOverOwner(t *testing.T) {
+	out, err := triage.RenderCustomFields(map[string]any{
+		"assignee": map[string]any{"name": "explicit-user"},
+	}, mustFinding("f1"), nil, triage.Entry{}, "jsmith")
+	if err != nil {
+		t.Fatalf("RenderCustomFields: %v", err)
+	}
+	obj, ok := out["assignee"].(map[string]any)
+	if !ok || obj["name"] != "explicit-user" {
+		t.Errorf("expected the explicit customFields.assignee to win over owner, got %v", out["assignee"])
 	}
 }

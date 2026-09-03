@@ -136,9 +136,12 @@ type OutputConfig struct {
 	// every other --report-template override.
 	ReportLang string `json:"reportLang,omitempty"`
 	// Owner is a free-text "who's responsible for this report" field (a
-	// name, team, or ticket queue) shown in the report header. Purely
-	// informational, never derived or validated. Empty (the default)
-	// omits it from the report entirely.
+	// name, team, or ticket queue) shown in the report header. Also used
+	// by triage as the default Jira assignee for created issues (see
+	// resolveJiraConfig/triage.RenderCustomFields) when it's a valid Jira
+	// username — the same value serves both purposes, since it's the same
+	// real-world "owner" concept. Never derived or validated. Empty (the
+	// default) omits it from the report and skips auto-assignment.
 	Owner string `json:"owner,omitempty"`
 	// ReportView selects how the Markdown report's Findings section(s) are
 	// structured: "check" (default) groups findings by check/policy ID —
