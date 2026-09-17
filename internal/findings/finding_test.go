@@ -18,6 +18,56 @@ func TestNewIDDiscriminator(t *testing.T) {
 	}
 }
 
+// TestScopeID_DifferentScopesDoNotCollide is the actual multi-cluster
+// safety property: two clusters running the same GitOps-templated
+// manifest (identical namespace/Deployment names) produce the same raw
+// NewID — ScopeID must still tell them apart once each is scoped by its
+// own cluster's Target label.
+func TestScopeID_DifferentScopesDoNotCollide(t *testing.T) {
+	ref := findings.ResourceRef{Kind: "Deployment", Name: "app", Namespace: "prod"}
+	raw := findings.NewID("workload.x", ref)
+
+	clusterA := findings.ScopeID(raw, "cluster:cluster-a")
+	clusterB := findings.ScopeID(raw, "cluster:cluster-b")
+	if clusterA == clusterB {
+		t.Errorf("expected different scopes to produce different IDs, both got %s", clusterA)
+	}
+}
+
+// TestScopeID_Deterministic guards the property triage state persistence
+// depends on: the same (id, scope) pair must always scope to the same ID
+// across separate scans of the same cluster, or every triage entry would
+// look "new" on every run.
+func TestScopeID_Deterministic(t *testing.T) {
+	ref := findings.ResourceRef{Kind: "Pod", Name: "p", Namespace: "ns"}
+	raw := findings.NewID("workload.x", ref)
+	if findings.ScopeID(raw, "cluster:prod") != findings.ScopeID(raw, "cluster:prod") {
+		t.Error("expected ScopeID to be deterministic for identical inputs")
+	}
+}
+
+// TestScopeFindingIDs_RewritesEveryFindingInPlace guards the actual call
+// site's contract (internal/cli's runScan/rbac_analyze): every finding in
+// the slice gets its ID rewritten in place, and two findings that shared
+// an ID before scoping still share one after (Dedupe, which runs
+// immediately after scoping, depends on this).
+func TestScopeFindingIDs_RewritesEveryFindingInPlace(t *testing.T) {
+	ref := findings.ResourceRef{Kind: "Pod", Name: "p", Namespace: "ns"}
+	rawID := findings.NewID("workload.x", ref)
+	fs := []findings.Finding{
+		{ID: rawID, PolicyID: "workload.x"},
+		{ID: rawID, PolicyID: "workload.x"}, // duplicate, same as Dedupe would see pre-scoping
+	}
+	findings.ScopeFindingIDs(fs, "cluster:prod")
+
+	if fs[0].ID == rawID {
+		t.Errorf("expected the ID rewritten in place, still got the raw unscoped ID %s", rawID)
+	}
+	if fs[0].ID != fs[1].ID {
+		t.Errorf("expected findings sharing a pre-scoping ID to still share one after scoping, got %s vs %s", fs[0].ID, fs[1].ID)
+	}
+}
+
 func TestDedupeKeepsDistinctDiscriminators(t *testing.T) {
 	ref := findings.ResourceRef{Kind: "Pod", Name: "p"}
 	in := []findings.Finding{

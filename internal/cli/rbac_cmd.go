@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/ivanhahanov/kubectl-audit/internal/findings"
 	"github.com/ivanhahanov/kubectl-audit/internal/rbac"
 	"github.com/ivanhahanov/kubectl-audit/internal/report"
 	"github.com/ivanhahanov/kubectl-audit/internal/suppress"
@@ -55,6 +56,10 @@ func newRBACAnalyzeCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// See findings.ScopeFindingIDs's/scanScope's doc comments: keeps
+			// rbac-findings.json IDs unique across clusters once findings/
+			// triage state from more than one cluster share a store.
+			findings.ScopeFindingIDs(rbacResult.Findings, scanScope(cfg, target))
 
 			kept, suppressed := suppress.Apply(rbacResult.Findings, effectiveExclusions(cfg), suppress.BuildLabelIndex(unfiltered))
 			detected := thirdparty.Detect(unfiltered, effectiveComponents(cfg))

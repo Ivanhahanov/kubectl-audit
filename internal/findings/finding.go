@@ -176,11 +176,50 @@ type KnowledgeBaseEntry struct {
 // validation expression or verb that triggered), so distinct violations of
 // the same policy against the same resource don't collide into one ID and
 // silently disappear during Dedupe.
+//
+// Deliberately does NOT include which cluster/target produced the finding
+// — every analyzer calls NewID independently (see internal/rbac,
+// internal/pss, internal/engine, ...) with no cluster context available at
+// that point, and baking cluster identity in here would mean threading it
+// through every one of those call sites for no benefit within a single
+// scan (Dedupe only ever compares findings from the same scan). Multi-scan/
+// multi-cluster identity is applied once, after all findings are combined
+// — see ScopeFindingIDs.
 func NewID(policyID string, ref ResourceRef, extra ...string) string {
 	parts := []string{policyID, ref.APIVersion, ref.Kind, ref.Namespace, ref.Name}
 	parts = append(parts, extra...)
 	h := sha256.Sum256([]byte(strings.Join(parts, "|")))
 	return hex.EncodeToString(h[:])[:16]
+}
+
+// ScopeID re-derives a finding ID to also depend on scope (in practice,
+// the scan's own Target label — "cluster:<name>" or "static:<paths>") —
+// NewID alone only depends on PolicyID+Resource identity, which two
+// different clusters running the same GitOps-templated manifest (a common
+// shape: identical namespace/Deployment names stamped out from one
+// template) can trivially produce the same ID for. That's invisible
+// within a single scan (nothing else to collide with), but becomes a real
+// bug the moment two clusters' findings/triage state share one namespace
+// — e.g. a central Postgres store keying triage_entries by finding ID —
+// where an unrelated finding from cluster B could silently inherit
+// cluster A's triage status. ScopeID is a pure function of (id, scope) so
+// it's called once, after combining every analyzer's findings for one
+// scan, rather than threaded through every NewID call site.
+func ScopeID(id, scope string) string {
+	h := sha256.Sum256([]byte(scope + "|" + id))
+	return hex.EncodeToString(h[:])[:16]
+}
+
+// ScopeFindingIDs rewrites every finding's ID in place via ScopeID(f.ID,
+// scope) — the one call site each scan-producing command (scan, rbac
+// analyze) needs, right after combining all analyzers' findings and before
+// Dedupe (Dedupe's behavior is unaffected either way: ScopeID is
+// deterministic, so two findings sharing an ID before scoping still share
+// one after).
+func ScopeFindingIDs(in []Finding, scope string) {
+	for i := range in {
+		in[i].ID = ScopeID(in[i].ID, scope)
+	}
 }
 
 // Dedupe removes findings with identical IDs, keeping the first occurrence.

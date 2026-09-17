@@ -79,8 +79,13 @@ Available on `scan` and `rbac analyze`:
 - `--context`, `--kubeconfig` — cluster targeting.
 - `--cluster-name` — human-readable name to use in the report's Target field and every finding's
   Source, instead of the raw kube-context name (which defaults to `current-context` when
-  `--context` isn't set, or can be an unreadable cloud-provider ARN/UUID). Cosmetic only — doesn't
-  change what's scanned. Useful when scanning several clusters and archiving/diffing their reports.
+  `--context` isn't set, or can be an unreadable cloud-provider ARN/UUID). Doesn't change what's
+  scanned. Useful when scanning several clusters and archiving/diffing their reports — and, beyond
+  cosmetics, it also scopes every finding's `id` (findings.json), so the same resource/policy pair
+  in two different clusters never collides into one ID: set it consistently per cluster (including
+  for static-manifest `-f` scans, e.g. per-environment `helm template` output, where there'd
+  otherwise be no cluster identity in scope at all) if you plan to aggregate findings.json/triage
+  state from more than one cluster into a shared store.
 - `-f/--filename` (repeatable) — static manifest files or directories, matching `kubectl apply`'s own `-f/--filename`.
 - `--mode cluster|static|both` — defaults to `both`, or `static` automatically if `-f` is given without an explicit `--mode`.
 - `-n/--namespace` (repeatable), `-A/--all-namespaces` — namespace scoping in cluster mode.

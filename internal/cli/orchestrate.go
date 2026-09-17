@@ -490,6 +490,27 @@ func buildScope(cfg *config.AuditConfig, resources []loader.Resource, k8sVersion
 	return report.Scope{OutOfScope: notes, Caveats: caveats}
 }
 
+// scanScope is the identity findings.ScopeFindingIDs scopes finding IDs by
+// — cfg.Target.ClusterName if the user set one, regardless of scan mode,
+// falling back to target (loadResources' own label) otherwise.
+//
+// Deliberately NOT just target: loadResources only folds ClusterName into
+// target for cluster/both modes (target is cosmetic there — see
+// --cluster-name's own help text — so a static-only scan's target is
+// always "static:<paths>", with no cluster identity in it at all,
+// regardless of --cluster-name). A CI pipeline scanning per-cluster
+// rendered/exported static manifests (a real shape: `helm template` per
+// environment, or manifests pulled from each cluster ahead of time) still
+// knows which cluster's export it's looking at even though the file path
+// alone can't say so — --cluster-name is that explicit signal, and must
+// apply to scope in every mode, not just cluster/both.
+func scanScope(cfg *config.AuditConfig, target string) string {
+	if cfg.Target.ClusterName != "" {
+		return "cluster:" + cfg.Target.ClusterName
+	}
+	return target
+}
+
 // runScan executes the full pipeline: policy engine, RBAC analyzer,
 // NetworkPolicy coverage, Pod Security Standards, and compliance
 // scorecards. The single entry point behind `scan`.
@@ -591,6 +612,12 @@ func runScan(ctx context.Context, cfg *config.AuditConfig) (report.Result, error
 	all = append(all, versionFindings...)
 	all = append(all, updateFindings...)
 	all = append(all, secretFindings...)
+	// Scoped before Dedupe so every finding's ID stays unique across
+	// clusters once findings/triage state from more than one cluster
+	// share a store — see findings.ScopeFindingIDs's and scanScope's doc
+	// comments. Dedupe's own behavior is unaffected: still comparing
+	// findings from this one scan only.
+	findings.ScopeFindingIDs(all, scanScope(cfg, target))
 	all = findings.Dedupe(all)
 	findings.SortBySeverity(all)
 

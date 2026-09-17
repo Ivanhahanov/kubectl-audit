@@ -77,7 +77,7 @@ func NewRootCmd() *cobra.Command {
 func addTargetFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 	f.StringVar(&flagContextName, "context", "", "kube context to use in cluster mode (default: current context)")
-	f.StringVar(&flagClusterName, "cluster-name", "", "human-readable cluster name to use in the report's Target field and every finding's Source, instead of the raw kube-context name (e.g. \"prod-eu-west-1\"); cosmetic only, doesn't change what's scanned")
+	f.StringVar(&flagClusterName, "cluster-name", "", "human-readable cluster name to use in the report's Target field and every finding's Source, instead of the raw kube-context name (e.g. \"prod-eu-west-1\"); doesn't change what's scanned. Also scopes every finding's ID (see findings.json's \"id\" field) so the same resource/policy pair in two different clusters never collides — set this consistently per cluster if you aggregate findings.json/triage state from more than one cluster")
 	f.StringVar(&flagKubeconfig, "kubeconfig", "", "path to kubeconfig (default: $KUBECONFIG or ~/.kube/config)")
 	f.StringVar(&flagMode, "mode", "", "target mode: cluster|static|both (default: from config, or \"static\" if -f is set)")
 	f.StringArrayVarP(&flagFiles, "filename", "f", nil, "static manifest file or directory to audit (repeatable) — matches kubectl apply's -f/--filename")
