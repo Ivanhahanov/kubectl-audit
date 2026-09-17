@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/ivanhahanov/kubectl-audit/internal/server/automation"
 	"github.com/ivanhahanov/kubectl-audit/internal/storage"
 )
 
@@ -21,23 +22,27 @@ import (
 // Postgres-backed contract is exercised separately by
 // internal/storage/postgres's testcontainer tests.
 type fakeStore struct {
-	byID           map[uuid.UUID]storage.Cluster
-	byToken        map[string]uuid.UUID
-	scans          []storage.Scan
-	findings       map[string][]storage.Finding          // keyed by clusterID.String()
-	triage         map[string]storage.TriageEntry        // keyed by clusterID|source|fingerprint
-	knowledgeBase  map[string]storage.KnowledgeBaseEntry // keyed by PolicyID
-	exclusionRules map[uuid.UUID]storage.ExclusionRule
+	byID            map[uuid.UUID]storage.Cluster
+	byToken         map[string]uuid.UUID
+	scans           []storage.Scan
+	findings        map[string][]storage.Finding          // keyed by clusterID.String()
+	triage          map[string]storage.TriageEntry        // keyed by clusterID|source|fingerprint
+	knowledgeBase   map[string]storage.KnowledgeBaseEntry // keyed by PolicyID
+	exclusionRules  map[uuid.UUID]storage.ExclusionRule
+	automationRules map[uuid.UUID]storage.AutomationRule
+	auditRequests   map[uuid.UUID]storage.AuditRequest
 }
 
 func newFakeStore() *fakeStore {
 	return &fakeStore{
-		byID:           map[uuid.UUID]storage.Cluster{},
-		byToken:        map[string]uuid.UUID{},
-		findings:       map[string][]storage.Finding{},
-		triage:         map[string]storage.TriageEntry{},
-		knowledgeBase:  map[string]storage.KnowledgeBaseEntry{},
-		exclusionRules: map[uuid.UUID]storage.ExclusionRule{},
+		byID:            map[uuid.UUID]storage.Cluster{},
+		byToken:         map[string]uuid.UUID{},
+		findings:        map[string][]storage.Finding{},
+		triage:          map[string]storage.TriageEntry{},
+		knowledgeBase:   map[string]storage.KnowledgeBaseEntry{},
+		exclusionRules:  map[uuid.UUID]storage.ExclusionRule{},
+		automationRules: map[uuid.UUID]storage.AutomationRule{},
+		auditRequests:   map[uuid.UUID]storage.AuditRequest{},
 	}
 }
 
@@ -193,15 +198,97 @@ func (f *fakeStore) DeleteExclusionRule(_ context.Context, id uuid.UUID) error {
 	return nil
 }
 
+func (f *fakeStore) CreateAutomationRule(_ context.Context, rule storage.AutomationRule) (storage.AutomationRule, error) {
+	rule.ID = uuid.New()
+	rule.CreatedAt = time.Now()
+	f.automationRules[rule.ID] = rule
+	return rule, nil
+}
+
+func (f *fakeStore) GetAutomationRule(_ context.Context, id uuid.UUID) (storage.AutomationRule, error) {
+	r, ok := f.automationRules[id]
+	if !ok {
+		return storage.AutomationRule{}, storage.ErrNotFound
+	}
+	return r, nil
+}
+
+func (f *fakeStore) ListAutomationRules(_ context.Context) ([]storage.AutomationRule, error) {
+	var out []storage.AutomationRule
+	for _, r := range f.automationRules {
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+func (f *fakeStore) UpdateAutomationRule(_ context.Context, rule storage.AutomationRule) error {
+	if _, ok := f.automationRules[rule.ID]; !ok {
+		return storage.ErrNotFound
+	}
+	f.automationRules[rule.ID] = rule
+	return nil
+}
+
+func (f *fakeStore) DeleteAutomationRule(_ context.Context, id uuid.UUID) error {
+	if _, ok := f.automationRules[id]; !ok {
+		return storage.ErrNotFound
+	}
+	delete(f.automationRules, id)
+	return nil
+}
+
+func (f *fakeStore) CreateAuditRequest(_ context.Context, req storage.AuditRequest) (storage.AuditRequest, error) {
+	req.ID = uuid.New()
+	req.CreatedAt = time.Now()
+	if req.Status == "" {
+		req.Status = storage.AuditRequestPending
+	}
+	f.auditRequests[req.ID] = req
+	return req, nil
+}
+
+func (f *fakeStore) GetAuditRequest(_ context.Context, id uuid.UUID) (storage.AuditRequest, error) {
+	r, ok := f.auditRequests[id]
+	if !ok {
+		return storage.AuditRequest{}, storage.ErrNotFound
+	}
+	return r, nil
+}
+
+func (f *fakeStore) ListAuditRequests(_ context.Context, clusterID *uuid.UUID) ([]storage.AuditRequest, error) {
+	var out []storage.AuditRequest
+	for _, r := range f.auditRequests {
+		if clusterID == nil || r.ClusterID == *clusterID {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeStore) UpdateAuditRequest(_ context.Context, req storage.AuditRequest) error {
+	if _, ok := f.auditRequests[req.ID]; !ok {
+		return storage.ErrNotFound
+	}
+	f.auditRequests[req.ID] = req
+	return nil
+}
+
 func newTestServer() (*Server, *fakeStore) {
 	store := newFakeStore()
+	runner := &automation.Runner{
+		Clusters:  store,
+		Evaluator: &automation.Evaluator{Rules: store, Findings: store, Triage: store},
+		Executor:  automation.LogExecutor{},
+	}
 	return NewServer(Repos{
-		Clusters:       store,
-		Findings:       store,
-		Triage:         store,
-		KnowledgeBase:  store,
-		ExclusionRules: store,
-	}, "admin-secret"), store
+		Clusters:        store,
+		Findings:        store,
+		Triage:          store,
+		KnowledgeBase:   store,
+		ExclusionRules:  store,
+		AutomationRules: store,
+		AuditRequests:   store,
+	}, "admin-secret", runner, automation.LogTrigger{}), store
 }
 
 func TestHandleRegisterCluster(t *testing.T) {

@@ -31,11 +31,13 @@ type Store struct {
 }
 
 var (
-	_ storage.ClusterRepo       = (*Store)(nil)
-	_ storage.FindingRepo       = (*Store)(nil)
-	_ storage.TriageRepo        = (*Store)(nil)
-	_ storage.KnowledgeBaseRepo = (*Store)(nil)
-	_ storage.ExclusionRuleRepo = (*Store)(nil)
+	_ storage.ClusterRepo        = (*Store)(nil)
+	_ storage.FindingRepo        = (*Store)(nil)
+	_ storage.TriageRepo         = (*Store)(nil)
+	_ storage.KnowledgeBaseRepo  = (*Store)(nil)
+	_ storage.ExclusionRuleRepo  = (*Store)(nil)
+	_ storage.AutomationRuleRepo = (*Store)(nil)
+	_ storage.AuditRequestRepo   = (*Store)(nil)
 )
 
 // Open connects to Postgres at dsn (a standard "postgres://..." URL —

@@ -259,3 +259,103 @@ type ExclusionRuleRepo interface {
 	// doesn't exist.
 	DeleteExclusionRule(ctx context.Context, id uuid.UUID) error
 }
+
+// AutomationTrigger is the condition side of an AutomationRule — every set
+// field must match for the rule to fire; an empty field imposes no
+// constraint on that dimension. Kept as a small typed struct (marshaled to
+// the trigger JSONB column) rather than a free-form map, so
+// internal/server/automation's evaluator has a fixed, documented set of
+// conditions to check instead of interpreting arbitrary keys.
+type AutomationTrigger struct {
+	// MinSeverity matches findings.Severity values ("LOW".."CRITICAL");
+	// empty matches any severity.
+	MinSeverity string `json:"minSeverity,omitempty"`
+	// Status restricts to one TriageStatus (e.g. "confirmed"); empty
+	// matches any status including untriaged ("new").
+	Status string `json:"status,omitempty"`
+	// Source restricts to one scan source (e.g. "kubectl-audit"); empty
+	// matches any source.
+	Source string `json:"source,omitempty"`
+	// NoJiraLinkForHours matches only TriageEntries with no JiraIssueKey
+	// whose UpdatedAt is at least this many hours in the past — the "been
+	// sitting confirmed with nothing filed" condition. Zero imposes no
+	// time constraint.
+	NoJiraLinkForHours int `json:"noJiraLinkForHours,omitempty"`
+}
+
+// AutomationAction is the effect side of an AutomationRule. Type is
+// extensible (validated by internal/server/automation, not this package):
+// "file_jira" today, and "agent_triage" reserved for AI-agent-driven
+// triage per the architecture plan's phase 6 design — see that package's
+// doc comment for which types actually execute vs. are recorded only.
+type AutomationAction struct {
+	Type string `json:"type"`
+	// Prompt/Tools are agent_triage-specific: the instruction an agent
+	// gets and which MCP tools (see the kubectl-audit inspect/MCP design)
+	// it may call while deciding. Ignored by other action types.
+	Prompt string   `json:"prompt,omitempty"`
+	Tools  []string `json:"tools,omitempty"`
+}
+
+// AutomationRule is one "when X, do Y" policy a background evaluator
+// checks periodically against open findings/triage entries.
+type AutomationRule struct {
+	ID        uuid.UUID
+	Name      string
+	Enabled   bool
+	Trigger   AutomationTrigger
+	Action    AutomationAction
+	CreatedAt time.Time
+}
+
+// AutomationRuleRepo manages automation rules.
+type AutomationRuleRepo interface {
+	CreateAutomationRule(ctx context.Context, rule AutomationRule) (AutomationRule, error)
+	// GetAutomationRule returns ErrNotFound (via errors.Is) when id
+	// doesn't exist.
+	GetAutomationRule(ctx context.Context, id uuid.UUID) (AutomationRule, error)
+	ListAutomationRules(ctx context.Context) ([]AutomationRule, error)
+	UpdateAutomationRule(ctx context.Context, rule AutomationRule) error
+	DeleteAutomationRule(ctx context.Context, id uuid.UUID) error
+}
+
+// AuditRequestStatus is where one audit request sits in its lifecycle.
+type AuditRequestStatus string
+
+const (
+	AuditRequestPending   AuditRequestStatus = "pending"
+	AuditRequestApproved  AuditRequestStatus = "approved"
+	AuditRequestRunning   AuditRequestStatus = "running"
+	AuditRequestCompleted AuditRequestStatus = "completed"
+	AuditRequestFailed    AuditRequestStatus = "failed"
+)
+
+// AuditRequest is a manual or recurring request to run a scan against a
+// cluster — "заявка" in the architecture plan's original framing, covering
+// both a one-off human request and (via ScheduledCron) a recurring one.
+// Approving a pending request is what actually triggers a scan — see
+// internal/server/automation.PipelineTrigger.
+type AuditRequest struct {
+	ID                    uuid.UUID
+	ClusterID             uuid.UUID
+	RequestedBy           string
+	Reason                string
+	Status                AuditRequestStatus
+	TektonPipelineRunName string
+	// ScheduledCron, when set, marks this as a template a future recurring
+	// worker re-instantiates (e.g. "0 3 * * *") rather than a one-off
+	// request — stored now so the schema doesn't need to change when that
+	// worker is built, even though nothing expands it yet.
+	ScheduledCron *string
+	CreatedAt     time.Time
+}
+
+// AuditRequestRepo manages audit requests.
+type AuditRequestRepo interface {
+	CreateAuditRequest(ctx context.Context, req AuditRequest) (AuditRequest, error)
+	// GetAuditRequest returns ErrNotFound (via errors.Is) when id doesn't
+	// exist.
+	GetAuditRequest(ctx context.Context, id uuid.UUID) (AuditRequest, error)
+	ListAuditRequests(ctx context.Context, clusterID *uuid.UUID) ([]AuditRequest, error)
+	UpdateAuditRequest(ctx context.Context, req AuditRequest) error
+}
