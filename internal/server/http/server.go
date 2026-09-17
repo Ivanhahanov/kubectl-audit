@@ -11,24 +11,36 @@ import (
 	"github.com/ivanhahanov/kubectl-audit/internal/storage"
 )
 
+// Repos bundles every repository interface Server needs. A plain struct
+// rather than an ever-growing positional argument list on NewServer — this
+// project's storage interfaces are usually all backed by one concrete
+// postgres.Store (see its own doc comment), but Server only ever depends
+// on the interfaces here, never that concrete type.
+type Repos struct {
+	Clusters       storage.ClusterRepo
+	Findings       storage.FindingRepo
+	Triage         storage.TriageRepo
+	KnowledgeBase  storage.KnowledgeBaseRepo
+	ExclusionRules storage.ExclusionRuleRepo
+}
+
 // Server holds the dependencies every handler needs. Constructed once by
 // cmd/kubectl-audit-server and wired to a *http.Server via Routes().
 type Server struct {
-	clusters   storage.ClusterRepo
-	findings   storage.FindingRepo
-	triage     storage.TriageRepo
+	repos      Repos
 	adminToken string
 	ingestors  map[string]ingest.Ingestor
 }
 
 // NewServer wires a Server. adminToken gates cluster registration
-// (POST /api/v1/clusters) only — every other endpoint is gated by the
-// bearer token issued at registration instead, see clusterFromToken.
-func NewServer(clusters storage.ClusterRepo, findings storage.FindingRepo, triage storage.TriageRepo, adminToken string) *Server {
+// (POST /api/v1/clusters) and the knowledge-base/exclusion-rule
+// centralization endpoints — organization-level configuration, not
+// per-cluster scan data, so it's managed the same way a cluster's own
+// registration is. Every other endpoint is instead gated by the bearer
+// token issued at registration, see clusterFromToken.
+func NewServer(repos Repos, adminToken string) *Server {
 	return &Server{
-		clusters:   clusters,
-		findings:   findings,
-		triage:     triage,
+		repos:      repos,
 		adminToken: adminToken,
 		ingestors: map[string]ingest.Ingestor{
 			"native":      ingest.NativeIngestor{},
@@ -48,5 +60,10 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/triage", s.handleGetTriage)
 	mux.HandleFunc("PATCH /api/v1/triage/{source}/{fingerprint}", s.handlePatchTriageEntry)
 	mux.HandleFunc("POST /api/v1/triage/bulk", s.handleBulkTriageUpdate)
+	mux.HandleFunc("GET /api/v1/knowledge-base/{policyId}", s.handleGetKnowledgeBaseEntry)
+	mux.HandleFunc("PUT /api/v1/knowledge-base/{policyId}", s.handlePutKnowledgeBaseEntry)
+	mux.HandleFunc("GET /api/v1/exclusion-rules", s.handleListExclusionRules)
+	mux.HandleFunc("POST /api/v1/exclusion-rules", s.handleCreateExclusionRule)
+	mux.HandleFunc("DELETE /api/v1/exclusion-rules/{id}", s.handleDeleteExclusionRule)
 	return mux
 }

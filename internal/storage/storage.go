@@ -197,3 +197,65 @@ type TriageRepo interface {
 	UpsertTriageEntry(ctx context.Context, entry TriageEntry) error
 	ListTriageEntries(ctx context.Context, clusterID uuid.UUID) ([]TriageEntry, error)
 }
+
+// KnowledgeBaseEntry is one organization's own ticket-facing content for a
+// check, centralizing what today lives in a local
+// triage.knowledgeBaseFile — see findings.KnowledgeBaseEntry, whose fields
+// this mirrors exactly, so a server-rendered Jira ticket (once automation
+// exists — see the architecture plan's phase 6) matches whatever a local
+// TUI user configured the same way would see.
+type KnowledgeBaseEntry struct {
+	PolicyID    string
+	Title       string
+	Category    string
+	Description string
+	Remediation string
+	Labels      []string
+	UpdatedAt   time.Time
+}
+
+// ExclusionMatch mirrors config.ExclusionMatch's JSON shape exactly (kept
+// as JSONB in Postgres, not decomposed into columns, since it's opaque to
+// every repo method — only internal/suppress's matching logic interprets
+// it, the same as it does for the local audit.yaml today).
+type ExclusionMatch struct {
+	Kind      string            `json:"kind,omitempty"`
+	Namespace string            `json:"namespace,omitempty"`
+	Name      string            `json:"name,omitempty"`
+	Labels    map[string]string `json:"labels,omitempty"`
+}
+
+// ExclusionRule mirrors config.ExclusionRule, centralized. ClusterID nil
+// means the rule applies to every cluster; a set ClusterID scopes it to
+// one — e.g. a noisy finding that's a known false positive only on one
+// specific cluster's setup, not organization-wide.
+type ExclusionRule struct {
+	ID        uuid.UUID
+	ClusterID *uuid.UUID
+	PolicyIDs []string
+	Match     ExclusionMatch
+	Reason    string
+	CreatedAt time.Time
+}
+
+// KnowledgeBaseRepo centralizes knowledge-base entries. GetKnowledgeBaseEntry
+// returns ErrNotFound (via errors.Is) when no entry exists for a PolicyID.
+type KnowledgeBaseRepo interface {
+	GetKnowledgeBaseEntry(ctx context.Context, policyID string) (KnowledgeBaseEntry, error)
+	// PutKnowledgeBaseEntry creates or fully replaces the entry for
+	// entry.PolicyID.
+	PutKnowledgeBaseEntry(ctx context.Context, entry KnowledgeBaseEntry) error
+}
+
+// ExclusionRuleRepo centralizes exclusion (suppression) rules.
+type ExclusionRuleRepo interface {
+	CreateExclusionRule(ctx context.Context, rule ExclusionRule) (ExclusionRule, error)
+	// ListExclusionRules returns every global rule (ClusterID nil) plus,
+	// when clusterID is non-nil, every rule scoped to that one cluster —
+	// the same "global defaults plus this cluster's own additions" set a
+	// caller would need to actually apply exclusions, in one call.
+	ListExclusionRules(ctx context.Context, clusterID *uuid.UUID) ([]ExclusionRule, error)
+	// DeleteExclusionRule returns ErrNotFound (via errors.Is) when id
+	// doesn't exist.
+	DeleteExclusionRule(ctx context.Context, id uuid.UUID) error
+}

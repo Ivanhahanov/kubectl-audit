@@ -45,7 +45,7 @@ func (s *Server) handleRegisterCluster(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c, err := s.clusters.Register(r.Context(), req.Name, req.Endpoint, req.Owner, hash)
+	c, err := s.repos.Clusters.Register(r.Context(), req.Name, req.Endpoint, req.Owner, hash)
 	if err != nil {
 		writeError(w, http.StatusConflict, "registering cluster: "+err.Error())
 		return
@@ -67,7 +67,7 @@ func (s *Server) clusterFromToken(w http.ResponseWriter, r *http.Request) (stora
 		writeError(w, http.StatusUnauthorized, "missing bearer token")
 		return storage.Cluster{}, false
 	}
-	c, err := s.clusters.GetByTokenHash(r.Context(), hashToken(token))
+	c, err := s.repos.Clusters.GetByTokenHash(r.Context(), hashToken(token))
 	if errors.Is(err, storage.ErrNotFound) {
 		writeError(w, http.StatusUnauthorized, "invalid token")
 		return storage.Cluster{}, false

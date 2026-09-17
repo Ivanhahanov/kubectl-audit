@@ -21,19 +21,23 @@ import (
 // Postgres-backed contract is exercised separately by
 // internal/storage/postgres's testcontainer tests.
 type fakeStore struct {
-	byID     map[uuid.UUID]storage.Cluster
-	byToken  map[string]uuid.UUID
-	scans    []storage.Scan
-	findings map[string][]storage.Finding   // keyed by clusterID.String()
-	triage   map[string]storage.TriageEntry // keyed by clusterID|source|fingerprint
+	byID           map[uuid.UUID]storage.Cluster
+	byToken        map[string]uuid.UUID
+	scans          []storage.Scan
+	findings       map[string][]storage.Finding          // keyed by clusterID.String()
+	triage         map[string]storage.TriageEntry        // keyed by clusterID|source|fingerprint
+	knowledgeBase  map[string]storage.KnowledgeBaseEntry // keyed by PolicyID
+	exclusionRules map[uuid.UUID]storage.ExclusionRule
 }
 
 func newFakeStore() *fakeStore {
 	return &fakeStore{
-		byID:     map[uuid.UUID]storage.Cluster{},
-		byToken:  map[string]uuid.UUID{},
-		findings: map[string][]storage.Finding{},
-		triage:   map[string]storage.TriageEntry{},
+		byID:           map[uuid.UUID]storage.Cluster{},
+		byToken:        map[string]uuid.UUID{},
+		findings:       map[string][]storage.Finding{},
+		triage:         map[string]storage.TriageEntry{},
+		knowledgeBase:  map[string]storage.KnowledgeBaseEntry{},
+		exclusionRules: map[uuid.UUID]storage.ExclusionRule{},
 	}
 }
 
@@ -150,9 +154,54 @@ func (f *fakeStore) ListTriageEntries(_ context.Context, clusterID uuid.UUID) ([
 	return out, nil
 }
 
+func (f *fakeStore) GetKnowledgeBaseEntry(_ context.Context, policyID string) (storage.KnowledgeBaseEntry, error) {
+	e, ok := f.knowledgeBase[policyID]
+	if !ok {
+		return storage.KnowledgeBaseEntry{}, storage.ErrNotFound
+	}
+	return e, nil
+}
+
+func (f *fakeStore) PutKnowledgeBaseEntry(_ context.Context, entry storage.KnowledgeBaseEntry) error {
+	entry.UpdatedAt = time.Now()
+	f.knowledgeBase[entry.PolicyID] = entry
+	return nil
+}
+
+func (f *fakeStore) CreateExclusionRule(_ context.Context, rule storage.ExclusionRule) (storage.ExclusionRule, error) {
+	rule.ID = uuid.New()
+	rule.CreatedAt = time.Now()
+	f.exclusionRules[rule.ID] = rule
+	return rule, nil
+}
+
+func (f *fakeStore) ListExclusionRules(_ context.Context, clusterID *uuid.UUID) ([]storage.ExclusionRule, error) {
+	var out []storage.ExclusionRule
+	for _, r := range f.exclusionRules {
+		if r.ClusterID == nil || (clusterID != nil && *r.ClusterID == *clusterID) {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeStore) DeleteExclusionRule(_ context.Context, id uuid.UUID) error {
+	if _, ok := f.exclusionRules[id]; !ok {
+		return storage.ErrNotFound
+	}
+	delete(f.exclusionRules, id)
+	return nil
+}
+
 func newTestServer() (*Server, *fakeStore) {
 	store := newFakeStore()
-	return NewServer(store, store, store, "admin-secret"), store
+	return NewServer(Repos{
+		Clusters:       store,
+		Findings:       store,
+		Triage:         store,
+		KnowledgeBase:  store,
+		ExclusionRules: store,
+	}, "admin-secret"), store
 }
 
 func TestHandleRegisterCluster(t *testing.T) {

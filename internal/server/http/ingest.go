@@ -51,7 +51,7 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request, ingestorKe
 
 	resp := ingestResponse{Scans: make([]scanResult, 0, len(batches))}
 	for _, b := range batches {
-		scan, err := s.findings.IngestScan(r.Context(), b.Scan, b.Findings)
+		scan, err := s.repos.Findings.IngestScan(r.Context(), b.Scan, b.Findings)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "storing scan")
 			return

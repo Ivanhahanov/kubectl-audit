@@ -65,12 +65,12 @@ func (s *Server) handleGetTriage(w http.ResponseWriter, r *http.Request) {
 	}
 	source := r.URL.Query().Get("source")
 
-	findingsList, err := s.findings.ListFindings(r.Context(), cluster.ID, storage.FindingFilter{Source: source})
+	findingsList, err := s.repos.Findings.ListFindings(r.Context(), cluster.ID, storage.FindingFilter{Source: source})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "listing findings")
 		return
 	}
-	entries, err := s.triage.ListTriageEntries(r.Context(), cluster.ID)
+	entries, err := s.repos.Triage.ListTriageEntries(r.Context(), cluster.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "listing triage entries")
 		return
@@ -135,7 +135,7 @@ func (s *Server) handlePatchTriageEntry(w http.ResponseWriter, r *http.Request) 
 	source := r.PathValue("source")
 	fingerprint := r.PathValue("fingerprint")
 
-	if _, err := s.findings.GetFinding(r.Context(), cluster.ID, source, fingerprint); err != nil {
+	if _, err := s.repos.Findings.GetFinding(r.Context(), cluster.ID, source, fingerprint); err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "no such finding for this cluster/source/fingerprint")
 			return
@@ -150,7 +150,7 @@ func (s *Server) handlePatchTriageEntry(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	entry, found, err := s.triage.GetTriageEntry(r.Context(), cluster.ID, source, fingerprint)
+	entry, found, err := s.repos.Triage.GetTriageEntry(r.Context(), cluster.ID, source, fingerprint)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "looking up triage entry")
 		return
@@ -179,14 +179,14 @@ func (s *Server) handlePatchTriageEntry(w http.ResponseWriter, r *http.Request) 
 		entry.JiraIssueURL = *req.JiraIssueURL
 	}
 
-	if err := s.triage.UpsertTriageEntry(r.Context(), entry); err != nil {
+	if err := s.repos.Triage.UpsertTriageEntry(r.Context(), entry); err != nil {
 		writeError(w, http.StatusInternalServerError, "saving triage entry")
 		return
 	}
 	// Re-read rather than echo the pre-upsert value: UpdatedAt is set by
 	// the store itself (e.g. Postgres' now()), not by this handler, so the
 	// in-memory entry above doesn't have the real persisted value yet.
-	saved, _, err := s.triage.GetTriageEntry(r.Context(), cluster.ID, source, fingerprint)
+	saved, _, err := s.repos.Triage.GetTriageEntry(r.Context(), cluster.ID, source, fingerprint)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "reloading saved triage entry")
 		return
@@ -247,7 +247,7 @@ func (s *Server) handleBulkTriageUpdate(w http.ResponseWriter, r *http.Request) 
 
 	resp := bulkTriageResponse{}
 	for _, e := range req.Entries {
-		if _, err := s.findings.GetFinding(r.Context(), cluster.ID, req.Source, e.Fingerprint); err != nil {
+		if _, err := s.repos.Findings.GetFinding(r.Context(), cluster.ID, req.Source, e.Fingerprint); err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
 				resp.Skipped = append(resp.Skipped, bulkTriageSkip{Fingerprint: e.Fingerprint, Error: "finding not found"})
 				continue
@@ -265,7 +265,7 @@ func (s *Server) handleBulkTriageUpdate(w http.ResponseWriter, r *http.Request) 
 			JiraIssueKey: e.JiraIssueKey,
 			JiraIssueURL: e.JiraIssueURL,
 		}
-		if err := s.triage.UpsertTriageEntry(r.Context(), entry); err != nil {
+		if err := s.repos.Triage.UpsertTriageEntry(r.Context(), entry); err != nil {
 			writeError(w, http.StatusInternalServerError, "saving triage entry "+e.Fingerprint)
 			return
 		}
