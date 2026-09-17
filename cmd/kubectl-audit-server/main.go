@@ -62,12 +62,20 @@ func run() error {
 	runner := &automation.Runner{
 		Clusters:  store,
 		Evaluator: &automation.Evaluator{Rules: store, Findings: store, Triage: store},
-		// LogTrigger/LogExecutor are the only implementations available
-		// today — see their doc comments for why real Jira filing/agent
-		// invocation/Tekton triggering aren't wired up yet.
+		// LogExecutor is the only implementation available today — see its
+		// doc comment for why real Jira filing/agent invocation aren't
+		// wired up yet.
 		Executor: automation.LogExecutor{},
 	}
-	trigger := automation.LogTrigger{}
+
+	var trigger automation.PipelineTrigger = automation.LogTrigger{}
+	if os.Getenv("PIPELINE_TRIGGER") == "tekton" {
+		tektonTrigger, err := automation.NewTektonTriggerFromEnv()
+		if err != nil {
+			return fmt.Errorf("configuring Tekton trigger: %w", err)
+		}
+		trigger = tektonTrigger
+	}
 
 	srv := api.NewServer(api.Repos{
 		Clusters:        store,
