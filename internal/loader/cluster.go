@@ -361,3 +361,63 @@ func SourceLabel(context string) string {
 	}
 	return fmt.Sprintf("cluster:%s", context)
 }
+
+// GetResource fetches exactly one object by Kind/Namespace/Name — the
+// single-object counterpart to LoadCluster's whole-type listing, for
+// `kubectl-audit inspect resource` (see the architecture plan's AI-agent
+// integration design: a narrow, read-only interface built on this same
+// dynamic-client/GVR-resolution code, not a new fetch path).
+//
+// Secret is unconditionally unsupported — not gated behind
+// ClusterOptions.ReadSecretValues like a normal scan, because inspect
+// output can end up in an LLM's context/logs (see the MCP adapter); this
+// is a hard block, not an opt-in.
+//
+// Only resolves kinds LoadCluster itself already knows how to fetch
+// (defaultResources, plus installed-CRD optionalResources) — the same
+// curated set `scan` uses, not arbitrary cluster API discovery.
+func GetResource(ctx context.Context, c *k8sclient.Client, kind, namespace, name string) (Resource, error) {
+	if kind == "Secret" {
+		return Resource{}, fmt.Errorf("inspecting Secret objects is never supported (their values must never reach an LLM's context)")
+	}
+
+	resourceName, ok := ResourceNameForKind(kind)
+	if !ok {
+		return Resource{}, fmt.Errorf("unknown kind %q", kind)
+	}
+
+	for _, r := range defaultResources {
+		if r.GVR.Resource == resourceName {
+			return getOne(ctx, c, r.GVR, r.Namespaced, namespace, name)
+		}
+	}
+	warn := func(string, ...any) {}
+	debug := func(string, ...any) {}
+	for _, r := range optionalResources {
+		if r.Resource != resourceName {
+			continue
+		}
+		version, ok := resolvePreferredVersion(c, r.Group, r.Name, warn, debug)
+		if !ok {
+			continue
+		}
+		gvr := schema.GroupVersionResource{Group: r.Group, Version: version, Resource: r.Resource}
+		return getOne(ctx, c, gvr, r.Namespaced, namespace, name)
+	}
+
+	return Resource{}, fmt.Errorf("kind %q is not one `kubectl-audit inspect` can fetch (not in the curated resource set `scan` itself uses)", kind)
+}
+
+func getOne(ctx context.Context, c *k8sclient.Client, gvr schema.GroupVersionResource, namespaced bool, namespace, name string) (Resource, error) {
+	var obj *unstructured.Unstructured
+	var err error
+	if namespaced {
+		obj, err = c.Dynamic.Resource(gvr).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+	} else {
+		obj, err = c.Dynamic.Resource(gvr).Get(ctx, name, metav1.GetOptions{})
+	}
+	if err != nil {
+		return Resource{}, err
+	}
+	return Resource{Object: obj, Source: SourceLabel(c.Context)}, nil
+}
