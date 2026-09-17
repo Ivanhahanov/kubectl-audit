@@ -30,7 +30,7 @@ const (
 
 // app holds everything the running TUI needs. all/suppressed are the
 // immutable sets from the loaded findings.json; state is mutated in place
-// by every triage action and saved to statePath after each one.
+// by every triage action and saved via store after each one.
 type app struct {
 	tv     *tview.Application
 	header *tview.TextView
@@ -42,7 +42,7 @@ type app struct {
 	all            []findings.Finding
 	suppressed     []report.SuppressedFinding
 	state          *triage.State
-	statePath      string
+	store          triage.Store
 	target         string
 	findingsPath   string
 	jira           JiraConfig
@@ -110,8 +110,12 @@ type app struct {
 type Config struct {
 	Target       string // report.Result.Target-style label, shown in the header
 	FindingsPath string
-	StatePath    string
-	Jira         JiraConfig // may be zero-value; the 'j' action reports a clear error if so
+	// Store is where triage decisions are persisted — a local file
+	// (triage.FileStore, the default) or a central server
+	// (triage.ServerStore, selected by --triage-server). See
+	// triage.Store's doc comment.
+	Store triage.Store
+	Jira  JiraConfig // may be zero-value; the 'j' action reports a clear error if so
 	// KnowledgeBase (triage.knowledgeBaseFile, already loaded) overrides a
 	// finding's Title/Description/Remediation with an organization's own
 	// ticket wording — see triage.Resolve. Used both for Jira issue
@@ -131,7 +135,7 @@ func Run(all []findings.Finding, suppressed []report.SuppressedFinding, state *t
 	a := &app{
 		tv:  tview.NewApplication(),
 		all: all, suppressed: suppressed, state: state,
-		statePath: cfg.StatePath, target: cfg.Target, findingsPath: cfg.FindingsPath,
+		store: cfg.Store, target: cfg.Target, findingsPath: cfg.FindingsPath,
 		jira:           cfg.Jira,
 		knowledgeBase:  cfg.KnowledgeBase,
 		dedupThreshold: cfg.DedupThreshold,
@@ -421,7 +425,22 @@ func (a *app) isFullyMarked(r triage.Row) bool {
 }
 
 func (a *app) save() {
-	a.saveErr = triage.SaveState(a.statePath, a.state)
+	// a.store is nil for tests that construct an app{} literal directly
+	// (bypassing Run, which always sets it via Config.Store) to exercise
+	// one action in isolation without caring about persistence.
+	if a.store == nil {
+		return
+	}
+	a.saveErr = a.store.Save(a.state)
+}
+
+// storeLabel is redraw()'s nil-safe accessor for a.store.Label() — see
+// save()'s doc comment for why a.store can be nil in tests.
+func (a *app) storeLabel() string {
+	if a.store == nil {
+		return ""
+	}
+	return a.store.Label()
 }
 
 func (a *app) quit() {

@@ -107,6 +107,13 @@ const (
 	TriageStatusConfirmed     TriageStatus = "confirmed"
 	TriageStatusFalsePositive TriageStatus = "false_positive"
 	TriageStatusWontFix       TriageStatus = "wont_fix"
+	// TriageStatusDuplicate and TriageStatusNeedsInfo complete parity with
+	// internal/triage.Status's human-settable values (ValidHumanStatuses) —
+	// the server accepts and round-trips every status the local file-based
+	// TUI can set, not just a subset, so triage.ServerStore never has to
+	// drop or remap a decision depending on where it's persisted.
+	TriageStatusDuplicate TriageStatus = "duplicate"
+	TriageStatusNeedsInfo TriageStatus = "needs_info"
 	// TriageStatusResolved is set only by FindingRepo.IngestScan's
 	// resolution pass, never directly by a caller — mirrors
 	// internal/triage.StatusResolved's same "Merge-computed, not a human

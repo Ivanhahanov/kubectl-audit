@@ -46,7 +46,7 @@ func (a *app) headerText() string {
 	fmt.Fprintf(&b, "[%s:%s:b] kubectl-audit triage [-:-:-]  [%s]%s[-]\n",
 		colorTag(theme.titleFg), colorTag(theme.titleBg), colorTag(theme.dim), a.target)
 	fmt.Fprintf(&b, "[%s]findings[-] %s   [%s]state[-] %s\n",
-		colorTag(theme.accent), a.findingsPath, colorTag(theme.accent), a.statePath)
+		colorTag(theme.accent), a.findingsPath, colorTag(theme.accent), a.storeLabel())
 	fmt.Fprintf(&b, "[%s]total[-] %d   [yellow]new %d[-]  [red]confirmed %d[-]  false-pos %d  wont-fix %d  dup %d  needs-info %d  "+
 		"[green]resolved %d[-]  [%s]suppressed(hidden) %d[-]\n",
 		colorTag(theme.accent), len(a.merged), counts[triage.StatusNew], counts[triage.StatusConfirmed],

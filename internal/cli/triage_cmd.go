@@ -23,6 +23,9 @@ var (
 	flagTriageJiraProject       string
 	flagTriageJiraIssueType     string
 	flagTriageJiraToken         string
+	flagTriageServerURL         string
+	flagTriageServerSource      string
+	flagTriageServerToken       string
 )
 
 func newTriageCmd() *cobra.Command {
@@ -44,6 +47,13 @@ func newTriageCmd() *cobra.Command {
 	cmd.PersistentFlags().StringVar(&flagTriageJiraProject, "project", "", "Jira project key (default: from config, triage.jira.projectKey)")
 	cmd.PersistentFlags().StringVar(&flagTriageJiraIssueType, "issue-type", "", "Jira issue type name (default: from config, triage.jira.issueType)")
 	cmd.PersistentFlags().StringVar(&flagTriageJiraToken, "jira-token", "", "Jira Personal Access Token (default: $KUBECTL_AUDIT_JIRA_TOKEN — never stored in audit.yaml)")
+	// --triage-server switches every subcommand below from the local
+	// StateFile to a kubectl-audit-server instance (triage.ServerStore) —
+	// see resolveTriageStore. Omitting it keeps today's fully local
+	// behavior exactly as-is; running a server is never required.
+	cmd.PersistentFlags().StringVar(&flagTriageServerURL, "triage-server", "", "kubectl-audit-server base URL (default: from config, triage.server.baseUrl; empty keeps triage fully local)")
+	cmd.PersistentFlags().StringVar(&flagTriageServerSource, "triage-server-source", "", "which scan source's findings to triage on the server (default: from config, triage.server.source, \"kubectl-audit\")")
+	cmd.PersistentFlags().StringVar(&flagTriageServerToken, "triage-server-token", "", "this cluster's bearer token, issued at `kubectl-audit-server` cluster registration (default: $KUBECTL_AUDIT_TRIAGE_SERVER_TOKEN — never stored in audit.yaml)")
 	cmd.AddCommand(newTriageExportCmd())
 	cmd.AddCommand(newTriageJiraSyncCmd())
 	cmd.AddCommand(newTriageJiraCmd())
@@ -121,6 +131,42 @@ func resolveJiraConfig(cmd *cobra.Command) (tui.JiraConfig, error) {
 	return jc, nil
 }
 
+// resolveTriageStore picks FileStore (the default, unchanged behavior) or
+// ServerStore (--triage-server/triage.server.baseUrl set) — every triage
+// command (the interactive TUI, export, jira-sync) goes through this so
+// none of them need their own local-vs-server branch.
+func resolveTriageStore(cmd *cobra.Command, statePath string) (triage.Store, error) {
+	cfg, err := loadEffectiveConfig(cmd)
+	if err != nil {
+		return nil, err
+	}
+	baseURL := cfg.Triage.Server.BaseURL
+	if flagTriageServerURL != "" {
+		baseURL = flagTriageServerURL
+	}
+	if baseURL == "" {
+		return triage.FileStore{Path: statePath}, nil
+	}
+
+	source := cfg.Triage.Server.Source
+	if flagTriageServerSource != "" {
+		source = flagTriageServerSource
+	}
+	if source == "" {
+		source = "kubectl-audit"
+	}
+
+	token := flagTriageServerToken
+	if token == "" {
+		token = os.Getenv("KUBECTL_AUDIT_TRIAGE_SERVER_TOKEN")
+	}
+	if token == "" {
+		return nil, fmt.Errorf("--triage-server is set but no token: set --triage-server-token or KUBECTL_AUDIT_TRIAGE_SERVER_TOKEN")
+	}
+
+	return triage.ServerStore{BaseURL: baseURL, Token: token, Source: source}, nil
+}
+
 // resolveKnowledgeBase loads triage.knowledgeBaseFile (see
 // config.TriageConfig) — the same empty-path-means-nothing convention as
 // loadTemplateFile. Independent of Jira: the triage TUI's detail view
@@ -134,28 +180,32 @@ func resolveKnowledgeBase(cmd *cobra.Command) (map[string]findings.KnowledgeBase
 	return triage.ResolveKnowledgeBase(cfg.Triage.KnowledgeBaseFile)
 }
 
-func loadFindingsAndState(cmd *cobra.Command) (target string, all []findings.Finding, suppressed []report.SuppressedFinding, state *triage.State, statePath string, err error) {
+func loadFindingsAndState(cmd *cobra.Command) (target string, all []findings.Finding, suppressed []report.SuppressedFinding, state *triage.State, store triage.Store, err error) {
 	findingsPath, statePath, err := resolveTriagePaths(cmd)
 	if err != nil {
-		return "", nil, nil, nil, "", err
+		return "", nil, nil, nil, nil, err
 	}
 	target, all, suppressed, err = triage.LoadFindings(findingsPath)
 	if err != nil {
-		return "", nil, nil, nil, "", fmt.Errorf("%w (run `kubectl audit scan --output-json %s` first)", err, findingsPath)
+		return "", nil, nil, nil, nil, fmt.Errorf("%w (run `kubectl audit scan --output-json %s` first)", err, findingsPath)
 	}
-	state, err = triage.LoadState(statePath)
+	store, err = resolveTriageStore(cmd, statePath)
 	if err != nil {
-		return "", nil, nil, nil, "", err
+		return "", nil, nil, nil, nil, err
 	}
-	return target, all, suppressed, state, statePath, nil
+	state, err = store.Load()
+	if err != nil {
+		return "", nil, nil, nil, nil, err
+	}
+	return target, all, suppressed, state, store, nil
 }
 
 func runTriageOpen(cmd *cobra.Command, args []string) error {
-	findingsPath, statePath, err := resolveTriagePaths(cmd)
+	findingsPath, _, err := resolveTriagePaths(cmd)
 	if err != nil {
 		return err
 	}
-	target, all, suppressed, state, _, err := loadFindingsAndState(cmd)
+	target, all, suppressed, state, store, err := loadFindingsAndState(cmd)
 	if err != nil {
 		return err
 	}
@@ -177,14 +227,14 @@ func runTriageOpen(cmd *cobra.Command, args []string) error {
 	// immediately quits without touching anything still gets resolved
 	// findings recorded.
 	_ = triage.Merge(all, suppressed, state, time.Now())
-	if err := triage.SaveState(statePath, state); err != nil {
+	if err := store.Save(state); err != nil {
 		return err
 	}
 
 	return tui.Run(all, suppressed, state, tui.Config{
 		Target:         target,
 		FindingsPath:   findingsPath,
-		StatePath:      statePath,
+		Store:          store,
 		Jira:           jiraCfg,
 		KnowledgeBase:  kb,
 		DedupThreshold: cfg.Output.NamespaceGroupThreshold,
@@ -252,7 +302,7 @@ func newTriageJiraSyncCmd() *cobra.Command {
 			"key/URL back into state so a re-run never double-creates. The Personal Access Token never " +
 			"comes from audit.yaml — pass --jira-token or set KUBECTL_AUDIT_JIRA_TOKEN.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, all, suppressed, state, statePath, err := loadFindingsAndState(cmd)
+			_, all, suppressed, state, store, err := loadFindingsAndState(cmd)
 			if err != nil {
 				return err
 			}
@@ -332,7 +382,7 @@ func newTriageJiraSyncCmd() *cobra.Command {
 				fmt.Printf("Created %s for %s\n", key, summary)
 				created++
 			}
-			if err := triage.SaveState(statePath, state); err != nil {
+			if err := store.Save(state); err != nil {
 				return err
 			}
 			fmt.Printf("Created %d issue(s), %d failure(s).\n", created, failed)

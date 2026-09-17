@@ -49,7 +49,7 @@ func run() error {
 	}
 	defer store.Close()
 
-	srv := api.NewServer(store, store, adminToken)
+	srv := api.NewServer(store, store, store, adminToken)
 	httpServer := &http.Server{
 		Addr:    addr,
 		Handler: srv.Routes(),

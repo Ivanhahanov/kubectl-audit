@@ -16,17 +16,19 @@ import (
 type Server struct {
 	clusters   storage.ClusterRepo
 	findings   storage.FindingRepo
+	triage     storage.TriageRepo
 	adminToken string
 	ingestors  map[string]ingest.Ingestor
 }
 
 // NewServer wires a Server. adminToken gates cluster registration
-// (POST /api/v1/clusters) only — per-cluster ingestion endpoints are gated
-// by the bearer token issued at registration instead, see clusterFromToken.
-func NewServer(clusters storage.ClusterRepo, findings storage.FindingRepo, adminToken string) *Server {
+// (POST /api/v1/clusters) only — every other endpoint is gated by the
+// bearer token issued at registration instead, see clusterFromToken.
+func NewServer(clusters storage.ClusterRepo, findings storage.FindingRepo, triage storage.TriageRepo, adminToken string) *Server {
 	return &Server{
 		clusters:   clusters,
 		findings:   findings,
+		triage:     triage,
 		adminToken: adminToken,
 		ingestors: map[string]ingest.Ingestor{
 			"native":      ingest.NativeIngestor{},
@@ -43,5 +45,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/clusters", s.handleRegisterCluster)
 	mux.HandleFunc("POST /api/v1/ingest/native", s.handleIngestNative)
 	mux.HandleFunc("POST /api/v1/ingest/openreports", s.handleIngestOpenReports)
+	mux.HandleFunc("GET /api/v1/triage", s.handleGetTriage)
+	mux.HandleFunc("PATCH /api/v1/triage/{source}/{fingerprint}", s.handlePatchTriageEntry)
+	mux.HandleFunc("POST /api/v1/triage/bulk", s.handleBulkTriageUpdate)
 	return mux
 }

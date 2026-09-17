@@ -344,6 +344,29 @@ type TriageConfig struct {
 	// dump` to inspect the bundle. Read fresh from disk on every run, no
 	// rebuild.
 	KnowledgeBaseFile string `json:"knowledgeBaseFile,omitempty"`
+	// Server points triage at a kubectl-audit-server instance instead of
+	// StateFile — see TriageServerConfig.
+	Server TriageServerConfig `json:"server,omitempty"`
+}
+
+// TriageServerConfig configures `--triage-server` mode — see
+// internal/triage.ServerStore. Deliberately has no credential field, same
+// reasoning as JiraConfig: the per-cluster bearer token comes from
+// --triage-server-token or KUBECTL_AUDIT_TRIAGE_SERVER_TOKEN only, never
+// this git-committable file.
+type TriageServerConfig struct {
+	// BaseURL is the kubectl-audit-server root, e.g.
+	// "https://audit.example.com". Empty (the default) keeps triage fully
+	// local — see internal/triage.FileStore. Setting this switches every
+	// triage command (the interactive TUI, export, jira-sync) to
+	// ServerStore instead, with no other behavior change.
+	BaseURL string `json:"baseUrl,omitempty"`
+	// Source identifies which scan source's findings this triage session
+	// is against on the server — "kubectl-audit" (the default) for the
+	// CLI's own scans, or an OpenReports tool identifier (e.g.
+	// "openreports:kyverno") to triage findings ingested from another tool
+	// through the same server.
+	Source string `json:"source,omitempty"`
 }
 
 // ComponentsConfig lets a user extend this tool's built-in third-party
@@ -418,6 +441,7 @@ func Default() *AuditConfig {
 		},
 		Triage: TriageConfig{
 			StateFile: "triage-state.yaml",
+			Server:    TriageServerConfig{Source: "kubectl-audit"},
 		},
 	}
 }

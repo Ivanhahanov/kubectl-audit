@@ -24,7 +24,8 @@ type fakeStore struct {
 	byID     map[uuid.UUID]storage.Cluster
 	byToken  map[string]uuid.UUID
 	scans    []storage.Scan
-	findings map[string][]storage.Finding // keyed by clusterID.String()
+	findings map[string][]storage.Finding   // keyed by clusterID.String()
+	triage   map[string]storage.TriageEntry // keyed by clusterID|source|fingerprint
 }
 
 func newFakeStore() *fakeStore {
@@ -32,7 +33,12 @@ func newFakeStore() *fakeStore {
 		byID:     map[uuid.UUID]storage.Cluster{},
 		byToken:  map[string]uuid.UUID{},
 		findings: map[string][]storage.Finding{},
+		triage:   map[string]storage.TriageEntry{},
 	}
+}
+
+func triageKey(clusterID uuid.UUID, source, fingerprint string) string {
+	return clusterID.String() + "|" + source + "|" + fingerprint
 }
 
 func (f *fakeStore) Register(_ context.Context, name, endpoint, owner, tokenHash string) (storage.Cluster, error) {
@@ -95,8 +101,18 @@ func (f *fakeStore) GetFinding(_ context.Context, clusterID uuid.UUID, source, f
 	return storage.Finding{}, storage.ErrNotFound
 }
 
-func (f *fakeStore) ListFindings(_ context.Context, clusterID uuid.UUID, _ storage.FindingFilter) ([]storage.Finding, error) {
-	return f.findings[clusterID.String()], nil
+func (f *fakeStore) ListFindings(_ context.Context, clusterID uuid.UUID, filter storage.FindingFilter) ([]storage.Finding, error) {
+	all := f.findings[clusterID.String()]
+	if filter.Source == "" {
+		return all, nil
+	}
+	var out []storage.Finding
+	for _, fd := range all {
+		if fd.Source == filter.Source {
+			out = append(out, fd)
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeStore) ListByResource(context.Context, uuid.UUID, string, string, string) ([]storage.Finding, error) {
@@ -113,9 +129,30 @@ func (f *fakeStore) ListScans(_ context.Context, clusterID uuid.UUID) ([]storage
 	return out, nil
 }
 
+func (f *fakeStore) GetTriageEntry(_ context.Context, clusterID uuid.UUID, source, fingerprint string) (storage.TriageEntry, bool, error) {
+	e, ok := f.triage[triageKey(clusterID, source, fingerprint)]
+	return e, ok, nil
+}
+
+func (f *fakeStore) UpsertTriageEntry(_ context.Context, entry storage.TriageEntry) error {
+	entry.UpdatedAt = time.Now()
+	f.triage[triageKey(entry.ClusterID, entry.Source, entry.Fingerprint)] = entry
+	return nil
+}
+
+func (f *fakeStore) ListTriageEntries(_ context.Context, clusterID uuid.UUID) ([]storage.TriageEntry, error) {
+	var out []storage.TriageEntry
+	for _, e := range f.triage {
+		if e.ClusterID == clusterID {
+			out = append(out, e)
+		}
+	}
+	return out, nil
+}
+
 func newTestServer() (*Server, *fakeStore) {
 	store := newFakeStore()
-	return NewServer(store, store, "admin-secret"), store
+	return NewServer(store, store, store, "admin-secret"), store
 }
 
 func TestHandleRegisterCluster(t *testing.T) {
