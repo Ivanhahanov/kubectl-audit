@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kubectl-audit-server.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kubectl-audit-server.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "kubectl-audit-server.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kubectl-audit-server.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "kubectl-audit-server.fullname" . }}
+      containers:
+        - name: server
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            tcpSocket: {port: 8080}
+            initialDelaySeconds: 3
+          env:
+            {{- if or .Values.postgres.cnpg.enabled .Values.postgres.existingSecretName }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  {{- include "kubectl-audit-server.databaseURLSecretRef" . | nindent 18 }}
+            {{- else }}
+            - name: DATABASE_URL
+              value: {{ required "postgres.externalDSN is required when postgres.cnpg.enabled=false and postgres.existingSecretName is unset" .Values.postgres.externalDSN | quote }}
+            {{- end }}
+            - name: ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.adminToken.existingSecretName | default (include "kubectl-audit-server.adminTokenSecretName" .) }}
+                  key: {{ .Values.adminToken.existingSecretKey }}
+            - name: LISTEN_ADDR
+              value: ":8080"
+            - name: AUTOMATION_INTERVAL_SECONDS
+              value: {{ .Values.automation.intervalSeconds | quote }}
+            {{- if .Values.automation.tekton.enabled }}
+            - name: PIPELINE_TRIGGER
+              value: "tekton"
+            - name: TEKTON_NAMESPACE
+              value: {{ .Values.automation.tekton.namespace | default .Release.Namespace | quote }}
+            - name: TEKTON_PIPELINE_NAME
+              value: {{ .Values.automation.tekton.pipelineName | quote }}
+            - name: TEKTON_SERVICE_ACCOUNT
+              value: {{ .Values.automation.tekton.serviceAccountName | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

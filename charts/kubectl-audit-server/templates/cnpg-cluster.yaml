@@ -1,0 +1,20 @@
+{{- if .Values.postgres.cnpg.enabled }}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ include "kubectl-audit-server.cnpgClusterName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kubectl-audit-server.labels" . | nindent 4 }}
+spec:
+  instances: {{ .Values.postgres.cnpg.instances }}
+  storage:
+    size: {{ .Values.postgres.cnpg.storage.size | quote }}
+    {{- with .Values.postgres.cnpg.storage.storageClass }}
+    storageClass: {{ . | quote }}
+    {{- end }}
+  bootstrap:
+    initdb:
+      database: auditdb
+      owner: audit
+{{- end }}

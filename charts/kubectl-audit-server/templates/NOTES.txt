@@ -1,0 +1,31 @@
+kubectl-audit-server is deployed as {{ include "kubectl-audit-server.fullname" . }} in {{ .Release.Namespace }}.
+
+{{- if .Values.postgres.cnpg.enabled }}
+Postgres is a CloudNativePG Cluster ({{ include "kubectl-audit-server.cnpgClusterName" . }})
+owned by this release — requires the CNPG operator already installed
+cluster-wide (this chart does not install it).
+{{- else }}
+Postgres: using an externally-managed database (postgres.cnpg.enabled=false).
+{{- end }}
+
+Get the admin token (needed for cluster registration and every
+organization-level config endpoint):
+
+  kubectl -n {{ .Release.Namespace }} get secret {{ .Values.adminToken.existingSecretName | default (include "kubectl-audit-server.adminTokenSecretName" .) }} -o jsonpath='{.data.{{ .Values.adminToken.existingSecretKey }}}' | base64 -d
+
+Register a cluster:
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "kubectl-audit-server.fullname" . }} 8080:{{ .Values.service.port }} &
+  curl -X POST http://localhost:8080/api/v1/clusters \
+    -H "Authorization: Bearer <admin token>" -H "Content-Type: application/json" \
+    -d '{"name":"my-cluster"}'
+
+{{- if .Values.automation.tekton.enabled }}
+
+Tekton PipelineRun triggering is enabled (automation.tekton.enabled=true).
+This chart grants {{ include "kubectl-audit-server.fullname" . }}'s ServiceAccount
+permission to create pipelineruns.tekton.dev, but you still need to deploy
+the Pipeline/Task ({{ .Values.automation.tekton.pipelineName }}) and its
+ServiceAccount ({{ .Values.automation.tekton.serviceAccountName }}) yourself
+— see deploy/kind-demo for a worked example.
+{{- end }}

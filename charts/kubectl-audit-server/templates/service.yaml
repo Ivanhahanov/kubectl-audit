@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kubectl-audit-server.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kubectl-audit-server.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "kubectl-audit-server.selectorLabels" . | nindent 4 }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: 8080

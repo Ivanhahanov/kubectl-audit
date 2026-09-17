@@ -1,0 +1,6 @@
+apiVersion: v2
+name: kubectl-audit-server
+description: Multi-cluster aggregation server for kubectl-audit — dedup, triage, knowledge base/exclusion rules, and automation rules across many clusters' scans.
+type: application
+version: 0.1.0
+appVersion: "latest"

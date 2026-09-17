@@ -1,0 +1,64 @@
+image:
+  repository: kubectl-audit-server
+  tag: ""
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 8080
+
+resources: {}
+
+# adminToken gates cluster registration and every organization-level
+# config endpoint (knowledge base, exclusion rules, automation rules,
+# audit requests) — see internal/server/http.NewServer's doc comment.
+adminToken:
+  # Used directly if set (e.g. via --set-string or a values file backed by
+  # your own secrets tooling). Leave empty to auto-generate one instead.
+  value: ""
+  # Name of an existing Secret (key: adminTokenExistingSecretKey) to source
+  # the token from, managed outside this chart's install/upgrade lifecycle
+  # entirely — takes precedence over both `value` and auto-generation.
+  existingSecretName: ""
+  existingSecretKey: "token"
+
+# postgres.cnpg is the default: this chart owns a CloudNativePG Cluster CR
+# and connects using its auto-generated "<name>-app" Secret directly — no
+# custom credential plumbing. Requires the CNPG operator (and its CRDs)
+# already installed cluster-wide; this chart does not install the operator
+# itself. Set cnpg.enabled=false and use existingSecretName/externalDSN
+# instead to point at a Postgres you manage yourself.
+postgres:
+  cnpg:
+    enabled: true
+    instances: 1
+    storage:
+      size: 1Gi
+      storageClass: ""
+  # Escape hatch #1: an existing Secret with a `uri`-shaped key (same
+  # convention CNPG itself uses) — e.g. one managed by a different
+  # operator, or hand-created for a managed Postgres instance.
+  existingSecretName: ""
+  existingSecretKey: "uri"
+  # Escape hatch #2: a plain connection string, for quick local testing
+  # only — prefer existingSecretName for anything else, so the DSN (which
+  # embeds a password) never ends up in `helm get values` output or a
+  # values file.
+  externalDSN: ""
+
+automation:
+  # How often the background evaluator checks automation_rules against
+  # every registered cluster's current findings/triage state.
+  intervalSeconds: 300
+  # tekton.enabled wires PIPELINE_TRIGGER=tekton and grants this
+  # Deployment's ServiceAccount permission to create tekton.dev
+  # PipelineRuns — see automation.TektonTrigger's doc comment. Requires
+  # Tekton Pipelines already installed; this chart doesn't install it.
+  # namespace defaults to .Release.Namespace when empty.
+  tekton:
+    enabled: false
+    namespace: ""
+    pipelineName: "kubectl-audit-scan-and-push"
+    serviceAccountName: "kubectl-audit-scan"
