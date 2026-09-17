@@ -1,0 +1,25 @@
+{
+  "results": [
+    {
+      "source": "kyverno",
+      "policy": "disallow-host-network",
+      "rule": "host-network",
+      "severity": "high",
+      "result": "fail",
+      "message": "hostNetwork is not allowed",
+      "resources": [
+        {"apiVersion": "v1", "kind": "Pod", "name": "hostnet-pod", "namespace": "default"}
+      ]
+    },
+    {
+      "source": "trivy-operator",
+      "policy": "CVE-2024-9999",
+      "severity": "critical",
+      "result": "fail",
+      "message": "critical vulnerability in base image",
+      "resources": [
+        {"apiVersion": "apps/v1", "kind": "Deployment", "name": "web", "namespace": "default"}
+      ]
+    }
+  ]
+}

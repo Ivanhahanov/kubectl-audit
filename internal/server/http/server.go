@@ -29,7 +29,8 @@ func NewServer(clusters storage.ClusterRepo, findings storage.FindingRepo, admin
 		findings:   findings,
 		adminToken: adminToken,
 		ingestors: map[string]ingest.Ingestor{
-			"native": ingest.NativeIngestor{},
+			"native":      ingest.NativeIngestor{},
+			"openreports": ingest.OpenReportsIngestor{},
 		},
 	}
 }
@@ -41,5 +42,6 @@ func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/v1/clusters", s.handleRegisterCluster)
 	mux.HandleFunc("POST /api/v1/ingest/native", s.handleIngestNative)
+	mux.HandleFunc("POST /api/v1/ingest/openreports", s.handleIngestOpenReports)
 	return mux
 }

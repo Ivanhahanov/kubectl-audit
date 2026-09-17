@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -184,6 +185,62 @@ func TestHandleIngestNative(t *testing.T) {
 	}
 	if got[0].Fingerprint != "abc123" {
 		t.Errorf("fingerprint = %q, want abc123", got[0].Fingerprint)
+	}
+
+	var decoded ingestResponse
+	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if len(decoded.Scans) != 1 || decoded.Scans[0].FindingsIngested != 1 {
+		t.Errorf("decoded.Scans = %+v, want one scan with 1 finding", decoded.Scans)
+	}
+}
+
+func TestHandleIngestOpenReports(t *testing.T) {
+	srv, store := newTestServer()
+	ts := httptest.NewServer(srv.Routes())
+	defer ts.Close()
+
+	plaintext, hash, err := newClusterToken()
+	if err != nil {
+		t.Fatalf("newClusterToken: %v", err)
+	}
+	cluster, err := store.Register(context.Background(), "or-cluster", "", "", hash)
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	body := `{
+		"source": "kyverno",
+		"results": [
+			{"policy": "disallow-privileged", "rule": "privileged", "severity": "high", "result": "fail",
+			 "message": "privileged containers are not allowed",
+			 "resources": [{"apiVersion": "v1", "kind": "Pod", "namespace": "default", "name": "nginx"}]},
+			{"policy": "require-labels", "result": "pass",
+			 "resources": [{"kind": "Pod", "namespace": "default", "name": "nginx"}]}
+		]
+	}`
+
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/ingest/openreports", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+plaintext)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	got := store.findings[cluster.ID.String()]
+	if len(got) != 1 {
+		t.Fatalf("stored findings = %d, want 1 (the pass result must not be stored)", len(got))
+	}
+	if got[0].Source != "openreports:kyverno" {
+		t.Errorf("Source = %q, want openreports:kyverno", got[0].Source)
+	}
+	if got[0].Severity != "HIGH" {
+		t.Errorf("Severity = %q, want HIGH", got[0].Severity)
 	}
 }
 

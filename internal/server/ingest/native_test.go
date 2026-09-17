@@ -34,10 +34,14 @@ const sampleFindingsJSON = `{
 
 func TestNativeIngestor_Ingest(t *testing.T) {
 	clusterID := uuid.New()
-	scan, out, err := NativeIngestor{}.Ingest(clusterID, []byte(sampleFindingsJSON))
+	batches, err := NativeIngestor{}.Ingest(clusterID, []byte(sampleFindingsJSON))
 	if err != nil {
 		t.Fatalf("Ingest: %v", err)
 	}
+	if len(batches) != 1 {
+		t.Fatalf("len(batches) = %d, want 1", len(batches))
+	}
+	scan, out := batches[0].Scan, batches[0].Findings
 
 	if scan.ClusterID != clusterID {
 		t.Errorf("scan.ClusterID = %v, want %v", scan.ClusterID, clusterID)
@@ -85,7 +89,7 @@ func TestNativeIngestor_Ingest(t *testing.T) {
 
 func TestNativeIngestor_Ingest_MissingID(t *testing.T) {
 	body := []byte(`{"generatedAt":"2026-09-01T12:00:00Z","findings":[{"policyId":"x","resource":{"kind":"Pod","name":"nginx"}}]}`)
-	_, _, err := NativeIngestor{}.Ingest(uuid.New(), body)
+	_, err := NativeIngestor{}.Ingest(uuid.New(), body)
 	if err == nil {
 		t.Fatal("expected an error for a finding with no id, got nil")
 	}
@@ -93,20 +97,23 @@ func TestNativeIngestor_Ingest_MissingID(t *testing.T) {
 
 func TestNativeIngestor_Ingest_EmptyFindings(t *testing.T) {
 	body := []byte(`{"generatedAt":"2026-09-01T12:00:00Z","findings":[]}`)
-	scan, out, err := NativeIngestor{}.Ingest(uuid.New(), body)
+	batches, err := NativeIngestor{}.Ingest(uuid.New(), body)
 	if err != nil {
 		t.Fatalf("Ingest: %v", err)
 	}
-	if len(out) != 0 {
-		t.Errorf("len(out) = %d, want 0", len(out))
+	if len(batches) != 1 {
+		t.Fatalf("len(batches) = %d, want 1", len(batches))
 	}
-	if scan.Source != SourceNative {
-		t.Errorf("scan.Source = %q", scan.Source)
+	if len(batches[0].Findings) != 0 {
+		t.Errorf("len(Findings) = %d, want 0", len(batches[0].Findings))
+	}
+	if batches[0].Scan.Source != SourceNative {
+		t.Errorf("scan.Source = %q", batches[0].Scan.Source)
 	}
 }
 
 func TestNativeIngestor_Ingest_InvalidJSON(t *testing.T) {
-	_, _, err := NativeIngestor{}.Ingest(uuid.New(), []byte("not json"))
+	_, err := NativeIngestor{}.Ingest(uuid.New(), []byte("not json"))
 	if err == nil {
 		t.Fatal("expected a decode error, got nil")
 	}

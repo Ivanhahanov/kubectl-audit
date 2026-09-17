@@ -30,10 +30,10 @@ type nativePayload struct {
 // NativeIngestor implements Ingestor for kubectl-audit's own findings.json.
 type NativeIngestor struct{}
 
-func (NativeIngestor) Ingest(clusterID uuid.UUID, body []byte) (storage.Scan, []storage.Finding, error) {
+func (NativeIngestor) Ingest(clusterID uuid.UUID, body []byte) ([]Batch, error) {
 	var payload nativePayload
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return storage.Scan{}, nil, fmt.Errorf("decoding findings.json: %w", err)
+		return nil, fmt.Errorf("decoding findings.json: %w", err)
 	}
 
 	scan := storage.Scan{
@@ -50,7 +50,7 @@ func (NativeIngestor) Ingest(clusterID uuid.UUID, body []byte) (storage.Scan, []
 		// design. An empty ID would silently collide every such finding in
 		// this scan into one row, so it's rejected rather than accepted.
 		if f.ID == "" {
-			return storage.Scan{}, nil, fmt.Errorf("finding %q (%s) has no id", f.Title, f.Resource.String())
+			return nil, fmt.Errorf("finding %q (%s) has no id", f.Title, f.Resource.String())
 		}
 		out = append(out, storage.Finding{
 			ClusterID:          clusterID,
@@ -70,5 +70,5 @@ func (NativeIngestor) Ingest(clusterID uuid.UUID, body []byte) (storage.Scan, []
 			VerificationSteps:  f.VerificationSteps,
 		})
 	}
-	return scan, out, nil
+	return []Batch{{Scan: scan, Findings: out}}, nil
 }

@@ -1,0 +1,32 @@
+{
+  "source": "kyverno",
+  "summary": {"pass": 1, "fail": 1, "warn": 0, "error": 0, "skip": 0},
+  "results": [
+    {
+      "category": "Pod Security Standards (Baseline)",
+      "message": "validation rule 'adding-capabilities' passed.",
+      "policy": "disallow-capabilities",
+      "resources": [
+        {"apiVersion": "v1", "kind": "Pod", "name": "kyverno-6d88f6dcdd-k6bc5", "namespace": "nirmata"}
+      ],
+      "result": "pass",
+      "rule": "adding-capabilities",
+      "scored": true,
+      "severity": "medium",
+      "source": "kyverno"
+    },
+    {
+      "category": "Pod Security Standards (Baseline)",
+      "message": "validation error: privileged mode is not allowed. rule autogen-privileged-containers failed.",
+      "policy": "disallow-privileged-containers",
+      "resources": [
+        {"apiVersion": "v1", "kind": "Pod", "name": "buildkitd", "namespace": "ci"}
+      ],
+      "result": "fail",
+      "rule": "autogen-privileged-containers",
+      "scored": true,
+      "severity": "high",
+      "source": "kyverno"
+    }
+  ]
+}

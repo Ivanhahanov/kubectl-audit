@@ -13,11 +13,25 @@ import (
 	"github.com/ivanhahanov/kubectl-audit/internal/storage"
 )
 
-// Ingestor turns one raw request body into a scan + its findings for
+// Batch is one Scan and the Findings it contains. A single Ingest call
+// returns more than one Batch when a payload legitimately spans multiple
+// sources in one document — e.g. an OpenReports Report whose individual
+// ReportResults set per-result Source overrides for different underlying
+// policy engines (the spec explicitly allows this; see
+// OpenReportsIngestor). Resolution in storage.FindingRepo.IngestScan is
+// scoped per (cluster_id, source), so each such group needs its own Scan
+// row — collapsing them into one would silently mislabel findings under
+// whichever source happened to be picked.
+type Batch struct {
+	Scan     storage.Scan
+	Findings []storage.Finding
+}
+
+// Ingestor turns one raw request body into one or more Batches for
 // clusterID (the cluster the caller authenticated as — never taken from the
 // body itself, so a client can't claim an arbitrary cluster identity).
 type Ingestor interface {
-	Ingest(clusterID uuid.UUID, body []byte) (storage.Scan, []storage.Finding, error)
+	Ingest(clusterID uuid.UUID, body []byte) ([]Batch, error)
 }
 
 // Store is the subset of storage.FindingRepo an ingestion handler needs.
