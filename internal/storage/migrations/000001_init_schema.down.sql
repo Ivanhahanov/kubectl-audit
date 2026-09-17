@@ -1,0 +1,4 @@
+DROP TABLE IF EXISTS triage_entries;
+DROP TABLE IF EXISTS findings;
+DROP TABLE IF EXISTS scans;
+DROP TABLE IF EXISTS clusters;
