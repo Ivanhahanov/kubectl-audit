@@ -3,6 +3,25 @@
 // stored in Postgres for cross-cluster triage, centralized knowledge
 // base/exclusion rules, and automation rule evaluation — see the
 // architecture plan for the full design.
+//
+//	@title			kubectl-audit-server API
+//	@version		1.0
+//	@description	Multi-cluster aggregation server for kubectl-audit: clusters push findings.json scans here, which are deduplicated and stored for cross-cluster triage, centralized knowledge base/exclusion rules, and automation rule evaluation.
+//
+//	@license.name	Apache 2.0
+//	@license.url	https://www.apache.org/licenses/LICENSE-2.0.html
+//
+//	@BasePath	/api/v1
+//
+//	@securityDefinitions.apikey	AdminAuth
+//	@in							header
+//	@name						Authorization
+//	@description				Admin bearer token (env ADMIN_TOKEN). Send as "Bearer <token>". Required for cluster registration and every organization-level config endpoint (knowledge base, exclusion rules, automation rules, audit requests).
+//
+//	@securityDefinitions.apikey	ClusterAuth
+//	@in							header
+//	@name						Authorization
+//	@description				Per-cluster bearer token minted by POST /clusters. Send as "Bearer <token>". Required for ingest and triage endpoints; scopes access to that cluster's own data.
 package main
 
 import (
@@ -17,6 +36,7 @@ import (
 	"syscall"
 	"time"
 
+	_ "github.com/ivanhahanov/kubectl-audit/cmd/kubectl-audit-server/docs"
 	"github.com/ivanhahanov/kubectl-audit/internal/server/automation"
 	api "github.com/ivanhahanov/kubectl-audit/internal/server/http"
 	"github.com/ivanhahanov/kubectl-audit/internal/storage/postgres"

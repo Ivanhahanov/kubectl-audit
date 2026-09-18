@@ -21,6 +21,7 @@ them. Each section is copy-pasteable.
 ## Contents
 
 - [Quick start (no Kubernetes needed)](#quick-start-no-kubernetes-needed)
+- [API documentation (Swagger/OpenAPI)](#api-documentation-swaggeropenapi)
 - [Registering a cluster and pushing a scan](#registering-a-cluster-and-pushing-a-scan)
 - [Triage against the server](#triage-against-the-server)
 - [Ingesting findings from other tools (OpenReports)](#ingesting-findings-from-other-tools-openreports)
@@ -47,6 +48,28 @@ docker compose up
 This starts Postgres and the server (`ADMIN_TOKEN=demo-admin-token`, listening on `:8080`,
 migrations applied automatically on startup). Everything from here on assumes the server is
 reachable at `http://localhost:8080` — adjust if you deployed it elsewhere.
+
+## API documentation (Swagger/OpenAPI)
+
+Every endpoint below is annotated with [swaggo](https://github.com/swaggo/swag) comments and
+served as an interactive Swagger UI, no separate tool required:
+
+```
+http://localhost:8080/swagger/index.html
+```
+
+The raw OpenAPI 2.0 spec backing that UI is at `http://localhost:8080/swagger/doc.json` (also
+committed as `cmd/kubectl-audit-server/docs/swagger.json`/`.yaml`, handy for importing into
+Postman/Insomnia or generating a client). Click "Authorize" in the UI and paste
+`Bearer <admin-token>` or `Bearer <cluster-token>` to try requests directly from the browser — the
+same admin-vs-cluster token split described below applies.
+
+If you change a handler's request/response shape or add a new endpoint, regenerate the spec:
+
+```sh
+go run github.com/swaggo/swag/cmd/swag@latest init \
+  -g cmd/kubectl-audit-server/main.go -o cmd/kubectl-audit-server/docs --parseInternal --pd
+```
 
 ## Registering a cluster and pushing a scan
 
@@ -77,32 +100,42 @@ for the exact fingerprinting rules if you're curious.
 
 `kubectl audit triage` (the same interactive TUI, `export`, and `jira-sync` you already know) can
 persist decisions centrally instead of to a local `triage-state.yaml`, with **no other behavior
-change** — add three things:
+change** — add four things:
 
 ```sh
 kubectl audit triage \
   --triage-server http://localhost:8080 \
-  --triage-server-token <cluster token> \
+  --triage-server-cluster-id <cluster id> \
+  --triage-server-token <admin token> \
   --findings findings.json
 ```
 
+Triage read/write is an **admin-gated "expert" action**, deliberately separate from a cluster's own
+push token: that token is ingest-only (`POST /api/v1/ingest/*`) and grants no access to
+`/api/v1/triage/*` — a leaked push token can inject fake findings but can't read anyone's triage
+notes or Jira links. So `--triage-server-token` here is the server's admin token, not the cluster
+token from registration, and `--triage-server-cluster-id` says explicitly which cluster's findings
+you're triaging (the `id` field from that cluster's registration response, not its token).
+
 (`--triage-server-source` defaults to `kubectl-audit`; set it explicitly if you're triaging an
 OpenReports-ingested source instead — see below.) The token can also come from
-`$KUBECTL_AUDIT_TRIAGE_SERVER_TOKEN`, and both `--triage-server`/`--triage-server-source` have
-`audit.yaml` equivalents (`triage.server.baseUrl`/`triage.server.source`) so you don't have to
-repeat the flags every run.
+`$KUBECTL_AUDIT_TRIAGE_SERVER_TOKEN`, and `--triage-server`/`--triage-server-source`/
+`--triage-server-cluster-id` all have `audit.yaml` equivalents
+(`triage.server.baseUrl`/`triage.server.source`/`triage.server.clusterId`) so you don't have to
+repeat the flags every run — `clusterId` isn't a credential (on its own it grants nothing), so it's
+fine to commit alongside `baseUrl`/`source`.
 
 Everything — marking confirmed/false-positive/won't-fix, notes, bulk actions, even `'j'` filing a
 Jira ticket — works exactly the same; only *where* the decision is saved changes. You can confirm
 it round-tripped with a plain curl call too:
 
 ```sh
-curl -X PATCH "http://localhost:8080/api/v1/triage/kubectl-audit/<finding id>" \
-  -H "Authorization: Bearer <cluster token>" -H "Content-Type: application/json" \
+curl -X PATCH "http://localhost:8080/api/v1/triage/kubectl-audit/<finding id>?cluster_id=<cluster id>" \
+  -H "Authorization: Bearer <admin token>" -H "Content-Type: application/json" \
   -d '{"status":"confirmed","note":"real escalation path, needs remediation"}'
 
-curl "http://localhost:8080/api/v1/triage?source=kubectl-audit&status=confirmed" \
-  -H "Authorization: Bearer <cluster token>"
+curl "http://localhost:8080/api/v1/triage?cluster_id=<cluster id>&source=kubectl-audit&status=confirmed" \
+  -H "Authorization: Bearer <admin token>"
 ```
 
 ## Ingesting findings from other tools (OpenReports)

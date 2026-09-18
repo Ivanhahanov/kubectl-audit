@@ -351,9 +351,11 @@ type TriageConfig struct {
 
 // TriageServerConfig configures `--triage-server` mode — see
 // internal/triage.ServerStore. Deliberately has no credential field, same
-// reasoning as JiraConfig: the per-cluster bearer token comes from
+// reasoning as JiraConfig: the admin token comes from
 // --triage-server-token or KUBECTL_AUDIT_TRIAGE_SERVER_TOKEN only, never
-// this git-committable file.
+// this git-committable file. ClusterID is not a credential (it's returned
+// by cluster registration alongside the token, but on its own grants
+// nothing), so it's fine to commit here like BaseURL/Source.
 type TriageServerConfig struct {
 	// BaseURL is the kubectl-audit-server root, e.g.
 	// "https://audit.example.com". Empty (the default) keeps triage fully
@@ -367,6 +369,13 @@ type TriageServerConfig struct {
 	// "openreports:kyverno") to triage findings ingested from another tool
 	// through the same server.
 	Source string `json:"source,omitempty"`
+	// ClusterID is the cluster whose findings/triage this session reads
+	// and writes — required whenever BaseURL is set. The server's triage
+	// endpoints are admin-token-gated and scoped by this id explicitly, not
+	// implied by the caller's token: a cluster's own push token is
+	// ingest-only and grants no triage read/write access (see
+	// kubectl-audit-server's handleGetTriage doc comment).
+	ClusterID string `json:"clusterId,omitempty"`
 }
 
 // ComponentsConfig lets a user extend this tool's built-in third-party

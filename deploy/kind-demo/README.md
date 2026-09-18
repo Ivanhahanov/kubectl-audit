@@ -71,11 +71,13 @@ curl -s -X PATCH "http://localhost:18080/api/v1/audit-requests/$REQ_ID" \
 kubectl -n kubectl-audit-system get pipelinerun -w
 ```
 
-Once it succeeds, the findings are queryable immediately:
+Once it succeeds, the findings are queryable immediately — triage is admin-token-gated, not
+cluster-token-gated (a cluster's push token is ingest-only, see `docs/server.md`'s "Triage against
+the server"), so use the admin token plus the `cluster_id` from registration:
 
 ```sh
-curl -s "http://localhost:18080/api/v1/triage?source=kubectl-audit" \
-  -H "Authorization: Bearer <cluster token>" | python3 -m json.tool
+curl -s "http://localhost:18080/api/v1/triage?cluster_id=$CLUSTER_ID&source=kubectl-audit" \
+  -H "Authorization: Bearer demo-admin-token" | python3 -m json.tool
 ```
 
 ## Notes

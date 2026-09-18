@@ -1,0 +1,1091 @@
+basePath: /api/v1
+definitions:
+  github_com_ivanhahanov_kubectl-audit_internal_storage.TriageEntry:
+    properties:
+      clusterID:
+        type: string
+      fingerprint:
+        type: string
+      jiraIssueKey:
+        type: string
+      jiraIssueURL:
+        type: string
+      note:
+        type: string
+      reviewer:
+        type: string
+      source:
+        type: string
+      status:
+        $ref: '#/definitions/github_com_ivanhahanov_kubectl-audit_internal_storage.TriageStatus'
+      updatedAt:
+        type: string
+    type: object
+  github_com_ivanhahanov_kubectl-audit_internal_storage.TriageStatus:
+    enum:
+    - new
+    - confirmed
+    - false_positive
+    - wont_fix
+    - duplicate
+    - needs_info
+    - resolved
+    type: string
+    x-enum-varnames:
+    - TriageStatusNew
+    - TriageStatusConfirmed
+    - TriageStatusFalsePositive
+    - TriageStatusWontFix
+    - TriageStatusDuplicate
+    - TriageStatusNeedsInfo
+    - TriageStatusResolved
+  internal_server_http.auditRequestDTO:
+    properties:
+      clusterId:
+        type: string
+      createdAt:
+        type: string
+      id:
+        type: string
+      reason:
+        type: string
+      requestedBy:
+        type: string
+      scheduledCron:
+        type: string
+      status:
+        type: string
+      tektonPipelineRunName:
+        type: string
+    type: object
+  internal_server_http.automationActionDTO:
+    properties:
+      prompt:
+        type: string
+      tools:
+        items:
+          type: string
+        type: array
+      type:
+        type: string
+    type: object
+  internal_server_http.automationEvaluationResultDTO:
+    properties:
+      attempted:
+        type: boolean
+      clusterId:
+        type: string
+      detail:
+        type: string
+      fingerprint:
+        type: string
+      ruleId:
+        type: string
+      ruleName:
+        type: string
+      source:
+        type: string
+    type: object
+  internal_server_http.automationRuleDTO:
+    properties:
+      action:
+        $ref: '#/definitions/internal_server_http.automationActionDTO'
+      createdAt:
+        type: string
+      enabled:
+        type: boolean
+      id:
+        type: string
+      name:
+        type: string
+      trigger:
+        $ref: '#/definitions/internal_server_http.automationTriggerDTO'
+    type: object
+  internal_server_http.automationTriggerDTO:
+    properties:
+      minSeverity:
+        type: string
+      noJiraLinkForHours:
+        type: integer
+      source:
+        type: string
+      status:
+        type: string
+    type: object
+  internal_server_http.bulkTriageEntry:
+    properties:
+      fingerprint:
+        type: string
+      jiraIssueKey:
+        type: string
+      jiraIssueUrl:
+        type: string
+      note:
+        type: string
+      reviewer:
+        type: string
+      status:
+        type: string
+    type: object
+  internal_server_http.bulkTriageRequest:
+    properties:
+      entries:
+        items:
+          $ref: '#/definitions/internal_server_http.bulkTriageEntry'
+        type: array
+      source:
+        type: string
+    type: object
+  internal_server_http.bulkTriageResponse:
+    properties:
+      skipped:
+        items:
+          $ref: '#/definitions/internal_server_http.bulkTriageSkip'
+        type: array
+      updated:
+        type: integer
+    type: object
+  internal_server_http.bulkTriageSkip:
+    properties:
+      error:
+        type: string
+      fingerprint:
+        type: string
+    type: object
+  internal_server_http.exclusionMatchDTO:
+    properties:
+      kind:
+        type: string
+      labels:
+        additionalProperties:
+          type: string
+        type: object
+      name:
+        type: string
+      namespace:
+        type: string
+    type: object
+  internal_server_http.exclusionRuleDTO:
+    properties:
+      clusterId:
+        type: string
+      createdAt:
+        type: string
+      id:
+        type: string
+      match:
+        $ref: '#/definitions/internal_server_http.exclusionMatchDTO'
+      policyIds:
+        items:
+          type: string
+        type: array
+      reason:
+        type: string
+    type: object
+  internal_server_http.ingestResponse:
+    properties:
+      scans:
+        items:
+          $ref: '#/definitions/internal_server_http.scanResult'
+        type: array
+    type: object
+  internal_server_http.knowledgeBaseEntryDTO:
+    properties:
+      category:
+        type: string
+      description:
+        type: string
+      labels:
+        items:
+          type: string
+        type: array
+      policyId:
+        type: string
+      remediation:
+        type: string
+      title:
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  internal_server_http.patchAuditRequestRequest:
+    properties:
+      status:
+        type: string
+    type: object
+  internal_server_http.patchTriageRequest:
+    properties:
+      jiraIssueKey:
+        type: string
+      jiraIssueUrl:
+        type: string
+      note:
+        type: string
+      reviewer:
+        type: string
+      status:
+        type: string
+    type: object
+  internal_server_http.registerClusterRequest:
+    properties:
+      endpoint:
+        type: string
+      name:
+        type: string
+      owner:
+        type: string
+    type: object
+  internal_server_http.registerClusterResponse:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      token:
+        type: string
+    type: object
+  internal_server_http.scanResult:
+    properties:
+      findingsIngested:
+        type: integer
+      scanId:
+        type: string
+      source:
+        type: string
+    type: object
+  internal_server_http.triageResourceRef:
+    properties:
+      apiVersion:
+        type: string
+      kind:
+        type: string
+      name:
+        type: string
+      namespace:
+        type: string
+    type: object
+  internal_server_http.triageView:
+    properties:
+      category:
+        type: string
+      fingerprint:
+        type: string
+      firstSeen:
+        type: string
+      jiraIssueKey:
+        type: string
+      jiraIssueUrl:
+        type: string
+      lastSeen:
+        type: string
+      message:
+        type: string
+      note:
+        type: string
+      policyId:
+        type: string
+      resource:
+        $ref: '#/definitions/internal_server_http.triageResourceRef'
+      reviewer:
+        type: string
+      severity:
+        type: string
+      source:
+        type: string
+      status:
+        type: string
+      title:
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  internal_server_http.triageViewResponse:
+    properties:
+      entries:
+        items:
+          $ref: '#/definitions/internal_server_http.triageView'
+        type: array
+    type: object
+info:
+  contact: {}
+  description: 'Multi-cluster aggregation server for kubectl-audit: clusters push
+    findings.json scans here, which are deduplicated and stored for cross-cluster
+    triage, centralized knowledge base/exclusion rules, and automation rule evaluation.'
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+  title: kubectl-audit-server API
+  version: "1.0"
+paths:
+  /audit-requests:
+    get:
+      description: Lists audit requests, optionally narrowed to one cluster.
+      parameters:
+      - description: Restrict to requests for this cluster ID
+        in: query
+        name: cluster_id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/internal_server_http.auditRequestDTO'
+              type: array
+            type: object
+        "400":
+          description: invalid cluster_id
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: missing or invalid admin token
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminAuth: []
+      summary: List audit requests
+      tags:
+      - audit-requests
+    post:
+      consumes:
+      - application/json
+      description: Creates a pending request to audit a cluster. Approving it later
+        (PATCH with status=approved) triggers the configured pipeline.
+      parameters:
+      - description: Audit request to create
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_server_http.auditRequestDTO'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_server_http.auditRequestDTO'
+        "400":
+          description: invalid request body / invalid clusterId / missing reason
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: missing or invalid admin token
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminAuth: []
+      summary: Create an audit request
+      tags:
+      - audit-requests
+  /audit-requests/{id}:
+    patch:
+      consumes:
+      - application/json
+      description: Transitions an audit request's status, typically pending -> approved
+        (which triggers the configured pipeline and moves it to running) or pending
+        -> rejected.
+      parameters:
+      - description: Audit request ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: New status
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_server_http.patchAuditRequestRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_server_http.auditRequestDTO'
+        "400":
+          description: invalid id / invalid request body / missing status
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: missing or invalid admin token
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: no such audit request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: triggering scan failed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminAuth: []
+      summary: Update an audit request's status
+      tags:
+      - audit-requests
+  /automation-rules:
+    get:
+      description: Lists every automation rule.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/internal_server_http.automationRuleDTO'
+              type: array
+            type: object
+        "401":
+          description: missing or invalid admin token
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminAuth: []
+      summary: List automation rules
+      tags:
+      - automation-rules
+    post:
+      consumes:
+      - application/json
+      description: Creates a rule that fires an action (e.g. notify/file-jira) when
+        its trigger matches a finding during evaluation.
+      parameters:
+      - description: Automation rule to create
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_server_http.automationRuleDTO'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_server_http.automationRuleDTO'
+        "400":
+          description: invalid request body / missing name or action.type
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: missing or invalid admin token
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminAuth: []
+      summary: Create an automation rule
+      tags:
+      - automation-rules
+  /automation-rules/{id}:
+    delete:
+      description: Deletes one automation rule by ID.
+      parameters:
+      - description: Automation rule ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: deleted
+        "400":
+          description: invalid id
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: missing or invalid admin token
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: no such automation rule
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminAuth: []
+      summary: Delete an automation rule
+      tags:
+      - automation-rules
+    patch:
+      consumes:
+      - application/json
+      description: Replaces the name/enabled/trigger/action of an existing automation
+        rule. ID and createdAt are preserved from the existing record.
+      parameters:
+      - description: Automation rule ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: New rule content
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_server_http.automationRuleDTO'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_server_http.automationRuleDTO'
+        "400":
+          description: invalid id / invalid request body
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: missing or invalid admin token
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: no such automation rule
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminAuth: []
+      summary: Update an automation rule
+      tags:
+      - automation-rules
+  /automation-rules/evaluate:
+    post:
+      description: Evaluates every enabled automation rule against current findings
+        immediately, instead of waiting for the periodic ticker. Useful to demo automation
+        without waiting for a timer.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: results
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/internal_server_http.automationEvaluationResultDTO'
+              type: array
+            type: object
+        "401":
+          description: missing or invalid admin token
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: automation runner not configured / evaluation failed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminAuth: []
+      summary: Run one automation evaluation pass
+      tags:
+      - automation-rules
+  /clusters:
+    post:
+      consumes:
+      - application/json
+      description: Registers a new cluster and mints a bearer token for it. The token
+        is only ever returned in this response — store it, it can't be recovered later.
+      parameters:
+      - description: Cluster to register
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_server_http.registerClusterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_server_http.registerClusterResponse'
+        "400":
+          description: missing name
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: missing or invalid admin token
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: a cluster with this name already exists
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminAuth: []
+      summary: Register a cluster
+      tags:
+      - clusters
+  /exclusion-rules:
+    get:
+      description: Lists exclusion rules, optionally narrowed to one cluster (rules
+        with no clusterId apply to every cluster).
+      parameters:
+      - description: Restrict to rules for this cluster ID
+        in: query
+        name: cluster_id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/internal_server_http.exclusionRuleDTO'
+              type: array
+            type: object
+        "400":
+          description: invalid cluster_id
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: missing or invalid admin token
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminAuth: []
+      summary: List exclusion rules
+      tags:
+      - exclusion-rules
+    post:
+      consumes:
+      - application/json
+      description: Creates a rule that suppresses matching findings, org-wide or for
+        one cluster (clusterId).
+      parameters:
+      - description: Exclusion rule to create
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_server_http.exclusionRuleDTO'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_server_http.exclusionRuleDTO'
+        "400":
+          description: invalid request body / missing reason / invalid clusterId
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: missing or invalid admin token
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminAuth: []
+      summary: Create an exclusion rule
+      tags:
+      - exclusion-rules
+  /exclusion-rules/{id}:
+    delete:
+      description: Deletes one exclusion rule by ID.
+      parameters:
+      - description: Exclusion rule ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: deleted
+        "400":
+          description: invalid id
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: missing or invalid admin token
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: no such exclusion rule
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminAuth: []
+      summary: Delete an exclusion rule
+      tags:
+      - exclusion-rules
+  /ingest/native:
+    post:
+      consumes:
+      - application/json
+      description: Ingests a kubectl-audit native findings.json body for the cluster
+        identified by the bearer token. May produce more than one Scan if the payload
+        batches multiple sources.
+      parameters:
+      - description: findings.json payload
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_server_http.ingestResponse'
+        "400":
+          description: invalid payload
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: missing or invalid bearer token
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ClusterAuth: []
+      summary: Ingest a native findings.json scan
+      tags:
+      - ingest
+  /ingest/openreports:
+    post:
+      consumes:
+      - application/json
+      description: Ingests an openreports.io/v1alpha1 Report or ClusterReport JSON
+        body for the cluster identified by the bearer token.
+      parameters:
+      - description: OpenReports Report/ClusterReport payload
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_server_http.ingestResponse'
+        "400":
+          description: invalid payload
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: missing or invalid bearer token
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ClusterAuth: []
+      summary: Ingest an OpenReports scan
+      tags:
+      - ingest
+  /knowledge-base/{policyId}:
+    get:
+      description: Returns the centralized knowledge base entry for one policy ID.
+      parameters:
+      - description: Policy ID
+        in: path
+        name: policyId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_server_http.knowledgeBaseEntryDTO'
+        "401":
+          description: missing or invalid admin token
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: no knowledge base entry for this policy id
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminAuth: []
+      summary: Get a knowledge base entry
+      tags:
+      - knowledge-base
+    put:
+      consumes:
+      - application/json
+      description: Upserts the centralized knowledge base entry for one policy ID.
+      parameters:
+      - description: Policy ID
+        in: path
+        name: policyId
+        required: true
+        type: string
+      - description: Entry content
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_server_http.knowledgeBaseEntryDTO'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_server_http.knowledgeBaseEntryDTO'
+        "400":
+          description: invalid request body
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: missing or invalid admin token
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminAuth: []
+      summary: Create or replace a knowledge base entry
+      tags:
+      - knowledge-base
+  /triage:
+    get:
+      description: Returns every finding for one cluster merged with its triage state
+        (status defaults to "new" when no triage entry exists yet).
+      parameters:
+      - description: Cluster ID
+        in: query
+        name: cluster_id
+        required: true
+        type: string
+      - description: Restrict to one ingest source, e.g. native or openreports
+        in: query
+        name: source
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_server_http.triageViewResponse'
+        "400":
+          description: missing or invalid cluster_id
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: missing or invalid admin token
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: no such cluster
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminAuth: []
+      summary: Get the merged findings+triage view
+      tags:
+      - triage
+  /triage/{source}/{fingerprint}:
+    patch:
+      consumes:
+      - application/json
+      description: Partially updates the TriageEntry for one finding (source+fingerprint)
+        of one cluster. Omitted fields keep their current value; a first update creates
+        the entry with status "new" as the baseline.
+      parameters:
+      - description: Cluster ID
+        in: query
+        name: cluster_id
+        required: true
+        type: string
+      - description: Ingest source, e.g. native or openreports
+        in: path
+        name: source
+        required: true
+        type: string
+      - description: Finding fingerprint
+        in: path
+        name: fingerprint
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_server_http.patchTriageRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_ivanhahanov_kubectl-audit_internal_storage.TriageEntry'
+        "400":
+          description: invalid request body / missing or invalid cluster_id
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: missing or invalid admin token
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: no such cluster / no such finding for this cluster/source/fingerprint
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminAuth: []
+      summary: Update one triage entry
+      tags:
+      - triage
+  /triage/bulk:
+    post:
+      consumes:
+      - application/json
+      description: Uploads a client's whole local triage.State for one source and
+        one cluster in a single call. Every field in each entry is authoritative (full
+        replace, not a partial merge). Entries whose fingerprint has no matching Finding
+        are skipped and reported, not treated as a hard failure.
+      parameters:
+      - description: Cluster ID
+        in: query
+        name: cluster_id
+        required: true
+        type: string
+      - description: Source and its full set of triage entries
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_server_http.bulkTriageRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_server_http.bulkTriageResponse'
+        "400":
+          description: invalid request body / missing source / missing or invalid
+            cluster_id
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: missing or invalid admin token
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: no such cluster
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - AdminAuth: []
+      summary: Bulk-replace triage entries for one source
+      tags:
+      - triage
+securityDefinitions:
+  AdminAuth:
+    description: Admin bearer token (env ADMIN_TOKEN). Send as "Bearer <token>". Required
+      for cluster registration and every organization-level config endpoint (knowledge
+      base, exclusion rules, automation rules, audit requests).
+    in: header
+    name: Authorization
+    type: apiKey
+  ClusterAuth:
+    description: Per-cluster bearer token minted by POST /clusters. Send as "Bearer
+      <token>". Required for ingest and triage endpoints; scopes access to that cluster's
+      own data.
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

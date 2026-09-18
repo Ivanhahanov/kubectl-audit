@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/ivanhahanov/kubectl-audit/internal/findings"
@@ -22,11 +23,16 @@ import (
 type ServerStore struct {
 	// BaseURL is the kubectl-audit-server root, e.g. "https://audit.example.com".
 	BaseURL string
-	// Token is this cluster's own bearer token, issued at registration
-	// (POST /api/v1/clusters) — the same token used for `kubectl-audit
-	// push` ingestion, since triage read/write is scoped to the
-	// authenticated cluster exactly like ingestion is.
+	// Token authenticates triage read/write — the server's admin token,
+	// not the cluster's own push token: a cluster's ingest token is
+	// write-only (findings push), triage is a separate, admin-gated
+	// "expert" action (see kubectl-audit-server's handleGetTriage doc
+	// comment for why the two are split).
 	Token string
+	// ClusterID is which cluster's findings/triage this Store's Load/Save
+	// operate on — required, since the server no longer infers it from
+	// Token (that's the whole reason for the split above).
+	ClusterID string
 	// Source identifies which scan source's findings this Store's
 	// Load/Save operate on — "kubectl-audit" for the CLI's own scans, or
 	// an OpenReports tool identifier to triage findings ingested from
@@ -85,7 +91,8 @@ type serverTriageViewResponse struct {
 // too) and keeping subsequent Save calls from re-uploading every
 // never-touched finding as a no-op "new" entry.
 func (s ServerStore) Load() (*State, error) {
-	req, err := http.NewRequest(http.MethodGet, s.BaseURL+"/api/v1/triage?source="+s.Source, nil)
+	q := url.Values{"cluster_id": {s.ClusterID}, "source": {s.Source}}
+	req, err := http.NewRequest(http.MethodGet, s.BaseURL+"/api/v1/triage?"+q.Encode(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("building triage server request: %w", err)
 	}
@@ -172,7 +179,8 @@ func (s ServerStore) Save(state *State) error {
 		return fmt.Errorf("encoding bulk triage update: %w", err)
 	}
 
-	httpReq, err := http.NewRequest(http.MethodPost, s.BaseURL+"/api/v1/triage/bulk", bytes.NewReader(body))
+	q := url.Values{"cluster_id": {s.ClusterID}}
+	httpReq, err := http.NewRequest(http.MethodPost, s.BaseURL+"/api/v1/triage/bulk?"+q.Encode(), bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("building triage server request: %w", err)
 	}

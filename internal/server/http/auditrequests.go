@@ -37,6 +37,18 @@ func toAuditRequestDTO(r storage.AuditRequest) auditRequestDTO {
 // handleCreateAuditRequest and its siblings are admin-token-gated for now
 // — there's no per-cluster "request an audit of myself" identity model
 // yet, so only an operator can create/approve these.
+//
+//	@Summary		Create an audit request
+//	@Description	Creates a pending request to audit a cluster. Approving it later (PATCH with status=approved) triggers the configured pipeline.
+//	@Tags			audit-requests
+//	@Accept			json
+//	@Produce		json
+//	@Security		AdminAuth
+//	@Param			request	body		auditRequestDTO	true	"Audit request to create"
+//	@Success		201		{object}	auditRequestDTO
+//	@Failure		400		{object}	map[string]string	"invalid request body / invalid clusterId / missing reason"
+//	@Failure		401		{object}	map[string]string	"missing or invalid admin token"
+//	@Router			/audit-requests [post]
 func (s *Server) handleCreateAuditRequest(w http.ResponseWriter, r *http.Request) {
 	if !constantTimeEqual(bearerToken(r), s.adminToken) {
 		writeError(w, http.StatusUnauthorized, "missing or invalid admin token")
@@ -70,6 +82,16 @@ func (s *Server) handleCreateAuditRequest(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusCreated, toAuditRequestDTO(created))
 }
 
+// @Summary		List audit requests
+// @Description	Lists audit requests, optionally narrowed to one cluster.
+// @Tags			audit-requests
+// @Produce		json
+// @Security		AdminAuth
+// @Param			cluster_id	query		string	false	"Restrict to requests for this cluster ID"
+// @Success		200			{object}	map[string][]auditRequestDTO
+// @Failure		400			{object}	map[string]string	"invalid cluster_id"
+// @Failure		401			{object}	map[string]string	"missing or invalid admin token"
+// @Router			/audit-requests [get]
 func (s *Server) handleListAuditRequests(w http.ResponseWriter, r *http.Request) {
 	if !constantTimeEqual(bearerToken(r), s.adminToken) {
 		writeError(w, http.StatusUnauthorized, "missing or invalid admin token")
@@ -106,6 +128,21 @@ type patchAuditRequestRequest struct {
 // pending -> approved/rejected transition is meaningful today; there's no
 // worker yet advancing approved -> running -> completed (that needs a
 // real Tekton integration reporting back, future work).
+//
+//	@Summary		Update an audit request's status
+//	@Description	Transitions an audit request's status, typically pending -> approved (which triggers the configured pipeline and moves it to running) or pending -> rejected.
+//	@Tags			audit-requests
+//	@Accept			json
+//	@Produce		json
+//	@Security		AdminAuth
+//	@Param			id		path		string						true	"Audit request ID"
+//	@Param			request	body		patchAuditRequestRequest	true	"New status"
+//	@Success		200		{object}	auditRequestDTO
+//	@Failure		400		{object}	map[string]string	"invalid id / invalid request body / missing status"
+//	@Failure		401		{object}	map[string]string	"missing or invalid admin token"
+//	@Failure		404		{object}	map[string]string	"no such audit request"
+//	@Failure		500		{object}	map[string]string	"triggering scan failed"
+//	@Router			/audit-requests/{id} [patch]
 func (s *Server) handlePatchAuditRequest(w http.ResponseWriter, r *http.Request) {
 	if !constantTimeEqual(bearerToken(r), s.adminToken) {
 		writeError(w, http.StatusUnauthorized, "missing or invalid admin token")

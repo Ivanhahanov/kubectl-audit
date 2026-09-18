@@ -16,6 +16,9 @@ func TestServerStore_Load_FiltersUntriagedEntries(t *testing.T) {
 		if got := r.URL.Query().Get("source"); got != "kubectl-audit" {
 			t.Errorf("source query = %q, want kubectl-audit", got)
 		}
+		if got := r.URL.Query().Get("cluster_id"); got != "cluster-1" {
+			t.Errorf("cluster_id query = %q, want cluster-1", got)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(serverTriageViewResponse{
 			Entries: []serverTriageView{
@@ -30,7 +33,7 @@ func TestServerStore_Load_FiltersUntriagedEntries(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	store := ServerStore{BaseURL: ts.URL, Token: "test-token", Source: "kubectl-audit"}
+	store := ServerStore{BaseURL: ts.URL, Token: "test-token", ClusterID: "cluster-1", Source: "kubectl-audit"}
 	state, err := store.Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -72,6 +75,9 @@ func TestServerStore_Save_SendsBulkRequest(t *testing.T) {
 		if r.URL.Path != "/api/v1/triage/bulk" {
 			t.Errorf("path = %q, want /api/v1/triage/bulk", r.URL.Path)
 		}
+		if got := r.URL.Query().Get("cluster_id"); got != "cluster-1" {
+			t.Errorf("cluster_id query = %q, want cluster-1", got)
+		}
 		body, _ := io.ReadAll(r.Body)
 		if err := json.Unmarshal(body, &captured); err != nil {
 			t.Fatalf("decoding request body: %v", err)
@@ -81,7 +87,7 @@ func TestServerStore_Save_SendsBulkRequest(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	store := ServerStore{BaseURL: ts.URL, Token: "test-token", Source: "kubectl-audit"}
+	store := ServerStore{BaseURL: ts.URL, Token: "test-token", ClusterID: "cluster-1", Source: "kubectl-audit"}
 	state := &State{Entries: map[string]Entry{
 		"abc123": {FindingID: "abc123", Status: StatusConfirmed, Note: "looks real"},
 	}}

@@ -23,6 +23,17 @@ type knowledgeBaseEntryDTO struct {
 // token-gated, like cluster registration: this is organization-level
 // configuration (today's local triage.knowledgeBaseFile, centralized), not
 // per-cluster scan data — see NewServer's doc comment.
+//
+//	@Summary		Get a knowledge base entry
+//	@Description	Returns the centralized knowledge base entry for one policy ID.
+//	@Tags			knowledge-base
+//	@Produce		json
+//	@Security		AdminAuth
+//	@Param			policyId	path		string	true	"Policy ID"
+//	@Success		200			{object}	knowledgeBaseEntryDTO
+//	@Failure		401			{object}	map[string]string	"missing or invalid admin token"
+//	@Failure		404			{object}	map[string]string	"no knowledge base entry for this policy id"
+//	@Router			/knowledge-base/{policyId} [get]
 func (s *Server) handleGetKnowledgeBaseEntry(w http.ResponseWriter, r *http.Request) {
 	if !constantTimeEqual(bearerToken(r), s.adminToken) {
 		writeError(w, http.StatusUnauthorized, "missing or invalid admin token")
@@ -46,6 +57,18 @@ func (s *Server) handleGetKnowledgeBaseEntry(w http.ResponseWriter, r *http.Requ
 	})
 }
 
+// @Summary		Create or replace a knowledge base entry
+// @Description	Upserts the centralized knowledge base entry for one policy ID.
+// @Tags			knowledge-base
+// @Accept			json
+// @Produce		json
+// @Security		AdminAuth
+// @Param			policyId	path		string					true	"Policy ID"
+// @Param			request		body		knowledgeBaseEntryDTO	true	"Entry content"
+// @Success		200			{object}	knowledgeBaseEntryDTO
+// @Failure		400			{object}	map[string]string	"invalid request body"
+// @Failure		401			{object}	map[string]string	"missing or invalid admin token"
+// @Router			/knowledge-base/{policyId} [put]
 func (s *Server) handlePutKnowledgeBaseEntry(w http.ResponseWriter, r *http.Request) {
 	if !constantTimeEqual(bearerToken(r), s.adminToken) {
 		writeError(w, http.StatusUnauthorized, "missing or invalid admin token")
