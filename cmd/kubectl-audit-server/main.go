@@ -2,7 +2,11 @@
 // clusters push findings.json scans to it, which are deduplicated and
 // stored in Postgres for cross-cluster triage, centralized knowledge
 // base/exclusion rules, and automation rule evaluation — see the
-// architecture plan for the full design.
+// architecture plan for the full design. The recurring automation
+// evaluation loop itself lives in cmd/kubectl-audit-worker, not here — this
+// binary only exposes an on-demand admin trigger for it
+// (POST /automation-rules/evaluate); see that command's doc comment for why
+// it's a separate process.
 //
 //	@title			kubectl-audit-server API
 //	@version		1.0
@@ -16,12 +20,12 @@
 //	@securityDefinitions.apikey	AdminAuth
 //	@in							header
 //	@name						Authorization
-//	@description				Admin bearer token (env ADMIN_TOKEN). Send as "Bearer <token>". Required for cluster registration and every organization-level config endpoint (knowledge base, exclusion rules, automation rules, audit requests).
+//	@description				Admin bearer token (env ADMIN_TOKEN). Send as "Bearer <token>". Required for cluster registration and every organization-level config endpoint (knowledge base, exclusion rules, automation rules, triage).
 //
 //	@securityDefinitions.apikey	ClusterAuth
 //	@in							header
 //	@name						Authorization
-//	@description				Per-cluster bearer token minted by POST /clusters. Send as "Bearer <token>". Required for ingest and triage endpoints; scopes access to that cluster's own data.
+//	@description				Per-cluster bearer token minted by POST /clusters. Send as "Bearer <token>". Required for ingest endpoints only — scoped to that cluster's own data, and does not grant triage read/write (see AdminAuth).
 package main
 
 import (
@@ -32,7 +36,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -61,14 +64,6 @@ func run() error {
 	if addr == "" {
 		addr = ":8080"
 	}
-	evaluationInterval := 5 * time.Minute
-	if raw := os.Getenv("AUTOMATION_INTERVAL_SECONDS"); raw != "" {
-		secs, err := strconv.Atoi(raw)
-		if err != nil {
-			return fmt.Errorf("invalid AUTOMATION_INTERVAL_SECONDS: %w", err)
-		}
-		evaluationInterval = time.Duration(secs) * time.Second
-	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -79,22 +74,15 @@ func run() error {
 	}
 	defer store.Close()
 
+	// Only used for the on-demand POST /automation-rules/evaluate path —
+	// the recurring ticker lives in cmd/kubectl-audit-worker, a separate
+	// process against the same database (Evaluator reads fresh state per
+	// call, so two processes each owning their own Runner need no
+	// coordination).
 	runner := &automation.Runner{
 		Clusters:  store,
 		Evaluator: &automation.Evaluator{Rules: store, Findings: store, Triage: store},
-		// LogExecutor is the only implementation available today — see its
-		// doc comment for why real Jira filing/agent invocation aren't
-		// wired up yet.
-		Executor: automation.LogExecutor{},
-	}
-
-	var trigger automation.PipelineTrigger = automation.LogTrigger{}
-	if os.Getenv("PIPELINE_TRIGGER") == "tekton" {
-		tektonTrigger, err := automation.NewTektonTriggerFromEnv()
-		if err != nil {
-			return fmt.Errorf("configuring Tekton trigger: %w", err)
-		}
-		trigger = tektonTrigger
+		Executor:  automation.LogExecutor{},
 	}
 
 	srv := api.NewServer(api.Repos{
@@ -104,14 +92,11 @@ func run() error {
 		KnowledgeBase:   store,
 		ExclusionRules:  store,
 		AutomationRules: store,
-		AuditRequests:   store,
-	}, adminToken, runner, trigger)
+	}, adminToken, runner)
 	httpServer := &http.Server{
 		Addr:    addr,
 		Handler: srv.Routes(),
 	}
-
-	go runAutomationTicker(ctx, runner, evaluationInterval)
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -130,22 +115,4 @@ func run() error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return httpServer.Shutdown(shutdownCtx)
-}
-
-// runAutomationTicker evaluates automation rules on a fixed interval —
-// the always-on counterpart to POST /api/v1/automation-rules/evaluate
-// (which runs one pass on demand, e.g. for a demo or a manual check).
-func runAutomationTicker(ctx context.Context, runner *automation.Runner, interval time.Duration) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			if _, err := runner.RunOnce(ctx); err != nil {
-				log.Printf("automation evaluation failed: %v", err)
-			}
-		}
-	}
 }

@@ -10,10 +10,12 @@ spec:
   selector:
     matchLabels:
       {{- include "kubectl-audit-server.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: server
   template:
     metadata:
       labels:
         {{- include "kubectl-audit-server.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: server
     spec:
       serviceAccountName: {{ include "kubectl-audit-server.fullname" . }}
       containers:
@@ -42,17 +44,5 @@ spec:
                   key: {{ .Values.adminToken.existingSecretKey }}
             - name: LISTEN_ADDR
               value: ":8080"
-            - name: AUTOMATION_INTERVAL_SECONDS
-              value: {{ .Values.automation.intervalSeconds | quote }}
-            {{- if .Values.automation.tekton.enabled }}
-            - name: PIPELINE_TRIGGER
-              value: "tekton"
-            - name: TEKTON_NAMESPACE
-              value: {{ .Values.automation.tekton.namespace | default .Release.Namespace | quote }}
-            - name: TEKTON_PIPELINE_NAME
-              value: {{ .Values.automation.tekton.pipelineName | quote }}
-            - name: TEKTON_SERVICE_ACCOUNT
-              value: {{ .Values.automation.tekton.serviceAccountName | quote }}
-            {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}

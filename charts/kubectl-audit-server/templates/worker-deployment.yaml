@@ -1,0 +1,45 @@
+# kubectl-audit-worker runs the recurring automation-rule evaluation loop
+# (AI-assisted triage enrichment, etc. — see automation.ActionExecutor) as
+# its own Deployment, deliberately separate from the server: it talks to
+# external, slower, sometimes-flaky APIs (an LLM, Jira), and a panic there
+# shouldn't be able to take down the ingest API scanners depend on. It has
+# no K8s API access of its own — just DATABASE_URL, same as the server.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kubectl-audit-server.fullname" . }}-worker
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kubectl-audit-server.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.worker.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "kubectl-audit-server.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        {{- include "kubectl-audit-server.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: worker
+    spec:
+      serviceAccountName: {{ include "kubectl-audit-server.fullname" . }}-worker
+      containers:
+        - name: worker
+          image: "{{ .Values.worker.image.repository }}:{{ .Values.worker.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.worker.image.pullPolicy }}
+          env:
+            {{- if or .Values.postgres.cnpg.enabled .Values.postgres.existingSecretName }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  {{- include "kubectl-audit-server.databaseURLSecretRef" . | nindent 18 }}
+            {{- else }}
+            - name: DATABASE_URL
+              value: {{ required "postgres.externalDSN is required when postgres.cnpg.enabled=false and postgres.existingSecretName is unset" .Values.postgres.externalDSN | quote }}
+            {{- end }}
+            - name: AUTOMATION_INTERVAL_SECONDS
+              value: {{ .Values.automation.intervalSeconds | quote }}
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}

@@ -27,22 +27,28 @@ type triageResourceRef struct {
 // TriageEntry exists for it, defaulting to storage.TriageStatusNew when
 // none does.
 type triageView struct {
-	Source       string            `json:"source"`
-	Fingerprint  string            `json:"fingerprint"`
-	PolicyID     string            `json:"policyId"`
-	Title        string            `json:"title"`
-	Severity     string            `json:"severity"`
-	Category     string            `json:"category"`
-	Resource     triageResourceRef `json:"resource"`
-	Message      string            `json:"message"`
-	Status       string            `json:"status"`
-	Note         string            `json:"note,omitempty"`
-	Reviewer     string            `json:"reviewer,omitempty"`
-	JiraIssueKey string            `json:"jiraIssueKey,omitempty"`
-	JiraIssueURL string            `json:"jiraIssueUrl,omitempty"`
-	FirstSeen    time.Time         `json:"firstSeen"`
-	LastSeen     time.Time         `json:"lastSeen"`
-	UpdatedAt    time.Time         `json:"updatedAt,omitempty"`
+	Source      string            `json:"source"`
+	Fingerprint string            `json:"fingerprint"`
+	PolicyID    string            `json:"policyId"`
+	Title       string            `json:"title"`
+	Severity    string            `json:"severity"`
+	Category    string            `json:"category"`
+	Resource    triageResourceRef `json:"resource"`
+	Message     string            `json:"message"`
+	// DedupKey mirrors findings.Finding.DedupKey — see that field's doc
+	// comment. Without it, the TUI's bulk-triage collapsing has to bucket
+	// purely on Message text, which silently lumps together findings whose
+	// Message happens to be identical but whose Resource genuinely differs
+	// (e.g. a check with a fixed, non-resource-specific Message template).
+	DedupKey     string    `json:"dedupKey,omitempty"`
+	Status       string    `json:"status"`
+	Note         string    `json:"note,omitempty"`
+	Reviewer     string    `json:"reviewer,omitempty"`
+	JiraIssueKey string    `json:"jiraIssueKey,omitempty"`
+	JiraIssueURL string    `json:"jiraIssueUrl,omitempty"`
+	FirstSeen    time.Time `json:"firstSeen"`
+	LastSeen     time.Time `json:"lastSeen"`
+	UpdatedAt    time.Time `json:"updatedAt,omitempty"`
 }
 
 type triageViewResponse struct {
@@ -112,6 +118,7 @@ func (s *Server) handleGetTriage(w http.ResponseWriter, r *http.Request) {
 				Name:       f.ResourceName,
 			},
 			Message:   f.Message,
+			DedupKey:  f.DedupKey,
 			Status:    string(storage.TriageStatusNew),
 			FirstSeen: f.FirstSeen,
 			LastSeen:  f.LastSeen,

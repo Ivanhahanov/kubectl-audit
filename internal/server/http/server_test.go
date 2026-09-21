@@ -30,7 +30,6 @@ type fakeStore struct {
 	knowledgeBase   map[string]storage.KnowledgeBaseEntry // keyed by PolicyID
 	exclusionRules  map[uuid.UUID]storage.ExclusionRule
 	automationRules map[uuid.UUID]storage.AutomationRule
-	auditRequests   map[uuid.UUID]storage.AuditRequest
 }
 
 func newFakeStore() *fakeStore {
@@ -42,7 +41,6 @@ func newFakeStore() *fakeStore {
 		knowledgeBase:   map[string]storage.KnowledgeBaseEntry{},
 		exclusionRules:  map[uuid.UUID]storage.ExclusionRule{},
 		automationRules: map[uuid.UUID]storage.AutomationRule{},
-		auditRequests:   map[uuid.UUID]storage.AuditRequest{},
 	}
 }
 
@@ -237,42 +235,6 @@ func (f *fakeStore) DeleteAutomationRule(_ context.Context, id uuid.UUID) error 
 	return nil
 }
 
-func (f *fakeStore) CreateAuditRequest(_ context.Context, req storage.AuditRequest) (storage.AuditRequest, error) {
-	req.ID = uuid.New()
-	req.CreatedAt = time.Now()
-	if req.Status == "" {
-		req.Status = storage.AuditRequestPending
-	}
-	f.auditRequests[req.ID] = req
-	return req, nil
-}
-
-func (f *fakeStore) GetAuditRequest(_ context.Context, id uuid.UUID) (storage.AuditRequest, error) {
-	r, ok := f.auditRequests[id]
-	if !ok {
-		return storage.AuditRequest{}, storage.ErrNotFound
-	}
-	return r, nil
-}
-
-func (f *fakeStore) ListAuditRequests(_ context.Context, clusterID *uuid.UUID) ([]storage.AuditRequest, error) {
-	var out []storage.AuditRequest
-	for _, r := range f.auditRequests {
-		if clusterID == nil || r.ClusterID == *clusterID {
-			out = append(out, r)
-		}
-	}
-	return out, nil
-}
-
-func (f *fakeStore) UpdateAuditRequest(_ context.Context, req storage.AuditRequest) error {
-	if _, ok := f.auditRequests[req.ID]; !ok {
-		return storage.ErrNotFound
-	}
-	f.auditRequests[req.ID] = req
-	return nil
-}
-
 func newTestServer() (*Server, *fakeStore) {
 	store := newFakeStore()
 	runner := &automation.Runner{
@@ -287,8 +249,7 @@ func newTestServer() (*Server, *fakeStore) {
 		KnowledgeBase:   store,
 		ExclusionRules:  store,
 		AutomationRules: store,
-		AuditRequests:   store,
-	}, "admin-secret", runner, automation.LogTrigger{}), store
+	}, "admin-secret", runner), store
 }
 
 func TestHandleRegisterCluster(t *testing.T) {

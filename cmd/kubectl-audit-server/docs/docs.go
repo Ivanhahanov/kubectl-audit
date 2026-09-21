@@ -19,200 +19,6 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/audit-requests": {
-            "get": {
-                "security": [
-                    {
-                        "AdminAuth": []
-                    }
-                ],
-                "description": "Lists audit requests, optionally narrowed to one cluster.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "audit-requests"
-                ],
-                "summary": "List audit requests",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Restrict to requests for this cluster ID",
-                        "name": "cluster_id",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "array",
-                                "items": {
-                                    "$ref": "#/definitions/internal_server_http.auditRequestDTO"
-                                }
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "invalid cluster_id",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "missing or invalid admin token",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            },
-            "post": {
-                "security": [
-                    {
-                        "AdminAuth": []
-                    }
-                ],
-                "description": "Creates a pending request to audit a cluster. Approving it later (PATCH with status=approved) triggers the configured pipeline.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "audit-requests"
-                ],
-                "summary": "Create an audit request",
-                "parameters": [
-                    {
-                        "description": "Audit request to create",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/internal_server_http.auditRequestDTO"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "$ref": "#/definitions/internal_server_http.auditRequestDTO"
-                        }
-                    },
-                    "400": {
-                        "description": "invalid request body / invalid clusterId / missing reason",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "missing or invalid admin token",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/audit-requests/{id}": {
-            "patch": {
-                "security": [
-                    {
-                        "AdminAuth": []
-                    }
-                ],
-                "description": "Transitions an audit request's status, typically pending -\u003e approved (which triggers the configured pipeline and moves it to running) or pending -\u003e rejected.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "audit-requests"
-                ],
-                "summary": "Update an audit request's status",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Audit request ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "New status",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/internal_server_http.patchAuditRequestRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/internal_server_http.auditRequestDTO"
-                        }
-                    },
-                    "400": {
-                        "description": "invalid id / invalid request body / missing status",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "missing or invalid admin token",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "no such audit request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "triggering scan failed",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
         "/automation-rules": {
             "get": {
                 "security": [
@@ -1226,35 +1032,6 @@ const docTemplate = `{
                 "TriageStatusResolved"
             ]
         },
-        "internal_server_http.auditRequestDTO": {
-            "type": "object",
-            "properties": {
-                "clusterId": {
-                    "type": "string"
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "reason": {
-                    "type": "string"
-                },
-                "requestedBy": {
-                    "type": "string"
-                },
-                "scheduledCron": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "tektonPipelineRunName": {
-                    "type": "string"
-                }
-            }
-        },
         "internal_server_http.automationActionDTO": {
             "type": "object",
             "properties": {
@@ -1486,14 +1263,6 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_server_http.patchAuditRequestRequest": {
-            "type": "object",
-            "properties": {
-                "status": {
-                    "type": "string"
-                }
-            }
-        },
         "internal_server_http.patchTriageRequest": {
             "type": "object",
             "properties": {
@@ -1579,6 +1348,10 @@ const docTemplate = `{
                 "category": {
                     "type": "string"
                 },
+                "dedupKey": {
+                    "description": "DedupKey mirrors findings.Finding.DedupKey — see that field's doc\ncomment. Without it, the TUI's bulk-triage collapsing has to bucket\npurely on Message text, which silently lumps together findings whose\nMessage happens to be identical but whose Resource genuinely differs\n(e.g. a check with a fixed, non-resource-specific Message template).",
+                    "type": "string"
+                },
                 "fingerprint": {
                     "type": "string"
                 },
@@ -1640,13 +1413,13 @@ const docTemplate = `{
     },
     "securityDefinitions": {
         "AdminAuth": {
-            "description": "Admin bearer token (env ADMIN_TOKEN). Send as \"Bearer \u003ctoken\u003e\". Required for cluster registration and every organization-level config endpoint (knowledge base, exclusion rules, automation rules, audit requests).",
+            "description": "Admin bearer token (env ADMIN_TOKEN). Send as \"Bearer \u003ctoken\u003e\". Required for cluster registration and every organization-level config endpoint (knowledge base, exclusion rules, automation rules, triage).",
             "type": "apiKey",
             "name": "Authorization",
             "in": "header"
         },
         "ClusterAuth": {
-            "description": "Per-cluster bearer token minted by POST /clusters. Send as \"Bearer \u003ctoken\u003e\". Required for ingest and triage endpoints; scopes access to that cluster's own data.",
+            "description": "Per-cluster bearer token minted by POST /clusters. Send as \"Bearer \u003ctoken\u003e\". Required for ingest endpoints only — scoped to that cluster's own data, and does not grant triage read/write (see AdminAuth).",
             "type": "apiKey",
             "name": "Authorization",
             "in": "header"

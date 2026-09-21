@@ -39,25 +39,6 @@ definitions:
     - TriageStatusDuplicate
     - TriageStatusNeedsInfo
     - TriageStatusResolved
-  internal_server_http.auditRequestDTO:
-    properties:
-      clusterId:
-        type: string
-      createdAt:
-        type: string
-      id:
-        type: string
-      reason:
-        type: string
-      requestedBy:
-        type: string
-      scheduledCron:
-        type: string
-      status:
-        type: string
-      tektonPipelineRunName:
-        type: string
-    type: object
   internal_server_http.automationActionDTO:
     properties:
       prompt:
@@ -208,11 +189,6 @@ definitions:
       updatedAt:
         type: string
     type: object
-  internal_server_http.patchAuditRequestRequest:
-    properties:
-      status:
-        type: string
-    type: object
   internal_server_http.patchTriageRequest:
     properties:
       jiraIssueKey:
@@ -268,6 +244,14 @@ definitions:
     properties:
       category:
         type: string
+      dedupKey:
+        description: |-
+          DedupKey mirrors findings.Finding.DedupKey — see that field's doc
+          comment. Without it, the TUI's bulk-triage collapsing has to bucket
+          purely on Message text, which silently lumps together findings whose
+          Message happens to be identical but whose Resource genuinely differs
+          (e.g. a check with a fixed, non-resource-specific Message template).
+        type: string
       fingerprint:
         type: string
       firstSeen:
@@ -317,133 +301,6 @@ info:
   title: kubectl-audit-server API
   version: "1.0"
 paths:
-  /audit-requests:
-    get:
-      description: Lists audit requests, optionally narrowed to one cluster.
-      parameters:
-      - description: Restrict to requests for this cluster ID
-        in: query
-        name: cluster_id
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            additionalProperties:
-              items:
-                $ref: '#/definitions/internal_server_http.auditRequestDTO'
-              type: array
-            type: object
-        "400":
-          description: invalid cluster_id
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "401":
-          description: missing or invalid admin token
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      security:
-      - AdminAuth: []
-      summary: List audit requests
-      tags:
-      - audit-requests
-    post:
-      consumes:
-      - application/json
-      description: Creates a pending request to audit a cluster. Approving it later
-        (PATCH with status=approved) triggers the configured pipeline.
-      parameters:
-      - description: Audit request to create
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/internal_server_http.auditRequestDTO'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/internal_server_http.auditRequestDTO'
-        "400":
-          description: invalid request body / invalid clusterId / missing reason
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "401":
-          description: missing or invalid admin token
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      security:
-      - AdminAuth: []
-      summary: Create an audit request
-      tags:
-      - audit-requests
-  /audit-requests/{id}:
-    patch:
-      consumes:
-      - application/json
-      description: Transitions an audit request's status, typically pending -> approved
-        (which triggers the configured pipeline and moves it to running) or pending
-        -> rejected.
-      parameters:
-      - description: Audit request ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: New status
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/internal_server_http.patchAuditRequestRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/internal_server_http.auditRequestDTO'
-        "400":
-          description: invalid id / invalid request body / missing status
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "401":
-          description: missing or invalid admin token
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "404":
-          description: no such audit request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: triggering scan failed
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      security:
-      - AdminAuth: []
-      summary: Update an audit request's status
-      tags:
-      - audit-requests
   /automation-rules:
     get:
       description: Lists every automation rule.
@@ -1077,14 +934,14 @@ securityDefinitions:
   AdminAuth:
     description: Admin bearer token (env ADMIN_TOKEN). Send as "Bearer <token>". Required
       for cluster registration and every organization-level config endpoint (knowledge
-      base, exclusion rules, automation rules, audit requests).
+      base, exclusion rules, automation rules, triage).
     in: header
     name: Authorization
     type: apiKey
   ClusterAuth:
     description: Per-cluster bearer token minted by POST /clusters. Send as "Bearer
-      <token>". Required for ingest and triage endpoints; scopes access to that cluster's
-      own data.
+      <token>". Required for ingest endpoints only — scoped to that cluster's own
+      data, and does not grant triage read/write (see AdminAuth).
     in: header
     name: Authorization
     type: apiKey

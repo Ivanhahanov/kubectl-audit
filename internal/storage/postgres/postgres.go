@@ -37,7 +37,6 @@ var (
 	_ storage.KnowledgeBaseRepo  = (*Store)(nil)
 	_ storage.ExclusionRuleRepo  = (*Store)(nil)
 	_ storage.AutomationRuleRepo = (*Store)(nil)
-	_ storage.AuditRequestRepo   = (*Store)(nil)
 )
 
 // Open connects to Postgres at dsn (a standard "postgres://..." URL —

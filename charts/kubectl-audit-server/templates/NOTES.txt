@@ -20,12 +20,7 @@ Register a cluster:
     -H "Authorization: Bearer <admin token>" -H "Content-Type: application/json" \
     -d '{"name":"my-cluster"}'
 
-{{- if .Values.automation.tekton.enabled }}
 
-Tekton PipelineRun triggering is enabled (automation.tekton.enabled=true).
-This chart grants {{ include "kubectl-audit-server.fullname" . }}'s ServiceAccount
-permission to create pipelineruns.tekton.dev, but you still need to deploy
-the Pipeline/Task ({{ .Values.automation.tekton.pipelineName }}) and its
-ServiceAccount ({{ .Values.automation.tekton.serviceAccountName }}) yourself
-— see deploy/kind-demo for a worked example.
-{{- end }}
+kubectl-audit-worker ({{ include "kubectl-audit-server.fullname" . }}-worker) runs the
+recurring automation-rule evaluation loop (every {{ .Values.automation.intervalSeconds }}s)
+as its own Deployment, separate from the server.

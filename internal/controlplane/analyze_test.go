@@ -250,6 +250,37 @@ func TestNamespacePSAEnforcement_LabelMissingFlagged(t *testing.T) {
 	}
 }
 
+// TestNamespacePSAEnforcement_DedupKeyIsPerNamespace guards against the TUI
+// bulk-triage bug this was found by: Message here is a fixed template with
+// no per-namespace text, so without DedupKey every namespace normalizes to
+// an identical bucket key and "confirm" on one representative row silently
+// confirms every other unlabeled namespace too — including unrelated ones
+// like kube-system that likely deserve a different disposition.
+func TestNamespacePSAEnforcement_DedupKeyIsPerNamespace(t *testing.T) {
+	resources := []loader.Resource{
+		namespaceResource("cnpg-system", nil),
+		namespaceResource("kube-system", nil),
+	}
+	res, err := Analyze(resources, "test", nil)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	dedupKeys := map[string]string{}
+	for _, f := range res.Findings {
+		if f.PolicyID == PSACheckID {
+			dedupKeys[f.Resource.Name] = f.DedupKey
+		}
+	}
+	if dedupKeys["cnpg-system"] == "" || dedupKeys["kube-system"] == "" {
+		t.Fatalf("expected a non-empty DedupKey on every finding, got %+v", dedupKeys)
+	}
+	if dedupKeys["cnpg-system"] == dedupKeys["kube-system"] {
+		t.Errorf("DedupKey must differ per namespace (cnpg-system=%q, kube-system=%q) — "+
+			"otherwise the TUI's bulk-triage collapses unrelated namespaces into one group",
+			dedupKeys["cnpg-system"], dedupKeys["kube-system"])
+	}
+}
+
 // TestNamespacePSAEnforcement_ClusterWideConfigFileSuppressesFindings covers
 // exactly the false-positive this check exists to avoid: a cluster that
 // enables Pod Security Admission cluster-wide via

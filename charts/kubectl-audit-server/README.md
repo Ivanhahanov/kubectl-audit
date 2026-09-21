@@ -1,8 +1,9 @@
 # kubectl-audit-server Helm chart
 
-Deploys the multi-cluster aggregation server: Postgres (via CloudNativePG
-by default), the server itself, and (optionally) the RBAC a Tekton-backed
-automation trigger needs.
+Deploys the multi-cluster aggregation server: Postgres (via CloudNativePG by
+default), the server itself, and kubectl-audit-worker (the recurring
+automation-rule evaluation loop, run as its own Deployment — see
+`templates/worker-deployment.yaml` for why it's separate from the server).
 
 ## Prerequisites
 
@@ -10,11 +11,6 @@ automation trigger needs.
   cluster-wide, if `postgres.cnpg.enabled` is left at its default `true`.
   This chart owns a `Cluster` custom resource; it does not install the
   operator itself.
-- [Tekton Pipelines](https://tekton.dev) installed cluster-wide, plus your
-  own `Pipeline`/`Task`/`ServiceAccount` (see `../../deploy/kind-demo` for
-  a worked example), if you set `automation.tekton.enabled=true`. This
-  chart only grants its own ServiceAccount permission to create
-  `pipelineruns.tekton.dev` — it does not deploy the Pipeline itself.
 
 ## Install
 
@@ -25,7 +21,7 @@ helm install audit charts/kubectl-audit-server \
   --set image.tag=<tag>
 ```
 
-The admin token (required for cluster registration and every
+The admin token (required for cluster registration, triage, and every
 organization-level config endpoint) is auto-generated on first install and
 persisted across upgrades — retrieve it with:
 

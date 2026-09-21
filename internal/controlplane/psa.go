@@ -51,6 +51,17 @@ func checkNamespacePSAEnforcement(resources []loader.Resource, apiserverFlags fl
 			Category: "workload-security",
 			CIS:      []string{"5.2.1"},
 			Resource: ref,
+			// DedupKey: this check's Message is a fixed template with no
+			// per-namespace detail at all (unlike most checks, which embed
+			// something resource-specific the TUI's default bucketing
+			// strips before comparing) — without this, every namespace
+			// cluster-wide normalizes to the identical bucket key and
+			// collapses into one bulk-triage group, silently lumping
+			// e.g. kube-system/kube-public (can't be changed, wont_fix) in
+			// with actual application namespaces (confirmed, actionable).
+			// Namespace names are unique, so this guarantees each
+			// namespace's finding stays its own bucket.
+			DedupKey: ref.Name,
 			Message: "Namespace does not set the pod-security.kubernetes.io/enforce label, and no kube-apiserver " +
 				"--admission-control-config-file was observed that might configure cluster-wide PSA defaults instead " +
 				"— on unmodified Kubernetes defaults, this means no Pod Security Standards level is actively enforced " +

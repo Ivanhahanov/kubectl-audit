@@ -88,6 +88,12 @@ type Finding struct {
 	Message            string
 	Remediation        string
 	VerificationSteps  string
+	// DedupKey mirrors findings.Finding.DedupKey — see that field's doc
+	// comment. Threaded through storage/ingest/the triage API purely so the
+	// TUI's bulk-triage collapsing (internal/triage/tui/dedup.go) behaves
+	// identically whether findings come from a local findings.json or
+	// --triage-server.
+	DedupKey string
 	// Properties holds source-specific data with no dedicated column —
 	// e.g. OpenReports' own free-form ReportResult.properties map.
 	Properties map[string]string
@@ -317,45 +323,4 @@ type AutomationRuleRepo interface {
 	ListAutomationRules(ctx context.Context) ([]AutomationRule, error)
 	UpdateAutomationRule(ctx context.Context, rule AutomationRule) error
 	DeleteAutomationRule(ctx context.Context, id uuid.UUID) error
-}
-
-// AuditRequestStatus is where one audit request sits in its lifecycle.
-type AuditRequestStatus string
-
-const (
-	AuditRequestPending   AuditRequestStatus = "pending"
-	AuditRequestApproved  AuditRequestStatus = "approved"
-	AuditRequestRunning   AuditRequestStatus = "running"
-	AuditRequestCompleted AuditRequestStatus = "completed"
-	AuditRequestFailed    AuditRequestStatus = "failed"
-)
-
-// AuditRequest is a manual or recurring request to run a scan against a
-// cluster — "заявка" in the architecture plan's original framing, covering
-// both a one-off human request and (via ScheduledCron) a recurring one.
-// Approving a pending request is what actually triggers a scan — see
-// internal/server/automation.PipelineTrigger.
-type AuditRequest struct {
-	ID                    uuid.UUID
-	ClusterID             uuid.UUID
-	RequestedBy           string
-	Reason                string
-	Status                AuditRequestStatus
-	TektonPipelineRunName string
-	// ScheduledCron, when set, marks this as a template a future recurring
-	// worker re-instantiates (e.g. "0 3 * * *") rather than a one-off
-	// request — stored now so the schema doesn't need to change when that
-	// worker is built, even though nothing expands it yet.
-	ScheduledCron *string
-	CreatedAt     time.Time
-}
-
-// AuditRequestRepo manages audit requests.
-type AuditRequestRepo interface {
-	CreateAuditRequest(ctx context.Context, req AuditRequest) (AuditRequest, error)
-	// GetAuditRequest returns ErrNotFound (via errors.Is) when id doesn't
-	// exist.
-	GetAuditRequest(ctx context.Context, id uuid.UUID) (AuditRequest, error)
-	ListAuditRequests(ctx context.Context, clusterID *uuid.UUID) ([]AuditRequest, error)
-	UpdateAuditRequest(ctx context.Context, req AuditRequest) error
 }

@@ -195,13 +195,29 @@ func loadFindingsAndState(cmd *cobra.Command) (target string, all []findings.Fin
 	if err != nil {
 		return "", nil, nil, nil, nil, err
 	}
-	target, all, suppressed, err = triage.LoadFindings(findingsPath)
-	if err != nil {
-		return "", nil, nil, nil, nil, fmt.Errorf("%w (run `kubectl audit scan --output-json %s` first)", err, findingsPath)
-	}
 	store, err = resolveTriageStore(cmd, statePath)
 	if err != nil {
 		return "", nil, nil, nil, nil, err
+	}
+
+	// --triage-server means findings come from the server too, not just
+	// triage state — one mode or the other, never an implicit blend of a
+	// local findings.json with server-side decisions (that was surprising:
+	// whether it happened depended on nothing more than a stray file
+	// existing on disk at the default path). This is also what makes
+	// reviewing findings pushed by a cluster the caller never personally
+	// scanned possible — nothing here requires a local findings.json.
+	if srv, ok := store.(triage.ServerStore); ok {
+		all, state, err = srv.LoadAll()
+		if err != nil {
+			return "", nil, nil, nil, nil, err
+		}
+		return "server:" + srv.ClusterID, all, nil, state, store, nil
+	}
+
+	target, all, suppressed, err = triage.LoadFindings(findingsPath)
+	if err != nil {
+		return "", nil, nil, nil, nil, fmt.Errorf("%w (run `kubectl audit scan --output-json %s` first)", err, findingsPath)
 	}
 	state, err = store.Load()
 	if err != nil {

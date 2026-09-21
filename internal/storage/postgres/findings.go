@@ -59,9 +59,9 @@ func (s *Store) IngestScan(ctx context.Context, scan storage.Scan, findings []st
 			INSERT INTO findings (
 				cluster_id, source, fingerprint, policy_id, title, severity, category, cis,
 				resource_api_version, resource_kind, resource_namespace, resource_name,
-				message, remediation, verification_steps, properties,
+				message, remediation, verification_steps, dedup_key, properties,
 				first_seen, last_seen, last_scan_id
-			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$17,$18)
+			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$18,$19)
 			ON CONFLICT (cluster_id, source, fingerprint) DO UPDATE SET
 				policy_id            = EXCLUDED.policy_id,
 				title                = EXCLUDED.title,
@@ -75,6 +75,7 @@ func (s *Store) IngestScan(ctx context.Context, scan storage.Scan, findings []st
 				message              = EXCLUDED.message,
 				remediation          = EXCLUDED.remediation,
 				verification_steps   = EXCLUDED.verification_steps,
+				dedup_key            = EXCLUDED.dedup_key,
 				properties           = EXCLUDED.properties,
 				last_seen            = EXCLUDED.last_seen,
 				last_scan_id         = EXCLUDED.last_scan_id
@@ -84,7 +85,7 @@ func (s *Store) IngestScan(ctx context.Context, scan storage.Scan, findings []st
 		`,
 			scan.ClusterID, scan.Source, f.Fingerprint, f.PolicyID, f.Title, f.Severity, f.Category, cis,
 			f.ResourceAPIVersion, f.ResourceKind, f.ResourceNamespace, f.ResourceName,
-			f.Message, f.Remediation, f.VerificationSteps, properties,
+			f.Message, f.Remediation, f.VerificationSteps, f.DedupKey, properties,
 			scan.GeneratedAt, scan.ID,
 		)
 		if err != nil {
@@ -119,7 +120,7 @@ func (s *Store) IngestScan(ctx context.Context, scan storage.Scan, findings []st
 const findingColumns = `
 	cluster_id, source, fingerprint, policy_id, title, severity, category, cis,
 	resource_api_version, resource_kind, resource_namespace, resource_name,
-	message, remediation, verification_steps, properties,
+	message, remediation, verification_steps, dedup_key, properties,
 	first_seen, last_seen, last_scan_id
 `
 
@@ -129,7 +130,7 @@ func scanFinding(row pgx.Row) (storage.Finding, error) {
 	err := row.Scan(
 		&f.ClusterID, &f.Source, &f.Fingerprint, &f.PolicyID, &f.Title, &f.Severity, &f.Category, &f.CIS,
 		&f.ResourceAPIVersion, &f.ResourceKind, &f.ResourceNamespace, &f.ResourceName,
-		&f.Message, &f.Remediation, &f.VerificationSteps, &properties,
+		&f.Message, &f.Remediation, &f.VerificationSteps, &f.DedupKey, &properties,
 		&f.FirstSeen, &f.LastSeen, &f.LastScanID,
 	)
 	if err != nil {

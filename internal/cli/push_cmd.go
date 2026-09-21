@@ -22,8 +22,8 @@ func newPushCmd() *cobra.Command {
 		Short: "Push a findings.json scan to a kubectl-audit-server instance.",
 		Long: "Uploads findings.json to POST /api/v1/ingest/native on a kubectl-audit-server instance, " +
 			"authenticated as the cluster the token was issued to at registration (see `kubectl-audit-server`'s " +
-			"POST /api/v1/clusters). Typically run right after `kubectl audit scan --output-json`, e.g. as the " +
-			"next step in a CI pipeline or Tekton Task.",
+			"POST /api/v1/clusters). Typically run right after `kubectl audit scan --output-json`, wherever " +
+			"that scan runs — by hand, from a cron, or from whatever CI/scheduler your org already has.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			serverURL := flagPushServer
 			if serverURL == "" {
