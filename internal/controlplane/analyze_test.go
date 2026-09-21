@@ -250,6 +250,32 @@ func TestNamespacePSAEnforcement_LabelMissingFlagged(t *testing.T) {
 	}
 }
 
+// TestNamespacePSAEnforcement_PrivilegedLabelStillFlagged guards against a
+// false negative: enforce=privileged is a valid label value, but it's the
+// weakest PSA level and imposes no restrictions at all — a namespace using
+// it is exactly as unenforced as one with no label whatsoever, and must not
+// be treated as compliant just because a label is technically present.
+func TestNamespacePSAEnforcement_PrivilegedLabelStillFlagged(t *testing.T) {
+	resources := []loader.Resource{
+		namespaceResource("privileged-label", map[string]string{"pod-security.kubernetes.io/enforce": "privileged"}),
+		namespaceResource("restricted-label", map[string]string{"pod-security.kubernetes.io/enforce": "restricted"}),
+		namespaceResource("baseline-label", map[string]string{"pod-security.kubernetes.io/enforce": "baseline"}),
+	}
+	res, err := Analyze(resources, "test", nil)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	var flaggedNamespaces []string
+	for _, f := range res.Findings {
+		if f.PolicyID == PSACheckID {
+			flaggedNamespaces = append(flaggedNamespaces, f.Resource.Name)
+		}
+	}
+	if len(flaggedNamespaces) != 1 || flaggedNamespaces[0] != "privileged-label" {
+		t.Errorf("expected only 'privileged-label' namespace flagged, got %v", flaggedNamespaces)
+	}
+}
+
 // TestNamespacePSAEnforcement_DedupKeyIsPerNamespace guards against the TUI
 // bulk-triage bug this was found by: Message here is a fixed template with
 // no per-namespace text, so without DedupKey every namespace normalizes to

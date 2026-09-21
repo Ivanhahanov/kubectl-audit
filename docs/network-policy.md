@@ -55,6 +55,26 @@ NetworkPolicy.
 Neither is currently mapped to a CIS/FSTEC/NSA control — they're a precision signal on top of
 `5.3.2`'s presence check, not a distinct external requirement.
 
+## Beyond presence: is the covering rule actually restrictive
+
+A workload can have "coverage" — some NetworkPolicy selects it — while that same policy still
+permits everything for that direction, via a rule with no peer restriction at all. NetworkPolicy
+rules are additive across every policy selecting the same pod (never intersected), so one such rule
+makes the workload's *effective* policy allow-all regardless of how strict any other policy also
+selecting it looks:
+
+- **`netpol-analyzer.ingress-allow-all-rule`** / **`netpol-analyzer.egress-allow-all-rule`**
+  (Medium): a covering policy has an ingress/egress rule with an empty peer list (`from: []` /
+  `to: []`, which the NetworkPolicy API treats as "matches everything"), or an `ipBlock` of
+  `0.0.0.0/0`/`::/0` with no `except` carving anything back out. A workload with zero coverage at
+  all is out of scope here entirely — that's `no-network-policy-coverage`/`no-egress-restriction`'s
+  job.
+- **`netpol-analyzer.egress-to-metadata-allowed`** (High): same unrestricted-rule detection,
+  narrowed to specifically whether the cloud metadata endpoint (`169.254.169.254`) is reachable —
+  commonly the path from an SSRF/RCE in a workload to that workload's node/instance IAM
+  credentials. Only evaluated for workloads that already have at least one egress-restricting
+  policy selecting them (a workload with none is, again, `no-egress-restriction`'s job).
+
 ## Cilium and Calico — presence, not simulation
 
 Both are detected automatically:

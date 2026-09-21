@@ -41,11 +41,12 @@ func checkNamespacePSAEnforcement(resources []loader.Resource, apiserverFlags fl
 		if gvk.Group != "" || gvk.Kind != "Namespace" {
 			continue
 		}
-		if _, ok := r.Object.GetLabels()["pod-security.kubernetes.io/enforce"]; ok {
+		enforce, hasLabel := r.Object.GetLabels()["pod-security.kubernetes.io/enforce"]
+		if hasLabel && enforce != "privileged" {
 			continue
 		}
 		ref := findings.ResourceRef{APIVersion: "v1", Kind: "Namespace", Name: r.Name()}
-		out = append(out, findings.Finding{
+		f := findings.Finding{
 			ID:       findings.NewID(PSACheckID, ref),
 			PolicyID: PSACheckID,
 			Title:    "Namespace has no active Pod Security Admission enforcement",
@@ -64,13 +65,32 @@ func checkNamespacePSAEnforcement(resources []loader.Resource, apiserverFlags fl
 			// Namespace names are unique, so this guarantees each
 			// namespace's finding stays its own bucket.
 			DedupKey: ref.Name,
-			Message: "Namespace does not set the pod-security.kubernetes.io/enforce label, and no kube-apiserver " +
+			Remediation: "Set the pod-security.kubernetes.io/enforce label on the namespace to baseline or restricted, " +
+				"or configure cluster-wide PodSecurityConfiguration defaults via --admission-control-config-file.",
+			Source: r.Source,
+		}
+		if hasLabel {
+			// enforce=privileged is a valid label value, but it's the
+			// weakest PSA level — it imposes no restrictions at all, so a
+			// namespace with it set is exactly as unenforced as one with
+			// no label. Flagging only missing-label and treating an
+			// explicit "privileged" as compliant would be a false
+			// negative: an admin who deliberately (or by copy-paste)
+			// wrote enforce=privileged would sail through this check.
+			f.Message = "Namespace sets pod-security.kubernetes.io/enforce=privileged, the weakest Pod Security " +
+				"Standards level — it imposes no restrictions at all, so this is equivalent to having no PSA " +
+				"enforcement configured for this namespace."
+			f.VerificationSteps = fmt.Sprintf("1. Run `kubectl get ns %s -o jsonpath='{.metadata.labels}'` yourself ", ref.Name) +
+				"to confirm the label is genuinely set to \"privileged\" (not just what this scan happened to load). " +
+				"2. Confirm whether privileged was chosen deliberately for this namespace (e.g. a CNI/CSI namespace " +
+				"that genuinely needs privileged Pods) — that's a legitimate reason to accept the risk, not a false " +
+				"positive, so record it as such rather than dismissing the finding outright."
+		} else {
+			f.Message = "Namespace does not set the pod-security.kubernetes.io/enforce label, and no kube-apiserver " +
 				"--admission-control-config-file was observed that might configure cluster-wide PSA defaults instead " +
 				"— on unmodified Kubernetes defaults, this means no Pod Security Standards level is actively enforced " +
-				"for this namespace.",
-			Remediation: "Set the pod-security.kubernetes.io/enforce label on the namespace (baseline or restricted), " +
-				"or configure cluster-wide PodSecurityConfiguration defaults via --admission-control-config-file.",
-			VerificationSteps: fmt.Sprintf("1. Run `kubectl get ns %s -o jsonpath='{.metadata.labels}'` yourself to ", ref.Name) +
+				"for this namespace."
+			f.VerificationSteps = fmt.Sprintf("1. Run `kubectl get ns %s -o jsonpath='{.metadata.labels}'` yourself to ", ref.Name) +
 				"confirm the enforce label is genuinely absent (not just missing from what this scan happened " +
 				"to load). 2. Ask whether this namespace is expected to be short-lived/system-internal " +
 				"(e.g. a CI scratch namespace) where PSA enforcement may be deliberately skipped — that's a " +
@@ -78,9 +98,9 @@ func checkNamespacePSAEnforcement(resources []loader.Resource, apiserverFlags fl
 				"dismissing the finding outright. 3. If the cluster IS using --admission-control-config-file " +
 				"but this tool couldn't see the apiserver Pod at all (a managed control plane), this finding " +
 				"could be a false positive — check the Scope section of the report for whether control-plane " +
-				"objects were observed in this scan before trusting it.",
-			Source: r.Source,
-		})
+				"objects were observed in this scan before trusting it."
+		}
+		out = append(out, f)
 	}
 	return out
 }

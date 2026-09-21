@@ -10,6 +10,8 @@ var kindToResource = map[string]string{
 	"Namespace":             "namespaces",
 	"ServiceAccount":        "serviceaccounts",
 	"ConfigMap":             "configmaps",
+	"ResourceQuota":         "resourcequotas",
+	"LimitRange":            "limitranges",
 	"Secret":                "secrets",
 	"Node":                  "nodes",
 	"PersistentVolumeClaim": "persistentvolumeclaims",
@@ -38,11 +40,12 @@ var kindToResource = map[string]string{
 	// the standard gateway.networking.k8s.io Gateway API, sharing the same
 	// plural "gateways" — harmless, since matchConstraints.apiGroups still
 	// scopes each policy to the correct group.
-	"PeerAuthentication":  "peerauthentications",
-	"AuthorizationPolicy": "authorizationpolicies",
-	"DestinationRule":     "destinationrules",
-	"Gateway":             "gateways",
-	"Sidecar":             "sidecars",
+	"PeerAuthentication":    "peerauthentications",
+	"AuthorizationPolicy":   "authorizationpolicies",
+	"RequestAuthentication": "requestauthentications",
+	"DestinationRule":       "destinationrules",
+	"Gateway":               "gateways",
+	"Sidecar":               "sidecars",
 	// Strimzi kafka.strimzi.io/v1 CRDs — see policies/thirdparty/strimzi/*.yaml.
 	"Kafka":     "kafkas",
 	"KafkaUser": "kafkausers",
