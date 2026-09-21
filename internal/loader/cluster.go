@@ -47,6 +47,8 @@ var defaultResources = []clusterResource{
 	{schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "clusterrolebindings"}, false, "clusterrolebindings"},
 	{schema.GroupVersionResource{Group: "networking.k8s.io", Version: "v1", Resource: "networkpolicies"}, true, "networkpolicies"},
 	{schema.GroupVersionResource{Group: "networking.k8s.io", Version: "v1", Resource: "ingresses"}, true, "ingresses"},
+	{schema.GroupVersionResource{Group: "admissionregistration.k8s.io", Version: "v1", Resource: "validatingwebhookconfigurations"}, false, "validatingwebhookconfigurations"},
+	{schema.GroupVersionResource{Group: "admissionregistration.k8s.io", Version: "v1", Resource: "mutatingwebhookconfigurations"}, false, "mutatingwebhookconfigurations"},
 }
 
 // secretsResource is Secret's clusterResource entry — deliberately kept out

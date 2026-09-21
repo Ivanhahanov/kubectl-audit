@@ -1,0 +1,38 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: controlplane.apiserver.oidc-issuer-url
+  annotations:
+    audit.k8s-auditor.io/title: "kube-apiserver has no --oidc-issuer-url configured"
+    audit.k8s-auditor.io/severity: low
+    audit.k8s-auditor.io/category: control-plane-config
+    audit.k8s-auditor.io/remediation: >-
+      Set --oidc-issuer-url (and the accompanying --oidc-client-id/
+      --oidc-username-claim/--oidc-groups-claim flags) on kube-apiserver so
+      human operators authenticate via your organization's identity
+      provider instead of long-lived static client certificates or
+      kubeconfig tokens.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. This flag's absence doesn't by itself prove static kubeconfigs are
+      in use — some clusters front kube-apiserver with an external
+      authenticating proxy instead of native OIDC, which this check can't
+      see. Confirm how human operators actually authenticate before treating
+      this as a real gap. 2. Low severity reflects that this is one
+      component of "no static kubeconfig" (see the organization's own
+      access-control policy), not itself a direct exploit — deprioritize
+      relative to anonymous-auth/authorization-mode findings on the same
+      apiserver.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+  validations:
+    - expression: |-
+        !((has(object.metadata.labels) && 'component' in object.metadata.labels && object.metadata.labels['component'] == 'kube-apiserver') || (object.metadata.namespace == 'kube-system' && object.metadata.name.startsWith('kube-apiserver'))) || (
+          object.spec.containers.exists(c, ((has(c.command) ? c.command : []) + (has(c.args) ? c.args : [])).exists(a, a.startsWith('--oidc-issuer-url=') && a != '--oidc-issuer-url='))
+        )
+      message: "[indirect signal — inferred from the kube-apiserver static Pod's command-line flags via the Kubernetes API, not confirmed via node/file access] --oidc-issuer-url is not set — human operators can't be authenticating via OIDC through this apiserver."

@@ -26,6 +26,10 @@ var kindToResource = map[string]string{
 	"ClusterRoleBinding":    "clusterrolebindings",
 	"NetworkPolicy":         "networkpolicies",
 	"Ingress":               "ingresses",
+	// admissionregistration.k8s.io/v1 — see
+	// policies/controlplane/webhook-failure-policy-ignore.yaml.
+	"ValidatingWebhookConfiguration": "validatingwebhookconfigurations",
+	"MutatingWebhookConfiguration":   "mutatingwebhookconfigurations",
 	// Tenant is Capsule's (github.com/projectcapsule/capsule) multi-tenancy
 	// CRD, capsule.clastix.io/v1beta2 — see policies/thirdparty/capsule/*.yaml.
 	"Tenant": "tenants",

@@ -1,0 +1,56 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: workload.readonly-root-fs-emptydir-not-memory
+  annotations:
+    audit.k8s-auditor.io/title: "emptyDir volume on a read-only-root-fs Pod lacks medium: Memory and sizeLimit"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: workload-security
+    audit.k8s-auditor.io/remediation: >-
+      Set emptyDir.medium: Memory and a bounded emptyDir.sizeLimit on every
+      emptyDir volume in a Pod that runs with
+      securityContext.readOnlyRootFilesystem: true. Without medium: Memory
+      the volume is backed by the node's own disk (not cleared as
+      predictably, and consuming real node storage); without sizeLimit an
+      unbounded emptyDir can fill either the node's disk or its memory,
+      depending on medium.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm this emptyDir is actually the volume satisfying the
+      read-only-root-fs write exception (a Pod can have other emptyDir
+      volumes for unrelated reasons, e.g. a shared cache between sidecars,
+      where this same hardening still applies but the "why" differs). 2.
+      Size the sizeLimit realistically against what the workload actually
+      writes — too small causes functional failures (ENOSPC) rather than a
+      security improvement, so this isn't a "set it as low as possible" fix.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+      - apiGroups: ["batch"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["jobs", "cronjobs"]
+  validations:
+    - expression: |-
+        !(
+          (has(object.spec.containers) ? object.spec.containers
+            : (has(object.spec.template) && has(object.spec.template.spec) && has(object.spec.template.spec.containers)) ? object.spec.template.spec.containers
+            : (has(object.spec.jobTemplate) && has(object.spec.jobTemplate.spec) && has(object.spec.jobTemplate.spec.template) && has(object.spec.jobTemplate.spec.template.spec) && has(object.spec.jobTemplate.spec.template.spec.containers)) ? object.spec.jobTemplate.spec.template.spec.containers
+            : []).exists(c, has(c.securityContext) && has(c.securityContext.readOnlyRootFilesystem) && c.securityContext.readOnlyRootFilesystem == true)
+        ) || (
+          (has(object.spec.volumes) ? object.spec.volumes
+            : (has(object.spec.template) && has(object.spec.template.spec) && has(object.spec.template.spec.volumes)) ? object.spec.template.spec.volumes
+            : (has(object.spec.jobTemplate) && has(object.spec.jobTemplate.spec) && has(object.spec.jobTemplate.spec.template) && has(object.spec.jobTemplate.spec.template.spec) && has(object.spec.jobTemplate.spec.template.spec.volumes)) ? object.spec.jobTemplate.spec.template.spec.volumes
+            : []).all(v,
+              !has(v.emptyDir) || (has(v.emptyDir.medium) && v.emptyDir.medium == "Memory" && has(v.emptyDir.sizeLimit))
+            )
+        )
+      message: "A container sets readOnlyRootFilesystem: true, but an emptyDir volume on the same Pod doesn't set both medium: Memory and sizeLimit."

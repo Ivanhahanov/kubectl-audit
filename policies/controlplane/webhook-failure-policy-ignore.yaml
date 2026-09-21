@@ -1,0 +1,39 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: controlplane.webhook-failure-policy-ignore
+  annotations:
+    audit.k8s-auditor.io/title: "Admission webhook fails open (failurePolicy: Ignore)"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: control-plane-config
+    audit.k8s-auditor.io/remediation: >-
+      Set failurePolicy: Fail on the webhook entry unless it's deliberately
+      best-effort (e.g. a purely informational/mutating-defaults webhook
+      with no security purpose). With Ignore, if the webhook server is
+      unreachable or times out, the request is admitted unchecked instead of
+      being rejected — a network blip or a crashed webhook pod silently
+      turns off whatever this webhook was meant to enforce.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm what this specific webhook actually enforces — a webhook
+      with no security-relevant purpose (e.g. purely defaulting/mutating,
+      non-security fields) failing open is low-risk; one enforcing Pod
+      Security, image provenance, or RBAC-adjacent policy failing open is
+      not. 2. Check the webhook's own uptime/reliability on this cluster —
+      a webhook that's frequently unreachable makes this setting's practical
+      impact much higher than on a stable, highly-available deployment.
+      3. kubectl-audit-specific: this check's own scan is unaffected either
+      way (it reads manifests/API state directly, not through admission),
+      so this is purely about what happens to *other* requests when the
+      webhook is down.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["admissionregistration.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["validatingwebhookconfigurations", "mutatingwebhookconfigurations"]
+  validations:
+    - expression: |-
+        !has(object.webhooks) || object.webhooks.all(w, !has(w.failurePolicy) || w.failurePolicy != "Ignore")
+      message: "A webhook entry sets failurePolicy: Ignore — if this webhook is unreachable, requests it would normally check are admitted unchecked instead of being rejected."
