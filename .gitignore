@@ -15,6 +15,7 @@
 /private/
 /audit.yaml
 /knowledge-base*.yaml
+/reports
 
 # Go
 *.test

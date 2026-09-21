@@ -82,6 +82,9 @@ func MergeKnowledgeBases(maps ...map[string]findings.KnowledgeBaseEntry) map[str
 			if v.Remediation != "" {
 				e.Remediation = v.Remediation
 			}
+			if v.VerificationSteps != "" {
+				e.VerificationSteps = v.VerificationSteps
+			}
 			if len(v.Labels) > 0 {
 				e.Labels = v.Labels
 			}
@@ -119,6 +122,11 @@ type ResolvedContent struct {
 	Title       string
 	Description string
 	Remediation string
+	// VerificationSteps defaults to Finding.VerificationSteps — the check's
+	// own instructions for confirming this isn't a false positive before
+	// acting on it — overridable the same way Remediation is (see
+	// KnowledgeBaseEntry.VerificationSteps).
+	VerificationSteps string
 	// Technical is Finding.Message, populated only when Description came
 	// from a knowledge-base override (i.e. differs from the finding's own
 	// Message) — so an org-authored explanation never silently hides the
@@ -149,7 +157,7 @@ type ResolvedContent struct {
 // inline/external layer) from still resolving, so one typo degrades
 // gracefully rather than blanking out the whole entry.
 func Resolve(f findings.Finding, kb map[string]findings.KnowledgeBaseEntry) (ResolvedContent, error) {
-	rc := ResolvedContent{Title: f.Title, Description: f.Message, Remediation: f.Remediation}
+	rc := ResolvedContent{Title: f.Title, Description: f.Message, Remediation: f.Remediation, VerificationSteps: f.VerificationSteps}
 	var firstErr error
 	apply := func(e findings.KnowledgeBaseEntry) {
 		if e.Title != "" {
@@ -178,6 +186,15 @@ func Resolve(f findings.Finding, kb map[string]findings.KnowledgeBaseEntry) (Res
 				}
 			} else {
 				rc.Remediation = rendered
+			}
+		}
+		if e.VerificationSteps != "" {
+			if rendered, err := renderKBField("kb-verification-steps", e.VerificationSteps, f); err != nil {
+				if firstErr == nil {
+					firstErr = err
+				}
+			} else {
+				rc.VerificationSteps = rendered
 			}
 		}
 		if len(e.Labels) > 0 {

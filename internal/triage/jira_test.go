@@ -254,18 +254,33 @@ func TestRenderIssueSummary_CustomTemplateOverrides(t *testing.T) {
 func TestRenderIssueDescription_EmbedsBackLink(t *testing.T) {
 	f := mustFinding("f1")
 	f.Remediation = "fix it"
+	f.VerificationSteps = "check it first"
 	desc, err := triage.RenderIssueDescription(f, nil, triage.Entry{Note: "looks real"}, "")
 	if err != nil {
 		t.Fatalf("RenderIssueDescription: %v", err)
 	}
 
-	for _, want := range []string{"kubectl-audit finding: f1", "fix it", "looks real"} {
+	for _, want := range []string{"kubectl-audit finding: f1", "fix it", "check it first", "looks real"} {
 		if !strings.Contains(desc, want) {
 			t.Errorf("expected description to contain %q, got:\n%s", want, desc)
 		}
 	}
-	if strings.Contains(desc, "Verification") {
-		t.Errorf("expected no verification-steps section in the ticket description, got:\n%s", desc)
+}
+
+// TestRenderIssueDescription_OmitsEmptyVerificationSteps guards the
+// {{if}} guard in description.tpl: a finding with no VerificationSteps
+// (shouldn't happen for a bundled check — see verification_steps_test.go
+// across the check packages — but templates should degrade gracefully
+// regardless) must not render an empty "Verification steps:" heading.
+func TestRenderIssueDescription_OmitsEmptyVerificationSteps(t *testing.T) {
+	f := mustFinding("f1")
+	f.VerificationSteps = ""
+	desc, err := triage.RenderIssueDescription(f, nil, triage.Entry{}, "")
+	if err != nil {
+		t.Fatalf("RenderIssueDescription: %v", err)
+	}
+	if strings.Contains(desc, "Verification steps") {
+		t.Errorf("expected no verification-steps section when the field is empty, got:\n%s", desc)
 	}
 }
 

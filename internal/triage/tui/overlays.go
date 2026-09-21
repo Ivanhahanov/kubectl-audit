@@ -335,6 +335,9 @@ func (a *app) detailText(r triage.Row) string {
 	if content.Remediation != "" {
 		fmt.Fprintf(&b, "[yellow]Remediation:[white]\n%s\n\n", content.Remediation)
 	}
+	if content.VerificationSteps != "" {
+		fmt.Fprintf(&b, "[yellow]Verification steps (confirm before treating as urgent):[white]\n%s\n\n", content.VerificationSteps)
+	}
 	return b.String()
 }
 

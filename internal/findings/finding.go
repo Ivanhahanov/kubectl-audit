@@ -161,6 +161,14 @@ type KnowledgeBaseEntry struct {
 	// (see internal/triage.ResolvedContent).
 	Description string `json:"description,omitempty"`
 	Remediation string `json:"remediation,omitempty"`
+	// VerificationSteps overrides Finding.VerificationSteps — the check's own
+	// generic "how to confirm this isn't a false positive" instructions.
+	// Meant for organization-specific process detail a check can't know
+	// (which team owns a naming convention, an internal escalation channel,
+	// a link to an internal wiki page) layered on top of or replacing the
+	// tool's own steps — not for re-deriving what the check already knows
+	// about the resource itself.
+	VerificationSteps string `json:"verificationSteps,omitempty"`
 	// Labels are extra Jira labels for this specific check — org-defined,
 	// the same for every finding this policy produces, e.g. an internal
 	// compliance requirement id ("k-ose-5"). Merged into the auto-derived
