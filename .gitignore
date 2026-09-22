@@ -15,6 +15,10 @@
 /private/
 /audit.yaml
 /knowledge-base*.yaml
+/reports
+/internal-standards
+/security-requirements.csv
+/security-requirements.txt
 
 # Go
 *.test

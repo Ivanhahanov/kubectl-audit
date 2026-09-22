@@ -10,6 +10,8 @@ var kindToResource = map[string]string{
 	"Namespace":             "namespaces",
 	"ServiceAccount":        "serviceaccounts",
 	"ConfigMap":             "configmaps",
+	"ResourceQuota":         "resourcequotas",
+	"LimitRange":            "limitranges",
 	"Secret":                "secrets",
 	"Node":                  "nodes",
 	"PersistentVolumeClaim": "persistentvolumeclaims",
@@ -26,6 +28,10 @@ var kindToResource = map[string]string{
 	"ClusterRoleBinding":    "clusterrolebindings",
 	"NetworkPolicy":         "networkpolicies",
 	"Ingress":               "ingresses",
+	// admissionregistration.k8s.io/v1 — see
+	// policies/controlplane/webhook-failure-policy-ignore.yaml.
+	"ValidatingWebhookConfiguration": "validatingwebhookconfigurations",
+	"MutatingWebhookConfiguration":   "mutatingwebhookconfigurations",
 	// Tenant is Capsule's (github.com/projectcapsule/capsule) multi-tenancy
 	// CRD, capsule.clastix.io/v1beta2 — see policies/thirdparty/capsule/*.yaml.
 	"Tenant": "tenants",
@@ -34,11 +40,12 @@ var kindToResource = map[string]string{
 	// the standard gateway.networking.k8s.io Gateway API, sharing the same
 	// plural "gateways" — harmless, since matchConstraints.apiGroups still
 	// scopes each policy to the correct group.
-	"PeerAuthentication":  "peerauthentications",
-	"AuthorizationPolicy": "authorizationpolicies",
-	"DestinationRule":     "destinationrules",
-	"Gateway":             "gateways",
-	"Sidecar":             "sidecars",
+	"PeerAuthentication":    "peerauthentications",
+	"AuthorizationPolicy":   "authorizationpolicies",
+	"RequestAuthentication": "requestauthentications",
+	"DestinationRule":       "destinationrules",
+	"Gateway":               "gateways",
+	"Sidecar":               "sidecars",
 	// Strimzi kafka.strimzi.io/v1 CRDs — see policies/thirdparty/strimzi/*.yaml.
 	"Kafka":     "kafkas",
 	"KafkaUser": "kafkausers",

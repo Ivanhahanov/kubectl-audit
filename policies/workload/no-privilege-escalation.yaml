@@ -1,0 +1,57 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: workload.no-privilege-escalation
+  annotations:
+    audit.k8s-auditor.io/title: "Container does not explicitly disable privilege escalation"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: workload-security
+    audit.k8s-auditor.io/remediation: >-
+      Set securityContext.allowPrivilegeEscalation: false on every container.
+      Unlike most securityContext fields, this one has no pod-level default
+      to fall back on — it must be set per container.
+    audit.k8s-auditor.io/cis: "5.2.6"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Distinguish this from workload.no-privileged-containers: that check
+      is for securityContext.privileged=true (near-root host access, a true
+      critical with essentially no legitimate exception); this one is for
+      containers that simply never set allowPrivilegeEscalation at all,
+      which is the common "no baseline securityContext" gap seen across
+      most workloads that haven't been hardened yet, not a deliberate
+      escalation. 2. Check whether the container also sets
+      capabilities.add: [SYS_ADMIN] or privileged: true — if so it can't
+      actually be set to false at all (Kubernetes rejects that combination),
+      and the real fix is removing that capability/flag, not this field.
+  # Split out of workload.no-privileged-containers.yaml: allowPrivilegeEscalation
+  # defaults to true when unset (not false) — a container with no
+  # securityContext at all was previously passing this check, a real false
+  # negative. Fixing that in-place would have made "missing baseline
+  # securityContext" (common, systemic, seen on ~40+ workloads in real scan
+  # data) carry the same CRITICAL severity as an actual privileged:true
+  # container (rare, near-root host access) — collapsing a meaningful
+  # severity distinction the moment the false negative was closed. Kept as
+  # its own policy, medium severity, same tier as run-as-non-root.yaml/
+  # seccomp-profile-required.yaml/drop-all-capabilities.yaml.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+      - apiGroups: ["batch"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["jobs", "cronjobs"]
+  validations:
+    - expression: |-
+        (has(object.spec.containers) ? object.spec.containers
+          : (has(object.spec.template) && has(object.spec.template.spec) && has(object.spec.template.spec.containers)) ? object.spec.template.spec.containers
+          : (has(object.spec.jobTemplate) && has(object.spec.jobTemplate.spec) && has(object.spec.jobTemplate.spec.template) && has(object.spec.jobTemplate.spec.template.spec) && has(object.spec.jobTemplate.spec.template.spec.containers)) ? object.spec.jobTemplate.spec.template.spec.containers
+          : []).all(c, has(c.securityContext) && has(c.securityContext.allowPrivilegeEscalation) && c.securityContext.allowPrivilegeEscalation == false)
+      message: "Container does not explicitly set securityContext.allowPrivilegeEscalation to false — this field defaults to true when unset, allowing privilege escalation."

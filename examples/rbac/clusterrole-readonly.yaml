@@ -36,6 +36,8 @@ rules:
       - namespaces
       - serviceaccounts
       - configmaps
+      - resourcequotas
+      - limitranges
     verbs: ["get", "list", "watch"]
   - apiGroups: ["apps"]
     resources:
@@ -61,6 +63,11 @@ rules:
       - networkpolicies
       - ingresses
     verbs: ["get", "list", "watch"]
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources:
+      - validatingwebhookconfigurations
+      - mutatingwebhookconfigurations
+    verbs: ["get", "list", "watch"]
 
   # Optional third-party CRDs — fetched only if the group is actually
   # registered on this cluster (internal/loader/cluster.go's
@@ -83,6 +90,7 @@ rules:
     resources:
       - peerauthentications
       - authorizationpolicies
+      - requestauthentications
     verbs: ["get", "list", "watch"]
   - apiGroups: ["networking.istio.io"]
     resources:

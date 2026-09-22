@@ -1,0 +1,39 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: rbac.no-direct-pod-create
+  annotations:
+    audit.k8s-auditor.io/title: "Role/ClusterRole grants direct create access on Pods"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: rbac
+    audit.k8s-auditor.io/remediation: >-
+      Remove direct create access to pods; grant create on the owning
+      controller resource instead (deployments, statefulsets, jobs, ...) so
+      workload changes go through a controller's own reconcile loop and
+      revision history, not an unaudited one-off Pod.
+    audit.k8s-auditor.io/cis: "5.1.4"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Identify the subject this is bound to and confirm it's a trusted
+      controller/operator that genuinely needs to create bare Pods (e.g. a
+      Job controller, a CI runner operator) rather than a human or
+      general-purpose workload identity. 2. Direct pod create access also
+      bypasses PodSecurity admission differences some clusters apply
+      per-controller-vs-direct — check whether that's a factor here.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["rbac.authorization.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["roles", "clusterroles"]
+  validations:
+    - expression: |-
+        !has(object.rules) || object.rules.all(r,
+          !(
+            has(r.apiGroups) && (r.apiGroups.exists(g, g == "") || r.apiGroups.exists(g, g == "*")) &&
+            has(r.resources) && (r.resources.exists(x, x == "pods") || r.resources.exists(x, x == "*")) &&
+            has(r.verbs) && (r.verbs.exists(v, v == "create") || r.verbs.exists(v, v == "*"))
+          )
+        )
+      message: "Role/ClusterRole grants create access on the pods resource directly, instead of via an owning controller resource."

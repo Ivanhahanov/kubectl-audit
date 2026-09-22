@@ -10,6 +10,11 @@
 {{.Content.Remediation}}
 
 {{end -}}
+{{if .Content.VerificationSteps -}}
+*Verification steps (confirm before treating as urgent):*
+{{.Content.VerificationSteps}}
+
+{{end -}}
 {{if .Finding.CIS -}}
 *CIS:* {{join .Finding.CIS ", "}}
 

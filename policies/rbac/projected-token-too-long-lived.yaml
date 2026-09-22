@@ -1,0 +1,57 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: rbac.projected-token-too-long-lived
+  annotations:
+    audit.k8s-auditor.io/title: "Projected ServiceAccount token is long-lived or has no audience"
+    audit.k8s-auditor.io/severity: low
+    audit.k8s-auditor.io/category: rbac
+    audit.k8s-auditor.io/remediation: >-
+      Set expirationSeconds to 3600 or less, and audience to the specific
+      service the token is meant for, on every projected serviceAccountToken
+      volume source. A long expirationSeconds (or the 1-hour API default,
+      when the field is left unset entirely) turns a token meant to be
+      minted fresh per-Pod back into something closer to a long-lived
+      credential if it leaks; an unset audience makes it usable against any
+      audience-checking API that accepts this cluster's issuer, not just the
+      one intended.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Confirm what actually consumes this token (workload identity
+      federation with a cloud provider, an internal service, the Kubernetes
+      API itself) — the correct audience value depends entirely on that. 2.
+      An unset expirationSeconds already defaults to 3600s per the
+      Kubernetes API itself, so this specific sub-finding (vs. an explicit
+      value above 3600) is about making the choice explicit and auditable,
+      not a live 3600s-vs-unbounded gap — lower urgency than a genuinely
+      long expirationSeconds or a missing audience.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+      - apiGroups: ["batch"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["jobs", "cronjobs"]
+  validations:
+    - expression: |-
+        (has(object.spec.volumes) ? object.spec.volumes
+          : (has(object.spec.template) && has(object.spec.template.spec) && has(object.spec.template.spec.volumes)) ? object.spec.template.spec.volumes
+          : (has(object.spec.jobTemplate) && has(object.spec.jobTemplate.spec) && has(object.spec.jobTemplate.spec.template) && has(object.spec.jobTemplate.spec.template.spec) && has(object.spec.jobTemplate.spec.template.spec.volumes)) ? object.spec.jobTemplate.spec.template.spec.volumes
+          : []).all(v,
+            !has(v.projected) || !has(v.projected.sources) ||
+            v.projected.sources.all(s,
+              !has(s.serviceAccountToken) || (
+                has(s.serviceAccountToken.expirationSeconds) && s.serviceAccountToken.expirationSeconds <= 3600 &&
+                has(s.serviceAccountToken.audience) && s.serviceAccountToken.audience != ""
+              )
+            )
+          )
+      message: "A projected serviceAccountToken volume source doesn't set both expirationSeconds (<=3600) and a non-empty audience explicitly."

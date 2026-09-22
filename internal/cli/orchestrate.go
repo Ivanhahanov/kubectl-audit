@@ -11,11 +11,13 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ivanhahanov/kubectl-audit/internal/apideprecations"
+	"github.com/ivanhahanov/kubectl-audit/internal/cni"
 	"github.com/ivanhahanov/kubectl-audit/internal/compliance"
 	"github.com/ivanhahanov/kubectl-audit/internal/config"
 	"github.com/ivanhahanov/kubectl-audit/internal/controlplane"
 	"github.com/ivanhahanov/kubectl-audit/internal/engine"
 	"github.com/ivanhahanov/kubectl-audit/internal/findings"
+	"github.com/ivanhahanov/kubectl-audit/internal/istio"
 	"github.com/ivanhahanov/kubectl-audit/internal/k8sclient"
 	"github.com/ivanhahanov/kubectl-audit/internal/k8supdates"
 	"github.com/ivanhahanov/kubectl-audit/internal/k8sversion"
@@ -23,6 +25,7 @@ import (
 	"github.com/ivanhahanov/kubectl-audit/internal/logging"
 	"github.com/ivanhahanov/kubectl-audit/internal/netpol"
 	"github.com/ivanhahanov/kubectl-audit/internal/pss"
+	"github.com/ivanhahanov/kubectl-audit/internal/quota"
 	"github.com/ivanhahanov/kubectl-audit/internal/rbac"
 	"github.com/ivanhahanov/kubectl-audit/internal/report"
 	secretsanalyzer "github.com/ivanhahanov/kubectl-audit/internal/secrets"
@@ -561,6 +564,21 @@ func runScan(ctx context.Context, cfg *config.AuditConfig) (report.Result, error
 	if err != nil {
 		return report.Result{}, fmt.Errorf("analyzing network policy reachability: %w", err)
 	}
+	netpolAllowAllFindings, err := netpol.AnalyzeAllowAllModel(resources, target)
+	if err != nil {
+		return report.Result{}, fmt.Errorf("analyzing network policy allow-all rules: %w", err)
+	}
+	netpolMetadataEgressFindings, err := netpol.AnalyzeMetadataEgress(resources, target)
+	if err != nil {
+		return report.Result{}, fmt.Errorf("analyzing network policy egress to the cloud metadata endpoint: %w", err)
+	}
+	istioAuthzCoverageFindings, err := istio.AnalyzeAuthorizationCoverage(resources, target)
+	if err != nil {
+		return report.Result{}, fmt.Errorf("analyzing Istio AuthorizationPolicy coverage: %w", err)
+	}
+
+	quotaFindings := quota.Analyze(resources, target)
+	cniFindings := cni.Analyze(resources, target)
 
 	pssFindings, err := pss.Analyze(resources, target, k8sVersion, warnf)
 	if err != nil {
@@ -605,6 +623,11 @@ func runScan(ctx context.Context, cfg *config.AuditConfig) (report.Result, error
 	all := append(policyFindings, rbacResult.Findings...)
 	all = append(all, netpolFindings...)
 	all = append(all, netpolReachabilityFindings...)
+	all = append(all, netpolAllowAllFindings...)
+	all = append(all, netpolMetadataEgressFindings...)
+	all = append(all, quotaFindings...)
+	all = append(all, cniFindings...)
+	all = append(all, istioAuthzCoverageFindings...)
 	all = append(all, pssFindings...)
 	all = append(all, deprecatedAPIFindings...)
 	all = append(all, cpPolicyFindings...)

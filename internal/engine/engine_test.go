@@ -266,8 +266,8 @@ func TestBuiltinPoliciesLoadAndCompile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadBuiltin: %v", err)
 	}
-	if len(policies) != 130 {
-		t.Fatalf("expected 130 built-in policies, got %d", len(policies))
+	if len(policies) != 141 {
+		t.Fatalf("expected 141 built-in policies, got %d", len(policies))
 	}
 }
 
@@ -278,9 +278,13 @@ func TestPrivilegedContainerDetected(t *testing.T) {
 	}
 
 	bad := engine.EvaluateAll(policies, []loader.Resource{mustResource(t, badPod)}, engine.EvalOptions{})
-	if len(findingsForPolicy(bad, "workload.no-privileged-containers")) != 2 {
-		t.Fatalf("expected 2 distinct findings from workload.no-privileged-containers (privileged + allowPrivilegeEscalation), got %d: %+v",
+	if len(findingsForPolicy(bad, "workload.no-privileged-containers")) != 1 {
+		t.Fatalf("expected 1 finding from workload.no-privileged-containers (privileged), got %d: %+v",
 			len(findingsForPolicy(bad, "workload.no-privileged-containers")), bad)
+	}
+	if len(findingsForPolicy(bad, "workload.no-privilege-escalation")) != 1 {
+		t.Fatalf("expected 1 finding from workload.no-privilege-escalation (allowPrivilegeEscalation), got %d: %+v",
+			len(findingsForPolicy(bad, "workload.no-privilege-escalation")), bad)
 	}
 
 	good := engine.EvaluateAll(policies, []loader.Resource{mustResource(t, hardenedPod)}, engine.EvalOptions{})
@@ -342,6 +346,16 @@ func TestNoLatestTagImagePinning(t *testing.T) {
 		{"myregistry.io:5000/nginx", true},
 		{"myregistry.io:5000/nginx:1.25.3", false},
 		{"nginx@sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef12345678", false},
+		{"myapp:dev", true},
+		{"myapp:main", true},
+		{"myapp:master", true},
+		{"myapp:develop", true},
+		{"myapp:edge", true},
+		{"myapp:nightly", true},
+		{"myapp:unstable", true},
+		{"myapp:canary", true},
+		{"myapp:snapshot", true},
+		{"myapp:v1.2.3-dev", false},
 	}
 
 	for _, c := range cases {

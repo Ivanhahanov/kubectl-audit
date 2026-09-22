@@ -19,9 +19,9 @@
 //   - KUBECTL_AUDIT_BIN: path to the kubectl-audit binary (default:
 //     "kubectl-audit", resolved via $PATH)
 //   - KUBECONFIG / KUBE_CONTEXT: passed through to every inspect call —
-//     in the intended deployment (an ephemeral process inside the same
-//     Tekton Task that runs the scan), this is that Task's own kubeconfig,
-//     for the Task's lifetime only.
+//     in the intended deployment (an ephemeral process alongside whatever
+//     runs the scan), this is that process's own kubeconfig, for its
+//     lifetime only.
 package main
 
 import (

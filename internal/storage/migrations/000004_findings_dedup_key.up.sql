@@ -1,0 +1,1 @@
+ALTER TABLE findings ADD COLUMN dedup_key TEXT NOT NULL DEFAULT '';

@@ -8,8 +8,10 @@ metadata:
     audit.k8s-auditor.io/category: supply-chain
     audit.k8s-auditor.io/remediation: >-
       Pin the image to an explicit version tag or, preferably, a content
-      digest (image@sha256:...) instead of ":latest" or an implicit tag, so
-      deployments are reproducible and not silently changed underneath you.
+      digest (image@sha256:...) instead of ":latest", another known
+      floating/branch tag (:dev, :main, :master, ...), or an implicit tag,
+      so deployments are reproducible and not silently changed underneath
+      you.
     audit.k8s-auditor.io/verification-steps: >-
       1. Low severity reflects that this is a supply-chain/reproducibility
       hygiene issue (unpredictable deploys, harder rollback, "what version is
@@ -18,7 +20,11 @@ metadata:
       the registry/CI practices behind this image: some pipelines push an
       effectively-immutable image even under a moving tag name, which
       changes the practical reproducibility risk even though the tag string
-      itself still fails this check.
+      itself still fails this check. 3. The Message distinguishes "no tag at
+      all" / ":latest" from a named floating tag like ":dev"/":main" — the
+      latter usually means a branch/environment naming convention, not a
+      forgotten pin, so remediation is more likely "add a release pipeline
+      that tags real versions" than "just change one manifest line".
 spec:
   failurePolicy: Fail
   matchConstraints:
@@ -43,7 +49,19 @@ spec:
           : []).all(c,
             has(c.image) && (
               c.image.contains("@sha256:") ||
-              (!c.image.endsWith(":latest") && c.image.matches("^.*:[^/]+$"))
+              (
+                c.image.matches("^.*:[^/]+$") &&
+                !c.image.endsWith(":latest") &&
+                !c.image.endsWith(":dev") &&
+                !c.image.endsWith(":develop") &&
+                !c.image.endsWith(":main") &&
+                !c.image.endsWith(":master") &&
+                !c.image.endsWith(":edge") &&
+                !c.image.endsWith(":nightly") &&
+                !c.image.endsWith(":unstable") &&
+                !c.image.endsWith(":canary") &&
+                !c.image.endsWith(":snapshot")
+              )
             )
           )
-      message: "Container image is not pinned to an explicit tag or digest (implicit or explicit \":latest\" is not reproducible)."
+      message: "Container image is not pinned to an explicit immutable tag or digest — it has no tag (implicit \":latest\"), or uses a known floating/branch tag (\":latest\", \":dev\", \":develop\", \":main\", \":master\", \":edge\", \":nightly\", \":unstable\", \":canary\", \":snapshot\") that can silently change underneath you."

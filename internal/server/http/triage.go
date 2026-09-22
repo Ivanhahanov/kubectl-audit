@@ -27,39 +27,61 @@ type triageResourceRef struct {
 // TriageEntry exists for it, defaulting to storage.TriageStatusNew when
 // none does.
 type triageView struct {
-	Source       string            `json:"source"`
-	Fingerprint  string            `json:"fingerprint"`
-	PolicyID     string            `json:"policyId"`
-	Title        string            `json:"title"`
-	Severity     string            `json:"severity"`
-	Category     string            `json:"category"`
-	Resource     triageResourceRef `json:"resource"`
-	Message      string            `json:"message"`
-	Status       string            `json:"status"`
-	Note         string            `json:"note,omitempty"`
-	Reviewer     string            `json:"reviewer,omitempty"`
-	JiraIssueKey string            `json:"jiraIssueKey,omitempty"`
-	JiraIssueURL string            `json:"jiraIssueUrl,omitempty"`
-	FirstSeen    time.Time         `json:"firstSeen"`
-	LastSeen     time.Time         `json:"lastSeen"`
-	UpdatedAt    time.Time         `json:"updatedAt,omitempty"`
+	Source      string            `json:"source"`
+	Fingerprint string            `json:"fingerprint"`
+	PolicyID    string            `json:"policyId"`
+	Title       string            `json:"title"`
+	Severity    string            `json:"severity"`
+	Category    string            `json:"category"`
+	Resource    triageResourceRef `json:"resource"`
+	Message     string            `json:"message"`
+	// DedupKey mirrors findings.Finding.DedupKey — see that field's doc
+	// comment. Without it, the TUI's bulk-triage collapsing has to bucket
+	// purely on Message text, which silently lumps together findings whose
+	// Message happens to be identical but whose Resource genuinely differs
+	// (e.g. a check with a fixed, non-resource-specific Message template).
+	DedupKey     string    `json:"dedupKey,omitempty"`
+	Status       string    `json:"status"`
+	Note         string    `json:"note,omitempty"`
+	Reviewer     string    `json:"reviewer,omitempty"`
+	JiraIssueKey string    `json:"jiraIssueKey,omitempty"`
+	JiraIssueURL string    `json:"jiraIssueUrl,omitempty"`
+	FirstSeen    time.Time `json:"firstSeen"`
+	LastSeen     time.Time `json:"lastSeen"`
+	UpdatedAt    time.Time `json:"updatedAt,omitempty"`
 }
 
 type triageViewResponse struct {
 	Entries []triageView `json:"entries"`
 }
 
-// handleGetTriage returns the merged findings+triage view for the
-// authenticated cluster, optionally narrowed to one source. There is
-// deliberately no {cluster_id} path parameter (unlike the plan's original
-// sketch): a cluster's bearer token only ever acts on its own data, so a
-// path parameter would be redundant with the auth check (and require one
-// anyway, to stop cluster A's token reading cluster B's triage state by
-// just naming it in the URL). A cross-cluster, admin-token-gated read
-// endpoint is a reasonable future addition once an actual multi-cluster
-// dashboard consumer exists — not needed yet.
+// handleGetTriage returns the merged findings+triage view for the cluster
+// named by the required cluster_id query parameter, optionally narrowed to
+// one source. Admin-token-gated, not cluster-token-gated: a cluster's own
+// push token is ingest-only (see handleIngest's doc comment) and grants no
+// read access to its own findings/triage — reading is an "expert" action,
+// separate from the pipeline that pushes scan data. See clusterFromQuery
+// for why cluster_id is an explicit query parameter here instead of being
+// implied by the caller's token, the way it used to be.
+//
+//	@Summary		Get the merged findings+triage view
+//	@Description	Returns every finding for one cluster merged with its triage state (status defaults to "new" when no triage entry exists yet).
+//	@Tags			triage
+//	@Produce		json
+//	@Security		AdminAuth
+//	@Param			cluster_id	query		string	true	"Cluster ID"
+//	@Param			source		query		string	false	"Restrict to one ingest source, e.g. native or openreports"
+//	@Success		200			{object}	triageViewResponse
+//	@Failure		400			{object}	map[string]string	"missing or invalid cluster_id"
+//	@Failure		401			{object}	map[string]string	"missing or invalid admin token"
+//	@Failure		404			{object}	map[string]string	"no such cluster"
+//	@Router			/triage [get]
 func (s *Server) handleGetTriage(w http.ResponseWriter, r *http.Request) {
-	cluster, ok := s.clusterFromToken(w, r)
+	if !constantTimeEqual(bearerToken(r), s.adminToken) {
+		writeError(w, http.StatusUnauthorized, "missing or invalid admin token")
+		return
+	}
+	cluster, ok := s.clusterFromQuery(w, r)
 	if !ok {
 		return
 	}
@@ -96,6 +118,7 @@ func (s *Server) handleGetTriage(w http.ResponseWriter, r *http.Request) {
 				Name:       f.ResourceName,
 			},
 			Message:   f.Message,
+			DedupKey:  f.DedupKey,
 			Status:    string(storage.TriageStatusNew),
 			FirstSeen: f.FirstSeen,
 			LastSeen:  f.LastSeen,
@@ -127,8 +150,31 @@ type patchTriageRequest struct {
 // zero-value default for a brand new entry), never overwritten to empty,
 // which is why this reads the existing entry first rather than
 // unmarshaling straight into a storage.TriageEntry and upserting it.
+// Admin-token-gated for the same reason as handleGetTriage: triage is a
+// read/write "expert" action, distinct from a cluster's own ingest-only
+// push token.
+//
+//	@Summary		Update one triage entry
+//	@Description	Partially updates the TriageEntry for one finding (source+fingerprint) of one cluster. Omitted fields keep their current value; a first update creates the entry with status "new" as the baseline.
+//	@Tags			triage
+//	@Accept			json
+//	@Produce		json
+//	@Security		AdminAuth
+//	@Param			cluster_id	query		string					true	"Cluster ID"
+//	@Param			source		path		string					true	"Ingest source, e.g. native or openreports"
+//	@Param			fingerprint	path		string					true	"Finding fingerprint"
+//	@Param			request		body		patchTriageRequest		true	"Fields to update"
+//	@Success		200			{object}	storage.TriageEntry
+//	@Failure		400			{object}	map[string]string	"invalid request body / missing or invalid cluster_id"
+//	@Failure		401			{object}	map[string]string	"missing or invalid admin token"
+//	@Failure		404			{object}	map[string]string	"no such cluster / no such finding for this cluster/source/fingerprint"
+//	@Router			/triage/{source}/{fingerprint} [patch]
 func (s *Server) handlePatchTriageEntry(w http.ResponseWriter, r *http.Request) {
-	cluster, ok := s.clusterFromToken(w, r)
+	if !constantTimeEqual(bearerToken(r), s.adminToken) {
+		writeError(w, http.StatusUnauthorized, "missing or invalid admin token")
+		return
+	}
+	cluster, ok := s.clusterFromQuery(w, r)
 	if !ok {
 		return
 	}
@@ -228,9 +274,28 @@ type bulkTriageResponse struct {
 // Entries referencing a fingerprint with no matching Finding are skipped
 // (reported, not a hard failure) rather than failing the whole batch —
 // e.g. the caller's local state has a leftover entry for a finding the
-// server has no record of.
+// server has no record of. Admin-token-gated for the same reason as
+// handleGetTriage/handlePatchTriageEntry.
+//
+//	@Summary		Bulk-replace triage entries for one source
+//	@Description	Uploads a client's whole local triage.State for one source and one cluster in a single call. Every field in each entry is authoritative (full replace, not a partial merge). Entries whose fingerprint has no matching Finding are skipped and reported, not treated as a hard failure.
+//	@Tags			triage
+//	@Accept			json
+//	@Produce		json
+//	@Security		AdminAuth
+//	@Param			cluster_id	query		string				true	"Cluster ID"
+//	@Param			request		body		bulkTriageRequest	true	"Source and its full set of triage entries"
+//	@Success		200			{object}	bulkTriageResponse
+//	@Failure		400			{object}	map[string]string	"invalid request body / missing source / missing or invalid cluster_id"
+//	@Failure		401			{object}	map[string]string	"missing or invalid admin token"
+//	@Failure		404			{object}	map[string]string	"no such cluster"
+//	@Router			/triage/bulk [post]
 func (s *Server) handleBulkTriageUpdate(w http.ResponseWriter, r *http.Request) {
-	cluster, ok := s.clusterFromToken(w, r)
+	if !constantTimeEqual(bearerToken(r), s.adminToken) {
+		writeError(w, http.StatusUnauthorized, "missing or invalid admin token")
+		return
+	}
+	cluster, ok := s.clusterFromQuery(w, r)
 	if !ok {
 		return
 	}

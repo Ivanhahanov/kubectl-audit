@@ -5,15 +5,25 @@ image:
 
 replicaCount: 1
 
+# worker is kubectl-audit-worker's own Deployment — see
+# templates/worker-deployment.yaml for why it's separate from the server.
+worker:
+  image:
+    repository: kubectl-audit-worker
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  resources: {}
+
 service:
   type: ClusterIP
   port: 8080
 
 resources: {}
 
-# adminToken gates cluster registration and every organization-level
-# config endpoint (knowledge base, exclusion rules, automation rules,
-# audit requests) — see internal/server/http.NewServer's doc comment.
+# adminToken gates cluster registration, triage, and every
+# organization-level config endpoint (knowledge base, exclusion rules,
+# automation rules) — see internal/server/http.NewServer's doc comment.
 adminToken:
   # Used directly if set (e.g. via --set-string or a values file backed by
   # your own secrets tooling). Leave empty to auto-generate one instead.
@@ -49,16 +59,6 @@ postgres:
   externalDSN: ""
 
 automation:
-  # How often the background evaluator checks automation_rules against
-  # every registered cluster's current findings/triage state.
+  # How often kubectl-audit-worker checks automation_rules against every
+  # registered cluster's current findings/triage state.
   intervalSeconds: 300
-  # tekton.enabled wires PIPELINE_TRIGGER=tekton and grants this
-  # Deployment's ServiceAccount permission to create tekton.dev
-  # PipelineRuns — see automation.TektonTrigger's doc comment. Requires
-  # Tekton Pipelines already installed; this chart doesn't install it.
-  # namespace defaults to .Release.Namespace when empty.
-  tekton:
-    enabled: false
-    namespace: ""
-    pipelineName: "kubectl-audit-scan-and-push"
-    serviceAccountName: "kubectl-audit-scan"

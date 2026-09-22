@@ -35,6 +35,9 @@ var defaultResources = []clusterResource{
 	// breadth) are fetched so policies/secrets/*.yaml can flag ConfigMap
 	// data that looks like it should have been a Secret.
 	{schema.GroupVersionResource{Group: "", Version: "v1", Resource: "configmaps"}, true, "configmaps"},
+	// ResourceQuota/LimitRange — see internal/quota.Analyze.
+	{schema.GroupVersionResource{Group: "", Version: "v1", Resource: "resourcequotas"}, true, "resourcequotas"},
+	{schema.GroupVersionResource{Group: "", Version: "v1", Resource: "limitranges"}, true, "limitranges"},
 	{schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"}, true, "deployments"},
 	{schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "statefulsets"}, true, "statefulsets"},
 	{schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "daemonsets"}, true, "daemonsets"},
@@ -47,6 +50,8 @@ var defaultResources = []clusterResource{
 	{schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "clusterrolebindings"}, false, "clusterrolebindings"},
 	{schema.GroupVersionResource{Group: "networking.k8s.io", Version: "v1", Resource: "networkpolicies"}, true, "networkpolicies"},
 	{schema.GroupVersionResource{Group: "networking.k8s.io", Version: "v1", Resource: "ingresses"}, true, "ingresses"},
+	{schema.GroupVersionResource{Group: "admissionregistration.k8s.io", Version: "v1", Resource: "validatingwebhookconfigurations"}, false, "validatingwebhookconfigurations"},
+	{schema.GroupVersionResource{Group: "admissionregistration.k8s.io", Version: "v1", Resource: "mutatingwebhookconfigurations"}, false, "mutatingwebhookconfigurations"},
 }
 
 // secretsResource is Secret's clusterResource entry — deliberately kept out
@@ -89,6 +94,7 @@ var optionalResources = []crdResource{
 	// (alpha). All Istio CRDs are namespace-scoped.
 	{Group: "security.istio.io", Resource: "peerauthentications", Namespaced: true, Name: "peerauthentications"},
 	{Group: "security.istio.io", Resource: "authorizationpolicies", Namespaced: true, Name: "authorizationpolicies"},
+	{Group: "security.istio.io", Resource: "requestauthentications", Namespaced: true, Name: "requestauthentications"},
 	{Group: "networking.istio.io", Resource: "destinationrules", Namespaced: true, Name: "destinationrules"},
 	{Group: "networking.istio.io", Resource: "gateways", Namespaced: true, Name: "istio-gateways"},
 	{Group: "networking.istio.io", Resource: "sidecars", Namespaced: true, Name: "istio-sidecars"},

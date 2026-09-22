@@ -1,0 +1,44 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: istio.request-authentication-fromheaders-no-bearer-prefix
+  annotations:
+    audit.k8s-auditor.io/title: "[ALPHA] RequestAuthentication custom fromHeaders entry has no Bearer prefix"
+    audit.k8s-auditor.io/severity: medium
+    audit.k8s-auditor.io/category: istio
+    audit.k8s-auditor.io/remediation: >-
+      Set prefix: "Bearer " on every jwtRules[].fromHeaders entry. Without
+      it, Istio treats the entire header value as the raw JWT — the header
+      no longer follows the standard "Authorization: Bearer <token>"
+      convention, which makes the token easy to confuse with (or replay
+      from) other auth schemes/headers that don't expect JWT-shaped values.
+    audit.k8s-auditor.io/cis: "6.4.3"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. This only applies when jwtRules[].fromHeaders is set at all — Istio's
+      default (fromHeaders unset) already looks for "Authorization: Bearer
+      <token>" and needs no explicit prefix. A missing prefix only matters
+      once someone customizes fromHeaders (e.g. to add a second header name).
+      2. Confirm whether the custom header is genuinely meant to carry a raw
+      token (some internal-only gateways do this deliberately) before
+      treating this as a real gap — if so, this is a deliberate design
+      choice, not an oversight, and should be dispositioned as such rather
+      than "fixed" by adding a prefix that would break the integration.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["security.istio.io"]
+        # Same alias relationship as AuthorizationPolicy/PeerAuthentication
+        # (verified 2026-08 against istio/api's security/v1 generated
+        # aliases) — v1 and v1beta1 are the same Go type for this group.
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["requestauthentications"]
+  validations:
+    - expression: |-
+        !has(object.spec.jwtRules) ||
+        object.spec.jwtRules.all(rule,
+          !has(rule.fromHeaders) ||
+          rule.fromHeaders.all(h, has(h.prefix) && h.prefix != "")
+        )
+      message: "[ALPHA] RequestAuthentication defines a custom jwtRules[].fromHeaders entry with no \"prefix\" set — the full header value is used as the raw token instead of following the \"Bearer \" convention."

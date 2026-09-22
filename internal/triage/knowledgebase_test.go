@@ -15,6 +15,7 @@ func TestResolve_NoOverridesFallsBackToFinding(t *testing.T) {
 	f.Title = "Original title"
 	f.Message = "Original message"
 	f.Remediation = "Original remediation"
+	f.VerificationSteps = "Original verification steps"
 
 	rc, err := triage.Resolve(f, nil)
 	if err != nil {
@@ -23,8 +24,34 @@ func TestResolve_NoOverridesFallsBackToFinding(t *testing.T) {
 	if rc.Title != "Original title" || rc.Description != "Original message" || rc.Remediation != "Original remediation" {
 		t.Errorf("expected Resolve with no overrides to fall back to the finding's own fields, got %+v", rc)
 	}
+	if rc.VerificationSteps != "Original verification steps" {
+		t.Errorf("VerificationSteps = %q, want it to fall back to the finding's own field", rc.VerificationSteps)
+	}
 	if rc.Technical != "" {
 		t.Errorf("expected no Technical detail when Description was never overridden, got %q", rc.Technical)
+	}
+}
+
+// TestResolve_VerificationStepsOverride guards the whole reason this field
+// was added to the knowledge base: an organization can layer its own
+// process detail (an escalation channel, a wiki link, a known-exception
+// register) on top of the check's own steps, the same way Remediation
+// already can.
+func TestResolve_VerificationStepsOverride(t *testing.T) {
+	f := mustFinding("f1")
+	f.Resource.Name = "checker-sa"
+	f.VerificationSteps = "Check the check's own generic steps."
+	table := map[string]findings.KnowledgeBaseEntry{
+		f.PolicyID: {VerificationSteps: "Ask #sec-eng whether {{.Finding.Resource.Name}} is a known exception first."},
+	}
+
+	rc, err := triage.Resolve(f, table)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	want := "Ask #sec-eng whether checker-sa is a known exception first."
+	if rc.VerificationSteps != want {
+		t.Errorf("VerificationSteps = %q, want %q", rc.VerificationSteps, want)
 	}
 }
 

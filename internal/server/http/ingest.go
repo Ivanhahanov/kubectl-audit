@@ -17,6 +17,18 @@ type ingestResponse struct {
 
 // handleIngestNative accepts a findings.json body for the bearer-token-
 // authenticated cluster.
+//
+//	@Summary		Ingest a native findings.json scan
+//	@Description	Ingests a kubectl-audit native findings.json body for the cluster identified by the bearer token. May produce more than one Scan if the payload batches multiple sources.
+//	@Tags			ingest
+//	@Accept			json
+//	@Produce		json
+//	@Security		ClusterAuth
+//	@Param			request	body		object	true	"findings.json payload"
+//	@Success		200		{object}	ingestResponse
+//	@Failure		400		{object}	map[string]string	"invalid payload"
+//	@Failure		401		{object}	map[string]string	"missing or invalid bearer token"
+//	@Router			/ingest/native [post]
 func (s *Server) handleIngestNative(w http.ResponseWriter, r *http.Request) {
 	s.handleIngest(w, r, "native")
 }
@@ -24,6 +36,18 @@ func (s *Server) handleIngestNative(w http.ResponseWriter, r *http.Request) {
 // handleIngestOpenReports accepts an openreports.io/v1alpha1
 // Report/ClusterReport JSON body for the bearer-token-authenticated
 // cluster.
+//
+//	@Summary		Ingest an OpenReports scan
+//	@Description	Ingests an openreports.io/v1alpha1 Report or ClusterReport JSON body for the cluster identified by the bearer token.
+//	@Tags			ingest
+//	@Accept			json
+//	@Produce		json
+//	@Security		ClusterAuth
+//	@Param			request	body		object	true	"OpenReports Report/ClusterReport payload"
+//	@Success		200		{object}	ingestResponse
+//	@Failure		400		{object}	map[string]string	"invalid payload"
+//	@Failure		401		{object}	map[string]string	"missing or invalid bearer token"
+//	@Router			/ingest/openreports [post]
 func (s *Server) handleIngestOpenReports(w http.ResponseWriter, r *http.Request) {
 	s.handleIngest(w, r, "openreports")
 }

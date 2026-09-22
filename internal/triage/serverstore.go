@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/ivanhahanov/kubectl-audit/internal/findings"
@@ -22,11 +23,16 @@ import (
 type ServerStore struct {
 	// BaseURL is the kubectl-audit-server root, e.g. "https://audit.example.com".
 	BaseURL string
-	// Token is this cluster's own bearer token, issued at registration
-	// (POST /api/v1/clusters) — the same token used for `kubectl-audit
-	// push` ingestion, since triage read/write is scoped to the
-	// authenticated cluster exactly like ingestion is.
+	// Token authenticates triage read/write — the server's admin token,
+	// not the cluster's own push token: a cluster's ingest token is
+	// write-only (findings push), triage is a separate, admin-gated
+	// "expert" action (see kubectl-audit-server's handleGetTriage doc
+	// comment for why the two are split).
 	Token string
+	// ClusterID is which cluster's findings/triage this Store's Load/Save
+	// operate on — required, since the server no longer infers it from
+	// Token (that's the whole reason for the split above).
+	ClusterID string
 	// Source identifies which scan source's findings this Store's
 	// Load/Save operate on — "kubectl-audit" for the CLI's own scans, or
 	// an OpenReports tool identifier to triage findings ingested from
@@ -62,13 +68,18 @@ type serverTriageView struct {
 	Fingerprint  string            `json:"fingerprint"`
 	PolicyID     string            `json:"policyId"`
 	Title        string            `json:"title"`
+	Severity     string            `json:"severity"`
+	Category     string            `json:"category"`
 	Resource     serverResourceRef `json:"resource"`
+	Message      string            `json:"message"`
+	DedupKey     string            `json:"dedupKey,omitempty"`
 	Status       string            `json:"status"`
 	Note         string            `json:"note,omitempty"`
 	Reviewer     string            `json:"reviewer,omitempty"`
 	JiraIssueKey string            `json:"jiraIssueKey,omitempty"`
 	JiraIssueURL string            `json:"jiraIssueUrl,omitempty"`
 	FirstSeen    time.Time         `json:"firstSeen"`
+	LastSeen     time.Time         `json:"lastSeen"`
 	UpdatedAt    time.Time         `json:"updatedAt,omitempty"`
 }
 
@@ -76,16 +87,13 @@ type serverTriageViewResponse struct {
 	Entries []serverTriageView `json:"entries"`
 }
 
-// Load fetches the merged findings+triage view for s.Source and converts
-// it into a local State. Only entries with something a human (or Merge)
-// actually recorded — a non-"new" status, a note, a reviewer, or a linked
-// Jira issue — become an Entry; an untriaged finding stays absent from
-// State.Entries, matching FileStore's own sparsity (a fresh
-// findings.json with nothing triaged yet produces an empty local State
-// too) and keeping subsequent Save calls from re-uploading every
-// never-touched finding as a no-op "new" entry.
-func (s ServerStore) Load() (*State, error) {
-	req, err := http.NewRequest(http.MethodGet, s.BaseURL+"/api/v1/triage?source="+s.Source, nil)
+// fetchTriageView is the shared GET /api/v1/triage call behind both Load
+// (only the triaged subset) and LoadAll (every current finding) — see
+// their own doc comments for why two different views of the same response
+// exist.
+func (s ServerStore) fetchTriageView() ([]serverTriageView, error) {
+	q := url.Values{"cluster_id": {s.ClusterID}, "source": {s.Source}}
+	req, err := http.NewRequest(http.MethodGet, s.BaseURL+"/api/v1/triage?"+q.Encode(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("building triage server request: %w", err)
 	}
@@ -104,32 +112,94 @@ func (s ServerStore) Load() (*State, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
 		return nil, fmt.Errorf("decoding triage server response: %w", err)
 	}
+	return decoded.Entries, nil
+}
 
+// Load fetches the merged findings+triage view for s.Source and converts
+// it into a local State. Only entries with something a human (or Merge)
+// actually recorded — a non-"new" status, a note, a reviewer, or a linked
+// Jira issue — become an Entry; an untriaged finding stays absent from
+// State.Entries, matching FileStore's own sparsity (a fresh
+// findings.json with nothing triaged yet produces an empty local State
+// too) and keeping subsequent Save calls from re-uploading every
+// never-touched finding as a no-op "new" entry.
+//
+// Load alone only overlays decisions onto findings the caller already
+// knows about some other way (a local findings.json) — see LoadAll when
+// there isn't one, e.g. reviewing findings a *different* cluster pushed to
+// the hub, which the caller never scanned itself.
+func (s ServerStore) Load() (*State, error) {
+	entries, err := s.fetchTriageView()
+	if err != nil {
+		return nil, err
+	}
 	state := &State{Entries: map[string]Entry{}}
-	for _, v := range decoded.Entries {
+	for _, v := range entries {
 		if !isMeaningfulServerEntry(v) {
 			continue
 		}
-		state.Entries[v.Fingerprint] = Entry{
-			FindingID: v.Fingerprint,
-			PolicyID:  v.PolicyID,
+		state.Entries[v.Fingerprint] = entryFromServerView(v)
+	}
+	return state, nil
+}
+
+// LoadAll fetches the same merged findings+triage view as Load, but
+// returns *every* current finding (not just already-triaged ones) as a
+// standalone findings.Finding list alongside the full State — the pair
+// triage.Merge already knows how to join, exactly like a local
+// findings.json + FileStore.Load() would. This is what makes reviewing
+// findings pushed by a cluster the caller never personally scanned
+// possible: nothing about it requires a local findings.json to exist.
+func (s ServerStore) LoadAll() (all []findings.Finding, state *State, err error) {
+	entries, err := s.fetchTriageView()
+	if err != nil {
+		return nil, nil, err
+	}
+	state = &State{Entries: map[string]Entry{}}
+	all = make([]findings.Finding, 0, len(entries))
+	for _, v := range entries {
+		all = append(all, findings.Finding{
+			ID:       v.Fingerprint,
+			PolicyID: v.PolicyID,
+			Title:    v.Title,
+			Severity: findings.Severity(v.Severity),
+			Category: v.Category,
 			Resource: findings.ResourceRef{
 				APIVersion: v.Resource.APIVersion,
 				Kind:       v.Resource.Kind,
 				Namespace:  v.Resource.Namespace,
 				Name:       v.Resource.Name,
 			},
-			Title:        v.Title,
-			Status:       Status(v.Status),
-			Note:         v.Note,
-			Reviewer:     v.Reviewer,
-			JiraIssueKey: v.JiraIssueKey,
-			JiraIssueURL: v.JiraIssueURL,
-			FirstSeen:    v.FirstSeen,
-			LastUpdated:  v.UpdatedAt,
+			Message:  v.Message,
+			DedupKey: v.DedupKey,
+			Source:   v.Source,
+		})
+		if isMeaningfulServerEntry(v) {
+			state.Entries[v.Fingerprint] = entryFromServerView(v)
 		}
 	}
-	return state, nil
+	return all, state, nil
+}
+
+func entryFromServerView(v serverTriageView) Entry {
+	return Entry{
+		FindingID: v.Fingerprint,
+		PolicyID:  v.PolicyID,
+		Resource: findings.ResourceRef{
+			APIVersion: v.Resource.APIVersion,
+			Kind:       v.Resource.Kind,
+			Namespace:  v.Resource.Namespace,
+			Name:       v.Resource.Name,
+		},
+		Title:        v.Title,
+		Status:       Status(v.Status),
+		Note:         v.Note,
+		Reviewer:     v.Reviewer,
+		JiraIssueKey: v.JiraIssueKey,
+		JiraIssueURL: v.JiraIssueURL,
+		FirstSeen:    v.FirstSeen,
+		LastUpdated:  v.UpdatedAt,
+	}
 }
 
 func isMeaningfulServerEntry(v serverTriageView) bool {
@@ -172,7 +242,8 @@ func (s ServerStore) Save(state *State) error {
 		return fmt.Errorf("encoding bulk triage update: %w", err)
 	}
 
-	httpReq, err := http.NewRequest(http.MethodPost, s.BaseURL+"/api/v1/triage/bulk", bytes.NewReader(body))
+	q := url.Values{"cluster_id": {s.ClusterID}}
+	httpReq, err := http.NewRequest(http.MethodPost, s.BaseURL+"/api/v1/triage/bulk?"+q.Encode(), bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("building triage server request: %w", err)
 	}

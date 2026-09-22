@@ -40,10 +40,10 @@ func TestHandleGetTriage_DefaultsToNewForUntriaged(t *testing.T) {
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
 
-	_, token := registerAndIngest(t, store, ts)
+	cluster, _ := registerAndIngest(t, store, ts)
 
-	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/v1/triage?source=kubectl-audit", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/v1/triage?cluster_id="+cluster.ID.String()+"&source=kubectl-audit", nil)
+	req.Header.Set("Authorization", "Bearer admin-secret")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
@@ -77,11 +77,11 @@ func TestHandlePatchTriageEntry(t *testing.T) {
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
 
-	_, token := registerAndIngest(t, store, ts)
+	cluster, _ := registerAndIngest(t, store, ts)
 
 	body := `{"status":"confirmed","note":"looks real"}`
-	req, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/triage/kubectl-audit/abc123", bytes.NewReader([]byte(body)))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/triage/kubectl-audit/abc123?cluster_id="+cluster.ID.String(), bytes.NewReader([]byte(body)))
+	req.Header.Set("Authorization", "Bearer admin-secret")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
@@ -95,8 +95,8 @@ func TestHandlePatchTriageEntry(t *testing.T) {
 	// or status set by the first PATCH — the whole point of partial-update
 	// semantics.
 	body2 := `{"reviewer":"alice"}`
-	req2, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/triage/kubectl-audit/abc123", bytes.NewReader([]byte(body2)))
-	req2.Header.Set("Authorization", "Bearer "+token)
+	req2, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/triage/kubectl-audit/abc123?cluster_id="+cluster.ID.String(), bytes.NewReader([]byte(body2)))
+	req2.Header.Set("Authorization", "Bearer admin-secret")
 	resp2, err := http.DefaultClient.Do(req2)
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
@@ -126,10 +126,10 @@ func TestHandlePatchTriageEntry_UnknownFinding(t *testing.T) {
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
 
-	_, token := registerAndIngest(t, store, ts)
+	cluster, _ := registerAndIngest(t, store, ts)
 
-	req, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/triage/kubectl-audit/does-not-exist", bytes.NewReader([]byte(`{"status":"confirmed"}`)))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/triage/kubectl-audit/does-not-exist?cluster_id="+cluster.ID.String(), bytes.NewReader([]byte(`{"status":"confirmed"}`)))
+	req.Header.Set("Authorization", "Bearer admin-secret")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
@@ -145,14 +145,14 @@ func TestHandleBulkTriageUpdate(t *testing.T) {
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
 
-	_, token := registerAndIngest(t, store, ts)
+	cluster, _ := registerAndIngest(t, store, ts)
 
 	body := `{"source":"kubectl-audit","entries":[
 		{"fingerprint":"abc123","status":"wont_fix","note":"accepted risk"},
 		{"fingerprint":"ghost-finding","status":"confirmed"}
 	]}`
-	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/triage/bulk", bytes.NewReader([]byte(body)))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/triage/bulk?cluster_id="+cluster.ID.String(), bytes.NewReader([]byte(body)))
+	req.Header.Set("Authorization", "Bearer admin-secret")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
@@ -174,26 +174,30 @@ func TestHandleBulkTriageUpdate(t *testing.T) {
 	}
 }
 
-func TestHandleGetTriage_CrossClusterTokenIsolation(t *testing.T) {
+// TestHandleGetTriage_ScopedByClusterID replaces the old cross-cluster
+// *token* isolation test — triage reads are no longer scoped by which
+// cluster's token the caller presents (see handleGetTriage's doc comment):
+// an admin caller names the cluster explicitly via cluster_id, and this
+// checks that naming cluster B's id genuinely returns only cluster B's
+// (empty) findings, not cluster A's.
+func TestHandleGetTriage_ScopedByClusterID(t *testing.T) {
 	srv, store := newTestServer()
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
 
-	registerAndIngest(t, store, ts)
+	clusterA, _ := registerAndIngest(t, store, ts)
 
-	// A second cluster's token must never see the first cluster's findings
-	// — ListFindings is scoped by the authenticated cluster's own ID, not
-	// anything from the request body/query.
-	plaintextB, hashB, err := newClusterToken()
+	_, hashB, err := newClusterToken()
 	if err != nil {
 		t.Fatalf("newClusterToken: %v", err)
 	}
-	if _, err := store.Register(context.Background(), "other-cluster", "", "", hashB); err != nil {
+	clusterB, err := store.Register(context.Background(), "other-cluster", "", "", hashB)
+	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
 
-	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/v1/triage", nil)
-	req.Header.Set("Authorization", "Bearer "+plaintextB)
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/v1/triage?cluster_id="+clusterB.ID.String(), nil)
+	req.Header.Set("Authorization", "Bearer admin-secret")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
@@ -205,6 +209,46 @@ func TestHandleGetTriage_CrossClusterTokenIsolation(t *testing.T) {
 		t.Fatalf("decoding: %v", err)
 	}
 	if len(decoded.Entries) != 0 {
-		t.Errorf("cluster B's token saw %d entries, want 0 (cluster A's findings must not leak)", len(decoded.Entries))
+		t.Errorf("cluster_id=%s saw %d entries, want 0 (cluster A's findings must not leak)", clusterB.ID, len(decoded.Entries))
+	}
+
+	reqA, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/v1/triage?cluster_id="+clusterA.ID.String(), nil)
+	reqA.Header.Set("Authorization", "Bearer admin-secret")
+	respA, err := http.DefaultClient.Do(reqA)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer respA.Body.Close()
+
+	var decodedA triageViewResponse
+	if err := json.NewDecoder(respA.Body).Decode(&decodedA); err != nil {
+		t.Fatalf("decoding: %v", err)
+	}
+	if len(decodedA.Entries) != 1 {
+		t.Errorf("cluster_id=%s saw %d entries, want 1", clusterA.ID, len(decodedA.Entries))
+	}
+}
+
+// TestHandleGetTriage_RejectsClusterPushToken is the core invariant behind
+// this endpoint moving off clusterFromToken: a cluster's own ingest token
+// must not double as read access to its findings/triage — that's an
+// "expert" action, gated by the admin token instead (see NewServer's doc
+// comment on the admin/cluster token split).
+func TestHandleGetTriage_RejectsClusterPushToken(t *testing.T) {
+	srv, store := newTestServer()
+	ts := httptest.NewServer(srv.Routes())
+	defer ts.Close()
+
+	cluster, token := registerAndIngest(t, store, ts)
+
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/v1/triage?cluster_id="+cluster.ID.String(), nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401 (a cluster's push token must not grant triage read access)", resp.StatusCode)
 	}
 }

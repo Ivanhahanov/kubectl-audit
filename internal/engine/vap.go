@@ -39,9 +39,10 @@ const (
 	// there's no kb-message, since Finding.Message (the tool's own,
 	// sometimes per-resource, technical text) is never overridden this
 	// way — see internal/triage.Resolve.
-	AnnotationKBTitle       = "audit.k8s-auditor.io/kb-title"
-	AnnotationKBDescription = "audit.k8s-auditor.io/kb-description"
-	AnnotationKBRemediation = "audit.k8s-auditor.io/kb-remediation"
+	AnnotationKBTitle             = "audit.k8s-auditor.io/kb-title"
+	AnnotationKBDescription       = "audit.k8s-auditor.io/kb-description"
+	AnnotationKBRemediation       = "audit.k8s-auditor.io/kb-remediation"
+	AnnotationKBVerificationSteps = "audit.k8s-auditor.io/kb-verification-steps"
 )
 
 // PolicyMeta carries the audit-specific metadata read from a policy's
@@ -54,8 +55,9 @@ type PolicyMeta struct {
 	Remediation       string
 	VerificationSteps string
 	CIS               []string
-	// KnowledgeBase carries any kb-title/kb-description/kb-remediation
-	// annotation overrides (see AnnotationKBTitle and friends) — nil if
+	// KnowledgeBase carries any kb-title/kb-description/kb-remediation/
+	// kb-verification-steps annotation overrides (see AnnotationKBTitle and
+	// friends) — nil if
 	// the policy sets none. Copied onto every Finding this policy
 	// produces (see eval.go), consumed by internal/triage.Resolve.
 	KnowledgeBase *findings.KnowledgeBaseEntry
@@ -121,15 +123,17 @@ func ExtractMeta(policy *admissionregistrationv1.ValidatingAdmissionPolicy) Poli
 		meta.Category = "general"
 	}
 	kb := findings.KnowledgeBaseEntry{
-		Title:       ann[AnnotationKBTitle],
-		Description: ann[AnnotationKBDescription],
-		Remediation: ann[AnnotationKBRemediation],
+		Title:             ann[AnnotationKBTitle],
+		Description:       ann[AnnotationKBDescription],
+		Remediation:       ann[AnnotationKBRemediation],
+		VerificationSteps: ann[AnnotationKBVerificationSteps],
 	}
 	// No kb-labels annotation (Labels is deliberately external-knowledge-
 	// base-only — see findings.KnowledgeBaseEntry.Labels), so the
 	// zero-value check below only ever needs Title/Description/
-	// Remediation; Labels stays nil either way for an inline entry.
-	if kb.Title != "" || kb.Description != "" || kb.Remediation != "" {
+	// Remediation/VerificationSteps; Labels stays nil either way for an
+	// inline entry.
+	if kb.Title != "" || kb.Description != "" || kb.Remediation != "" || kb.VerificationSteps != "" {
 		meta.KnowledgeBase = &kb
 	}
 	return meta

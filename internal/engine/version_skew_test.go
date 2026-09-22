@@ -41,6 +41,9 @@ spec:
     items:
       - hard:
           limits.cpu: "10"
+          limits.memory: "20Gi"
+          pods: "50"
+          persistentvolumeclaims: "10"
   limitRanges:
     items:
       - limits:

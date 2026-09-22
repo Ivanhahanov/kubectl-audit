@@ -21,13 +21,13 @@ them. Each section is copy-pasteable.
 ## Contents
 
 - [Quick start (no Kubernetes needed)](#quick-start-no-kubernetes-needed)
+- [API documentation (Swagger/OpenAPI)](#api-documentation-swaggeropenapi)
 - [Registering a cluster and pushing a scan](#registering-a-cluster-and-pushing-a-scan)
 - [Triage against the server](#triage-against-the-server)
 - [Ingesting findings from other tools (OpenReports)](#ingesting-findings-from-other-tools-openreports)
 - [Centralized knowledge base](#centralized-knowledge-base)
 - [Centralized exclusion rules](#centralized-exclusion-rules)
 - [Automation rules](#automation-rules)
-- [Audit requests and triggering a scan on demand](#audit-requests-and-triggering-a-scan-on-demand)
 - [`inspect`: a narrow, read-only diagnostic CLI](#inspect-a-narrow-read-only-diagnostic-cli)
 - [The MCP adapter (AI agent integration)](#the-mcp-adapter-ai-agent-integration)
 - [Deploying to a real cluster (Helm chart)](#deploying-to-a-real-cluster-helm-chart)
@@ -47,6 +47,28 @@ docker compose up
 This starts Postgres and the server (`ADMIN_TOKEN=demo-admin-token`, listening on `:8080`,
 migrations applied automatically on startup). Everything from here on assumes the server is
 reachable at `http://localhost:8080` — adjust if you deployed it elsewhere.
+
+## API documentation (Swagger/OpenAPI)
+
+Every endpoint below is annotated with [swaggo](https://github.com/swaggo/swag) comments and
+served as an interactive Swagger UI, no separate tool required:
+
+```
+http://localhost:8080/swagger/index.html
+```
+
+The raw OpenAPI 2.0 spec backing that UI is at `http://localhost:8080/swagger/doc.json` (also
+committed as `cmd/kubectl-audit-server/docs/swagger.json`/`.yaml`, handy for importing into
+Postman/Insomnia or generating a client). Click "Authorize" in the UI and paste
+`Bearer <admin-token>` or `Bearer <cluster-token>` to try requests directly from the browser — the
+same admin-vs-cluster token split described below applies.
+
+If you change a handler's request/response shape or add a new endpoint, regenerate the spec:
+
+```sh
+go run github.com/swaggo/swag/cmd/swag@latest init \
+  -g cmd/kubectl-audit-server/main.go -o cmd/kubectl-audit-server/docs --parseInternal --pd
+```
 
 ## Registering a cluster and pushing a scan
 
@@ -77,32 +99,51 @@ for the exact fingerprinting rules if you're curious.
 
 `kubectl audit triage` (the same interactive TUI, `export`, and `jira-sync` you already know) can
 persist decisions centrally instead of to a local `triage-state.yaml`, with **no other behavior
-change** — add three things:
+change** — add four things:
 
 ```sh
 kubectl audit triage \
   --triage-server http://localhost:8080 \
-  --triage-server-token <cluster token> \
+  --triage-server-cluster-id <cluster id> \
+  --triage-server-token <admin token> \
   --findings findings.json
 ```
 
+Triage read/write is an **admin-gated "expert" action**, deliberately separate from a cluster's own
+push token: that token is ingest-only (`POST /api/v1/ingest/*`) and grants no access to
+`/api/v1/triage/*` — a leaked push token can inject fake findings but can't read anyone's triage
+notes or Jira links. So `--triage-server-token` here is the server's admin token, not the cluster
+token from registration, and `--triage-server-cluster-id` says explicitly which cluster's findings
+you're triaging (the `id` field from that cluster's registration response, not its token).
+
 (`--triage-server-source` defaults to `kubectl-audit`; set it explicitly if you're triaging an
 OpenReports-ingested source instead — see below.) The token can also come from
-`$KUBECTL_AUDIT_TRIAGE_SERVER_TOKEN`, and both `--triage-server`/`--triage-server-source` have
-`audit.yaml` equivalents (`triage.server.baseUrl`/`triage.server.source`) so you don't have to
-repeat the flags every run.
+`$KUBECTL_AUDIT_TRIAGE_SERVER_TOKEN`, and `--triage-server`/`--triage-server-source`/
+`--triage-server-cluster-id` all have `audit.yaml` equivalents
+(`triage.server.baseUrl`/`triage.server.source`/`triage.server.clusterId`) so you don't have to
+repeat the flags every run — `clusterId` isn't a credential (on its own it grants nothing), so it's
+fine to commit alongside `baseUrl`/`source`.
 
 Everything — marking confirmed/false-positive/won't-fix, notes, bulk actions, even `'j'` filing a
-Jira ticket — works exactly the same; only *where* the decision is saved changes. You can confirm
-it round-tripped with a plain curl call too:
+Jira ticket — works exactly the same; only *where* the decision is saved changes.
+
+**`--triage-server` always means findings come from the server too**, not just where decisions are
+saved — `--findings`/`triage.output.json` are ignored entirely in this mode, no local scan required.
+This is what makes reviewing findings pushed by a cluster you never personally scanned possible (the
+multi-cluster case — a hub aggregating scans from elsewhere). It's one mode or the other on purpose:
+an earlier version of this made that choice implicitly (server findings only if no local
+findings.json happened to exist on disk), which was surprising — whether you saw server-side or
+stale local data depended on nothing more than a stray file sitting around.
+
+You can confirm a decision round-tripped with a plain curl call too:
 
 ```sh
-curl -X PATCH "http://localhost:8080/api/v1/triage/kubectl-audit/<finding id>" \
-  -H "Authorization: Bearer <cluster token>" -H "Content-Type: application/json" \
+curl -X PATCH "http://localhost:8080/api/v1/triage/kubectl-audit/<finding id>?cluster_id=<cluster id>" \
+  -H "Authorization: Bearer <admin token>" -H "Content-Type: application/json" \
   -d '{"status":"confirmed","note":"real escalation path, needs remediation"}'
 
-curl "http://localhost:8080/api/v1/triage?source=kubectl-audit&status=confirmed" \
-  -H "Authorization: Bearer <cluster token>"
+curl "http://localhost:8080/api/v1/triage?cluster_id=<cluster id>&source=kubectl-audit&status=confirmed" \
+  -H "Authorization: Bearer <admin token>"
 ```
 
 ## Ingesting findings from other tools (OpenReports)
@@ -199,7 +240,7 @@ curl -X POST http://localhost:8080/api/v1/automation-rules \
     "action": {"type": "file_jira"}
   }'
 
-# Run one evaluation pass immediately (a background ticker also runs this
+# Run one evaluation pass immediately (kubectl-audit-worker also runs this
 # automatically every AUTOMATION_INTERVAL_SECONDS, 300s by default)
 curl -X POST http://localhost:8080/api/v1/automation-rules/evaluate \
   -H "Authorization: Bearer demo-admin-token"
@@ -207,32 +248,6 @@ curl -X POST http://localhost:8080/api/v1/automation-rules/evaluate \
 
 A confirmed CRITICAL finding older than 24h with no Jira link shows up in the response with
 `"attempted": false` and a `detail` explaining why — that's the expected, honest state today.
-
-## Audit requests and triggering a scan on demand
-
-An audit request is a "please scan this cluster" ticket — created by anyone, approved by an admin,
-which (if a `PipelineTrigger` is configured) kicks off a real scan:
-
-```sh
-curl -X POST http://localhost:8080/api/v1/audit-requests \
-  -H "Authorization: Bearer demo-admin-token" -H "Content-Type: application/json" \
-  -d '{"clusterId":"<cluster id>","reason":"quarterly compliance check","requestedBy":"alice"}'
-
-curl -X PATCH http://localhost:8080/api/v1/audit-requests/<request id> \
-  -H "Authorization: Bearer demo-admin-token" -H "Content-Type: application/json" \
-  -d '{"status":"approved"}'
-# -> status flips to "running" with a tektonPipelineRunName, if a real Tekton trigger is configured
-```
-
-Without `PIPELINE_TRIGGER=tekton` set, approving just logs what *would* run (`LogTrigger`) — the
-request/approve/track workflow is fully real either way, only the actual triggering differs.
-
-**The real thing, not just logged intent:** `deploy/kind-demo` is a complete, tested example —
-Postgres + kubectl-audit-server + a real Tekton `Pipeline` that scans the cluster it runs in and
-pushes results back — verified end-to-end on a local `kind` cluster: approving a request there
-creates a genuine `PipelineRun`, which runs `kubectl-audit scan` + `kubectl-audit push` in-cluster
-and lands real findings on the server, all triggered by one API call. Follow that directory's
-README to reproduce it exactly.
 
 ## `inspect`: a narrow, read-only diagnostic CLI
 
@@ -268,14 +283,17 @@ kubectl-audit-mcp
 
 It speaks newline-delimited JSON-RPC 2.0 over stdio — point any MCP-compatible client (Claude
 Desktop, an MCP inspector, your own agent harness) at this binary directly. The intended production
-placement is *ephemeral*: spun up inside the same Tekton Task that runs a scan (reusing that Task's
+placement is *ephemeral*: spun up alongside whatever process runs a scan (reusing that process's
 already-legitimate, already-scoped kubeconfig for its lifetime only), never a standing sidecar with
-its own credentials.
+its own credentials — not yet wired into anything automatic, since there's no in-cluster scan
+orchestrator today (see "Registering a cluster and pushing a scan" above: scanning is just running
+`kubectl-audit scan`/`push` wherever fits, not something the server triggers itself).
 
 ## Deploying to a real cluster (Helm chart)
 
 `charts/kubectl-audit-server` deploys Postgres (via the
-[CloudNativePG operator](https://cloudnative-pg.io), by default) plus the server itself:
+[CloudNativePG operator](https://cloudnative-pg.io), by default) plus the server and
+kubectl-audit-worker (the automation-rule evaluation loop, its own Deployment):
 
 ```sh
 helm install audit charts/kubectl-audit-server \
@@ -286,6 +304,5 @@ kubectl -n kubectl-audit-system get secret audit-admin-token \
   -o jsonpath='{.data.token}' | base64 -d   # the auto-generated admin token
 ```
 
-See `charts/kubectl-audit-server/README.md` for the Postgres/Tekton-trigger escape hatches
-(pointing at an existing Postgres instead of CNPG, enabling the real `TektonTrigger`) — every
-value is documented in `values.yaml`.
+See `charts/kubectl-audit-server/README.md` for the Postgres escape hatches (pointing at an
+existing Postgres instead of CNPG) — every value is documented in `values.yaml`.

@@ -1,0 +1,39 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: network.no-wide-open-ipblock
+  annotations:
+    audit.k8s-auditor.io/title: "NetworkPolicy allows traffic from/to 0.0.0.0/0"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: network
+    audit.k8s-auditor.io/remediation: >-
+      Replace the 0.0.0.0/0 ipBlock with the specific namespaceSelector,
+      podSelector, or narrower CIDR the rule actually needs. An ipBlock of
+      0.0.0.0/0 in an allow rule permits traffic from/to any address
+      reachable from the pod's network — including addresses well outside
+      the cluster.
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Check whether an `except` list under the same ipBlock already
+      narrows this in practice (e.g. 0.0.0.0/0 except the pod CIDR itself is
+      a common, much narrower pattern than it first looks). 2. Confirm
+      whether this rule is ingress or egress — an egress 0.0.0.0/0 to reach
+      arbitrary external APIs is a more common legitimate need than an
+      ingress 0.0.0.0/0 accepting traffic from anywhere, so weigh urgency
+      accordingly rather than treating both identically.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["networking.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["networkpolicies"]
+  validations:
+    - expression: |-
+        (!has(object.spec.ingress) || object.spec.ingress.all(r,
+          !has(r.from) || r.from.all(p, !has(p.ipBlock) || p.ipBlock.cidr != "0.0.0.0/0")
+        )) &&
+        (!has(object.spec.egress) || object.spec.egress.all(r,
+          !has(r.to) || r.to.all(p, !has(p.ipBlock) || p.ipBlock.cidr != "0.0.0.0/0")
+        ))
+      message: "NetworkPolicy has an ingress/egress rule with ipBlock.cidr: 0.0.0.0/0 — allows traffic from/to any address, not a specific source/destination."

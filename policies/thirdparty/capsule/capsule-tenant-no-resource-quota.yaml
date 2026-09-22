@@ -8,14 +8,19 @@ metadata:
     audit.k8s-auditor.io/category: multitenancy
     audit.k8s-auditor.io/remediation: >-
       Set spec.resourceQuotas.items on the Tenant so Capsule provisions a
-      ResourceQuota in every namespace it creates for this tenant. Without
-      it, the tenant has no ceiling on aggregate CPU/memory/object-count
-      consumption and can affect other tenants sharing the cluster.
+      ResourceQuota in every namespace it creates for this tenant, and make
+      sure the combined items actually bound CPU (requests.cpu/limits.cpu),
+      memory (requests.memory/limits.memory), pod count (pods), and
+      PersistentVolumeClaim count (persistentvolumeclaims) — not just any
+      one of them. A quota that only limits, say, CPU still leaves the
+      tenant able to consume unbounded memory or create unbounded pods/PVCs.
     audit.k8s-auditor.io/verification-steps: >-
       1. Check whether the tenant's namespaces already have a ResourceQuota applied
       through some other mechanism outside this Tenant field. 2. Assess actual cluster
       capacity risk: a tenant on a cluster with abundant headroom and few tenants has
-      lower urgency than one on a tightly-packed, many-tenant shared cluster.
+      lower urgency than one on a tightly-packed, many-tenant shared cluster. 3. If
+      only some of CPU/memory/pods/PVCs are bounded, prioritize by which unbounded
+      dimension the cluster actually has the least headroom on.
 spec:
   failurePolicy: Fail
   matchConstraints:
@@ -36,3 +41,12 @@ spec:
         has(object.spec.resourceQuotas) && has(object.spec.resourceQuotas.items) &&
         size(object.spec.resourceQuotas.items) > 0
       message: "Tenant does not set spec.resourceQuotas.items, so its namespaces have no resource quota ceiling — this tenant can consume unbounded cluster resources."
+    - expression: |-
+        !has(object.spec.resourceQuotas) || !has(object.spec.resourceQuotas.items) || size(object.spec.resourceQuotas.items) == 0 ||
+        (
+          object.spec.resourceQuotas.items.exists(i, has(i.hard) && ("requests.cpu" in i.hard || "limits.cpu" in i.hard || "cpu" in i.hard)) &&
+          object.spec.resourceQuotas.items.exists(i, has(i.hard) && ("requests.memory" in i.hard || "limits.memory" in i.hard || "memory" in i.hard)) &&
+          object.spec.resourceQuotas.items.exists(i, has(i.hard) && ("pods" in i.hard)) &&
+          object.spec.resourceQuotas.items.exists(i, has(i.hard) && ("persistentvolumeclaims" in i.hard || "requests.storage" in i.hard))
+        )
+      message: "Tenant's spec.resourceQuotas.items don't together bound CPU, memory, pod count, and PersistentVolumeClaim count — only some dimensions are capped, so the tenant can still consume unbounded amounts of whichever one is missing."

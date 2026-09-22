@@ -47,6 +47,17 @@ func toExclusionRuleDTO(r storage.ExclusionRule) exclusionRuleDTO {
 // handleDeleteExclusionRule are admin-token-gated — see NewServer's doc
 // comment for why exclusion rules are organization-level configuration,
 // not per-cluster data.
+//
+//	@Summary		List exclusion rules
+//	@Description	Lists exclusion rules, optionally narrowed to one cluster (rules with no clusterId apply to every cluster).
+//	@Tags			exclusion-rules
+//	@Produce		json
+//	@Security		AdminAuth
+//	@Param			cluster_id	query		string	false	"Restrict to rules for this cluster ID"
+//	@Success		200			{object}	map[string][]exclusionRuleDTO
+//	@Failure		400			{object}	map[string]string	"invalid cluster_id"
+//	@Failure		401			{object}	map[string]string	"missing or invalid admin token"
+//	@Router			/exclusion-rules [get]
 func (s *Server) handleListExclusionRules(w http.ResponseWriter, r *http.Request) {
 	if !constantTimeEqual(bearerToken(r), s.adminToken) {
 		writeError(w, http.StatusUnauthorized, "missing or invalid admin token")
@@ -75,6 +86,17 @@ func (s *Server) handleListExclusionRules(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, map[string][]exclusionRuleDTO{"rules": dtos})
 }
 
+// @Summary		Create an exclusion rule
+// @Description	Creates a rule that suppresses matching findings, org-wide or for one cluster (clusterId).
+// @Tags			exclusion-rules
+// @Accept			json
+// @Produce		json
+// @Security		AdminAuth
+// @Param			request	body		exclusionRuleDTO	true	"Exclusion rule to create"
+// @Success		201		{object}	exclusionRuleDTO
+// @Failure		400		{object}	map[string]string	"invalid request body / missing reason / invalid clusterId"
+// @Failure		401		{object}	map[string]string	"missing or invalid admin token"
+// @Router			/exclusion-rules [post]
 func (s *Server) handleCreateExclusionRule(w http.ResponseWriter, r *http.Request) {
 	if !constantTimeEqual(bearerToken(r), s.adminToken) {
 		writeError(w, http.StatusUnauthorized, "missing or invalid admin token")
@@ -115,6 +137,16 @@ func (s *Server) handleCreateExclusionRule(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusCreated, toExclusionRuleDTO(created))
 }
 
+// @Summary		Delete an exclusion rule
+// @Description	Deletes one exclusion rule by ID.
+// @Tags			exclusion-rules
+// @Security		AdminAuth
+// @Param			id	path	string	true	"Exclusion rule ID"
+// @Success		204	"deleted"
+// @Failure		400	{object}	map[string]string	"invalid id"
+// @Failure		401	{object}	map[string]string	"missing or invalid admin token"
+// @Failure		404	{object}	map[string]string	"no such exclusion rule"
+// @Router			/exclusion-rules/{id} [delete]
 func (s *Server) handleDeleteExclusionRule(w http.ResponseWriter, r *http.Request) {
 	if !constantTimeEqual(bearerToken(r), s.adminToken) {
 		writeError(w, http.StatusUnauthorized, "missing or invalid admin token")

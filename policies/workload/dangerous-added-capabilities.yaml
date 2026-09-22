@@ -1,0 +1,55 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: workload.dangerous-added-capabilities
+  annotations:
+    audit.k8s-auditor.io/title: "Container adds a high-risk Linux capability"
+    audit.k8s-auditor.io/severity: high
+    audit.k8s-auditor.io/category: workload-security
+    audit.k8s-auditor.io/remediation: >-
+      Remove SYS_ADMIN, NET_RAW, SYS_PTRACE, SYS_MODULE, NET_ADMIN, or
+      SYS_BOOT from securityContext.capabilities.add unless the workload has
+      a specific, documented need — each of these is close to (or
+      equivalent to) root on the host in what it enables, distinct from the
+      generic "capabilities aren't dropped at all" gap workload.
+      drop-all-capabilities already flags. SYS_ADMIN in particular is
+      broad enough to be treated as a near-root grant on its own.
+    audit.k8s-auditor.io/cis: "5.2.8,5.2.9"
+    audit.k8s-auditor.io/verification-steps: >-
+      1. Identify which specific capability was added and check whether the
+      workload genuinely needs it (e.g. NET_RAW for a network diagnostic
+      tool, SYS_PTRACE for a debugger/profiler sidecar) — these are real,
+      narrower use cases distinct from a container that needs broad root-
+      equivalent access. 2. SYS_ADMIN covers a very wide range of
+      operations (mount, some namespace operations, more) — if it's added,
+      confirm exactly which of those operations the workload uses; "SYS_ADMIN
+      because one thing needed it" often means a narrower capability
+      (or none at all) would have worked instead.
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+      - apiGroups: ["batch"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["jobs", "cronjobs"]
+  validations:
+    - expression: |-
+        (has(object.spec.containers) ? object.spec.containers
+          : (has(object.spec.template) && has(object.spec.template.spec) && has(object.spec.template.spec.containers)) ? object.spec.template.spec.containers
+          : (has(object.spec.jobTemplate) && has(object.spec.jobTemplate.spec) && has(object.spec.jobTemplate.spec.template) && has(object.spec.jobTemplate.spec.template.spec) && has(object.spec.jobTemplate.spec.template.spec.containers)) ? object.spec.jobTemplate.spec.template.spec.containers
+          : []).all(c,
+            !has(c.securityContext) || !has(c.securityContext.capabilities) || !has(c.securityContext.capabilities.add) ||
+            c.securityContext.capabilities.add.all(cap,
+              !(cap in ["SYS_ADMIN", "NET_RAW", "SYS_PTRACE", "SYS_MODULE", "NET_ADMIN", "SYS_BOOT"])
+            )
+          )
+      message: "Container adds a high-risk capability (one of SYS_ADMIN, NET_RAW, SYS_PTRACE, SYS_MODULE, NET_ADMIN, SYS_BOOT) via securityContext.capabilities.add."

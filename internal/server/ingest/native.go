@@ -68,6 +68,7 @@ func (NativeIngestor) Ingest(clusterID uuid.UUID, body []byte) ([]Batch, error) 
 			Message:            f.Message,
 			Remediation:        f.Remediation,
 			VerificationSteps:  f.VerificationSteps,
+			DedupKey:           f.DedupKey,
 		})
 	}
 	return []Batch{{Scan: scan, Findings: out}}, nil

@@ -4,7 +4,7 @@ VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X '$(MODULE)/internal/cli.Version=$(VERSION)'
 GOBIN   ?= $(shell go env GOPATH)/bin
 
-.PHONY: build test vet install clean cross-compile
+.PHONY: build test vet install clean cross-compile swagger
 
 build:
 	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o bin/$(BINARY) ./cmd/kubectl-audit
@@ -14,6 +14,13 @@ test:
 
 vet:
 	go vet ./...
+
+# Regenerates cmd/kubectl-audit-server/docs from the @-annotated handler
+# comments in internal/server/http — run after changing an endpoint's
+# request/response shape or adding a new one. See docs/server.md.
+swagger:
+	go run github.com/swaggo/swag/cmd/swag@latest init \
+		-g cmd/kubectl-audit-server/main.go -o cmd/kubectl-audit-server/docs --parseInternal --pd
 
 install: build
 	mkdir -p $(GOBIN)

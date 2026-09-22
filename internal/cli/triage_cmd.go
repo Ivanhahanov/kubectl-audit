@@ -26,6 +26,7 @@ var (
 	flagTriageServerURL         string
 	flagTriageServerSource      string
 	flagTriageServerToken       string
+	flagTriageServerClusterID   string
 )
 
 func newTriageCmd() *cobra.Command {
@@ -53,7 +54,8 @@ func newTriageCmd() *cobra.Command {
 	// behavior exactly as-is; running a server is never required.
 	cmd.PersistentFlags().StringVar(&flagTriageServerURL, "triage-server", "", "kubectl-audit-server base URL (default: from config, triage.server.baseUrl; empty keeps triage fully local)")
 	cmd.PersistentFlags().StringVar(&flagTriageServerSource, "triage-server-source", "", "which scan source's findings to triage on the server (default: from config, triage.server.source, \"kubectl-audit\")")
-	cmd.PersistentFlags().StringVar(&flagTriageServerToken, "triage-server-token", "", "this cluster's bearer token, issued at `kubectl-audit-server` cluster registration (default: $KUBECTL_AUDIT_TRIAGE_SERVER_TOKEN — never stored in audit.yaml)")
+	cmd.PersistentFlags().StringVar(&flagTriageServerClusterID, "triage-server-cluster-id", "", "which cluster's findings to triage on the server, returned at `kubectl-audit-server` cluster registration (default: from config, triage.server.clusterId)")
+	cmd.PersistentFlags().StringVar(&flagTriageServerToken, "triage-server-token", "", "kubectl-audit-server admin token — triage read/write is an admin-gated action, distinct from the cluster's own ingest token (default: $KUBECTL_AUDIT_TRIAGE_SERVER_TOKEN — never stored in audit.yaml)")
 	cmd.AddCommand(newTriageExportCmd())
 	cmd.AddCommand(newTriageJiraSyncCmd())
 	cmd.AddCommand(newTriageJiraCmd())
@@ -156,6 +158,14 @@ func resolveTriageStore(cmd *cobra.Command, statePath string) (triage.Store, err
 		source = "kubectl-audit"
 	}
 
+	clusterID := cfg.Triage.Server.ClusterID
+	if flagTriageServerClusterID != "" {
+		clusterID = flagTriageServerClusterID
+	}
+	if clusterID == "" {
+		return nil, fmt.Errorf("--triage-server is set but no cluster id: set --triage-server-cluster-id or triage.server.clusterId")
+	}
+
 	token := flagTriageServerToken
 	if token == "" {
 		token = os.Getenv("KUBECTL_AUDIT_TRIAGE_SERVER_TOKEN")
@@ -164,7 +174,7 @@ func resolveTriageStore(cmd *cobra.Command, statePath string) (triage.Store, err
 		return nil, fmt.Errorf("--triage-server is set but no token: set --triage-server-token or KUBECTL_AUDIT_TRIAGE_SERVER_TOKEN")
 	}
 
-	return triage.ServerStore{BaseURL: baseURL, Token: token, Source: source}, nil
+	return triage.ServerStore{BaseURL: baseURL, Token: token, ClusterID: clusterID, Source: source}, nil
 }
 
 // resolveKnowledgeBase loads triage.knowledgeBaseFile (see
@@ -185,13 +195,29 @@ func loadFindingsAndState(cmd *cobra.Command) (target string, all []findings.Fin
 	if err != nil {
 		return "", nil, nil, nil, nil, err
 	}
-	target, all, suppressed, err = triage.LoadFindings(findingsPath)
-	if err != nil {
-		return "", nil, nil, nil, nil, fmt.Errorf("%w (run `kubectl audit scan --output-json %s` first)", err, findingsPath)
-	}
 	store, err = resolveTriageStore(cmd, statePath)
 	if err != nil {
 		return "", nil, nil, nil, nil, err
+	}
+
+	// --triage-server means findings come from the server too, not just
+	// triage state — one mode or the other, never an implicit blend of a
+	// local findings.json with server-side decisions (that was surprising:
+	// whether it happened depended on nothing more than a stray file
+	// existing on disk at the default path). This is also what makes
+	// reviewing findings pushed by a cluster the caller never personally
+	// scanned possible — nothing here requires a local findings.json.
+	if srv, ok := store.(triage.ServerStore); ok {
+		all, state, err = srv.LoadAll()
+		if err != nil {
+			return "", nil, nil, nil, nil, err
+		}
+		return "server:" + srv.ClusterID, all, nil, state, store, nil
+	}
+
+	target, all, suppressed, err = triage.LoadFindings(findingsPath)
+	if err != nil {
+		return "", nil, nil, nil, nil, fmt.Errorf("%w (run `kubectl audit scan --output-json %s` first)", err, findingsPath)
 	}
 	state, err = store.Load()
 	if err != nil {

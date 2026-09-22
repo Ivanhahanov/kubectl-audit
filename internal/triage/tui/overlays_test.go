@@ -217,18 +217,22 @@ func TestStripDetailColorTags_RemovesOnlyKnownTagsNotUserBrackets(t *testing.T) 
 	}
 }
 
-// TestDetailText_NoVerificationStepsSection guards against verification
-// steps creeping back into the detail view — dropped deliberately (see
-// docs/triage.md), the view now shows only what a filed ticket would
-// contain (Title/Description/Remediation).
-func TestDetailText_NoVerificationStepsSection(t *testing.T) {
+// TestDetailText_ShowsVerificationSteps guards the fix for the opposite bug
+// this test used to assert: VerificationSteps — the one field specifically
+// written so a human can confirm a finding isn't a false positive before
+// acting on it — was silently dropped from both the detail view and filed
+// tickets (see internal/triage.ResolvedContent), even though every check is
+// required to set it (see internal/rbac/verification_steps_test.go and
+// friends). The view must show exactly what triage.Resolve would put in a
+// filed ticket.
+func TestDetailText_ShowsVerificationSteps(t *testing.T) {
 	r := dedupRow("1", "policy.a", "the message", "ns", "app")
 	r.Finding.VerificationSteps = "1. Do this. 2. Do that."
 	a := &app{}
 
 	out := a.detailText(r)
-	if strings.Contains(out, "Verification") || strings.Contains(out, "Do this") {
-		t.Errorf("expected no verification-steps content in the detail view, got:\n%s", out)
+	if !strings.Contains(out, "Do this") {
+		t.Errorf("expected verification-steps content in the detail view, got:\n%s", out)
 	}
 }
 

@@ -27,9 +27,10 @@ environment, distinct from `remediation` (which assumes it's already confirmed).
 reason `triage` exists as a separate step from `scan`: a static-analysis tool can flag "this
 Ingress has no `spec.tls`," but only a human who knows whether that Ingress is actually
 internet-reachable can decide how urgent that really is. Recorded in `findings.json`
-(`verificationSteps`) for other tooling to use; not currently shown in the triage TUI or filed
-tickets, which stay focused on Title/Description/Remediation (see [Knowledge
-base](#knowledge-base-your-organizations-own-ticket-content)).
+(`verificationSteps`) for other tooling to use, and shown in both the triage TUI's detail view and
+filed tickets, right alongside Title/Description/Remediation (see [Knowledge
+base](#knowledge-base-your-organizations-own-ticket-content) — an organization can override it too,
+e.g. to add an internal escalation channel or wiki link a generic check can't know about).
 
 ## Getting started
 
@@ -253,9 +254,18 @@ rbac-analyzer.broad-secrets-access:
     Secrets access, which our internal security standard SEC-042 restricts to the security-team
     role. Open a review request per the SEC-042 process before granting an exception.
   remediation: "File a review request with security-team per SEC-042 for {{.Finding.Resource.Name}}."
+  verificationSteps: >-
+    1. Check whether {{.Finding.Resource.Name}} matches an exception already approved in SEC-042
+    (see the register linked from #sec-eng). 2. If not, escalate per the check's own steps below
+    before filing a ticket.
   labels:
     - sec-042
 ```
+
+`verificationSteps` layers on top of the check's own instructions the same way `remediation` does — use it for
+organization-specific process a generic check can't know (an internal escalation channel, a link to an internal
+wiki page, a known-exception register), not to re-derive detail the check already knows about the resource
+itself.
 
 A field with no `{{ }}` in it round-trips unchanged — templating is opt-in per field, not
 required. A malformed template in one field is reported (in the TUI detail view, and as a
@@ -293,8 +303,9 @@ built-in checks, is — in any language you like; only the surrounding scaffoldi
 ("Remediation:", "Technical detail:") comes from the template, in whatever language you wrote it.
 
 **Writing your own policy?** Skip the external file and write your knowledge base directly in the
-policy — `audit.k8s-auditor.io/kb-title`, `.../kb-description`, `.../kb-remediation` alongside the
-existing English annotations (see [Writing Policies](./writing-policies/)). One file, no separate
+policy — `audit.k8s-auditor.io/kb-title`, `.../kb-description`, `.../kb-remediation`,
+`.../kb-verification-steps` alongside the existing English annotations (see [Writing
+Policies](./writing-policies/)). One file, no separate
 entry needed. If a policy sets these *and* `knowledgeBaseFile` also has an entry for the same
 PolicyID, the file wins, field by field — the one case these two mechanisms overlap; day to day
 you'll only ever use one or the other for a given check.
