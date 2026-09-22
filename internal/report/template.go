@@ -108,11 +108,26 @@ type SeverityGroup struct {
 // way back to listing every single finding individually. See
 // MessageBucketKey.
 type CheckGroup struct {
-	PolicyID    string
-	Title       string
-	Category    string
-	CIS         []string
-	Remediation string
+	PolicyID string
+	Title    string
+	Category string
+	// PrimaryStandard is this check's headline compliance reference —
+	// "<Framework>: <ID> — <Title>" for the *first* framework listed in
+	// --frameworks that has a matching control (see
+	// compliance.SplitPrimary), so a private org standard takes priority
+	// over CIS just by being listed before it. Falls back to the raw
+	// Finding.CIS annotation (formatted "CIS: <ids>") only when no loaded
+	// framework references this check at all — a check shouldn't silently
+	// lose its only compliance reference just because it hasn't been added
+	// to a compliance mapping yet.
+	PrimaryStandard string
+	Remediation     string
+	// RelatedControls lists every OTHER control (beyond PrimaryStandard),
+	// across every other framework actually requested via --frameworks for
+	// this scan, that references this check — built from Result.Frameworks
+	// by buildControlIndex. Empty unless more than one loaded framework
+	// (bundled or a private --frameworks mapping) references this check.
+	RelatedControls string
 	// Findings is every finding under this PolicyID, flat — used for the
 	// "Affected resources (N)" total count. See MessageGroups for how
 	// they're actually rendered.
@@ -325,8 +340,9 @@ func newTemplateData(r Result) TemplateData {
 		current.Findings = append(current.Findings, f)
 	}
 	if wantCheck {
+		controlIndex := buildControlIndex(r.Frameworks)
 		for i := range groups {
-			groups[i].Checks = groupByCheck(groups[i].Findings, r.NamespaceGroupThreshold, r.GroupByNamePattern, r.KnowledgeBase)
+			groups[i].Checks = groupByCheck(groups[i].Findings, r.NamespaceGroupThreshold, r.GroupByNamePattern, r.KnowledgeBase, controlIndex)
 		}
 	}
 
@@ -373,7 +389,30 @@ func newTemplateData(r Result) TemplateData {
 // regardless, same as it always has. kb applies an organization's own
 // Title/Category/Remediation overrides (see resolveCheckKB); nil means no
 // overrides, today's behavior.
-func groupByCheck(sorted []findings.Finding, namespaceGroupThreshold int, byPattern bool, kb map[string]findings.KnowledgeBaseEntry) []CheckGroup {
+// buildControlIndex adapts every framework Scorecard actually computed for
+// this scan (Result.Frameworks — driven by --frameworks, default "cis",
+// but any bundled or private mapping loaded that way, in the order
+// requested) into compliance.BuildControlIndex's input shape. groupByCheck
+// uses the result to show, per check, which controls across which
+// frameworks reference it — dynamically reflecting whichever frameworks
+// were requested (a private org standard listed first takes priority over
+// CIS — see compliance.SplitPrimary), not just the one hardcoded CIS
+// annotation on the policy file itself (CheckGroup.CIS, kept only as a
+// fallback for a check no loaded framework mentions at all). Built once
+// per report, not per check.
+func buildControlIndex(frameworks []compliance.Scorecard) map[string][]compliance.ControlRef {
+	out := map[string][]compliance.ControlRef{}
+	for _, sc := range frameworks {
+		for _, res := range sc.Results {
+			for _, id := range res.Control.CheckIDs() {
+				out[id] = append(out[id], compliance.ControlRef{Framework: sc.Title, ID: res.Control.ID, Title: res.Control.Title})
+			}
+		}
+	}
+	return out
+}
+
+func groupByCheck(sorted []findings.Finding, namespaceGroupThreshold int, byPattern bool, kb map[string]findings.KnowledgeBaseEntry, controlIndex map[string][]compliance.ControlRef) []CheckGroup {
 	var order []string
 	byPolicy := map[string][]findings.Finding{}
 	for _, f := range sorted {
@@ -387,15 +426,20 @@ func groupByCheck(sorted []findings.Finding, namespaceGroupThreshold int, byPatt
 	for _, id := range order {
 		fs := byPolicy[id]
 		title, category, remediation := resolveCheckKB(fs[0], kb)
+		primary, related := compliance.SplitPrimary(controlIndex[id])
+		if primary == "" && len(fs[0].CIS) > 0 {
+			primary = "CIS: " + strings.Join(fs[0].CIS, ", ")
+		}
 		out = append(out, CheckGroup{
-			PolicyID:      id,
-			Title:         title,
-			Category:      category,
-			CIS:           fs[0].CIS,
-			Remediation:   remediation,
-			Findings:      fs,
-			MessageGroups: groupByMessage(fs, namespaceGroupThreshold, byPattern),
-			Collapsible:   len(fs) > checkCollapseThreshold,
+			PolicyID:        id,
+			Title:           title,
+			Category:        category,
+			PrimaryStandard: primary,
+			RelatedControls: related,
+			Remediation:     remediation,
+			Findings:        fs,
+			MessageGroups:   groupByMessage(fs, namespaceGroupThreshold, byPattern),
+			Collapsible:     len(fs) > checkCollapseThreshold,
 		})
 	}
 	return out

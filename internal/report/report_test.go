@@ -1132,7 +1132,7 @@ func TestRenderMarkdown_CheckDetailIsATable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderMarkdown: %v", err)
 	}
-	for _, want := range []string{"| Category | workload-security |", "| CIS | 5.1.1 |", "| Remediation | fix it |"} {
+	for _, want := range []string{"| Category | workload-security |", "| Standard | CIS: 5.1.1 |", "| Remediation | fix it |"} {
 		if !strings.Contains(md, want) {
 			t.Errorf("expected %q in the check detail table, got:\n%s", want, md)
 		}
@@ -1156,13 +1156,59 @@ func TestRenderConfluence_CheckDetailIsATable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderConfluence: %v", err)
 	}
-	for _, want := range []string{"|Category|workload-security|", "|CIS|5.1.1|", "|Remediation|fix it|"} {
+	for _, want := range []string{"|Category|workload-security|", "|Standard|CIS: 5.1.1|", "|Remediation|fix it|"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected %q in the check detail table, got:\n%s", want, out)
 		}
 	}
 	if strings.Contains(out, "* *Category:*") {
 		t.Errorf("expected the old bullet-list format gone, got:\n%s", out)
+	}
+}
+
+// TestRenderMarkdown_CustomFrameworkListedFirstIsPrimary guards the
+// "rely on our own standard, not always CIS" behavior: when --frameworks
+// lists a private/org mapping before cis, that mapping's control is the
+// headline "Standard" row, and CIS moves to "Related standards" — not the
+// other way around. Order decides priority, not framework identity.
+func TestRenderMarkdown_CustomFrameworkListedFirstIsPrimary(t *testing.T) {
+	f := findings.Finding{
+		ID: "1", PolicyID: "workload.x", Title: "Bad thing", Severity: findings.SeverityHigh,
+		Category: "workload-security", CIS: []string{"5.1.1"},
+		Resource: findings.ResourceRef{Kind: "Pod", Name: "p", Namespace: "default"},
+		Message:  "bad thing happened", Remediation: "fix it",
+	}
+	internalMapping := &compliance.Mapping{
+		ID: "internal", Title: "Internal Standard", Version: "1",
+		Controls: []compliance.Control{
+			{ID: "4.1.2", Title: "No bad things", Applicable: true, PolicyIDs: []string{"workload.x"}},
+		},
+	}
+	cisMapping := &compliance.Mapping{
+		ID: "cis", Title: "CIS Kubernetes Benchmark", Version: "2.0.1",
+		Controls: []compliance.Control{
+			{ID: "5.1.1", Title: "Something", Applicable: true, PolicyIDs: []string{"workload.x"}},
+		},
+	}
+	r := report.Result{
+		GeneratedAt: time.Now(),
+		Target:      "test",
+		Findings:    []findings.Finding{f},
+		Frameworks: []compliance.Scorecard{
+			// internal listed first: it must win as the primary Standard.
+			compliance.BuildScorecard(internalMapping, []findings.Finding{f}),
+			compliance.BuildScorecard(cisMapping, []findings.Finding{f}),
+		},
+	}
+	md, err := report.RenderMarkdown(r, "")
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
+	if !strings.Contains(md, "| Standard | Internal Standard: 4.1.2 — No bad things |") {
+		t.Errorf("expected the internal standard (listed first) as the primary Standard row, got:\n%s", md)
+	}
+	if !strings.Contains(md, "| Related standards | CIS Kubernetes Benchmark: 5.1.1 — Something |") {
+		t.Errorf("expected CIS demoted to Related standards, got:\n%s", md)
 	}
 }
 

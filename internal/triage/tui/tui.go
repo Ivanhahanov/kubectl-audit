@@ -17,6 +17,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
+	"github.com/ivanhahanov/kubectl-audit/internal/compliance"
 	"github.com/ivanhahanov/kubectl-audit/internal/findings"
 	"github.com/ivanhahanov/kubectl-audit/internal/report"
 	"github.com/ivanhahanov/kubectl-audit/internal/triage"
@@ -47,6 +48,7 @@ type app struct {
 	findingsPath   string
 	jira           JiraConfig
 	knowledgeBase  map[string]findings.KnowledgeBaseEntry
+	controlIndex   map[string][]compliance.ControlRef
 	dedupThreshold int
 
 	merged       []triage.Row            // full merge, unfiltered — source of truth for header totals
@@ -122,6 +124,16 @@ type Config struct {
 	// content and the detail view (enter), so it's independent of Jira
 	// even being configured.
 	KnowledgeBase map[string]findings.KnowledgeBaseEntry
+	// ControlIndex (compliance.BuildControlIndex, already loaded from
+	// triage.frameworks/--frameworks — see docs/custom-checks.md) maps a
+	// finding's PolicyID to the compliance controls that reference it,
+	// across every loaded framework, in priority order — the first-listed
+	// framework's matching control is primary (see compliance.SplitPrimary),
+	// so a private org standard takes priority over CIS just by being
+	// listed before it. Used both for Jira issue content and the detail
+	// view (enter), same as KnowledgeBase. nil means no frameworks loaded;
+	// every finding then falls back to its own Finding.CIS annotation.
+	ControlIndex map[string][]compliance.ControlRef
 	// DedupThreshold is the same "collapse a repeated finding once it hits
 	// this many near-identical instances" knob as
 	// config.OutputConfig.NamespaceGroupThreshold — one dial shared with
@@ -138,6 +150,7 @@ func Run(all []findings.Finding, suppressed []report.SuppressedFinding, state *t
 		store: cfg.Store, target: cfg.Target, findingsPath: cfg.FindingsPath,
 		jira:           cfg.Jira,
 		knowledgeBase:  cfg.KnowledgeBase,
+		controlIndex:   cfg.ControlIndex,
 		dedupThreshold: cfg.DedupThreshold,
 		sortField:      sortSeverity, sortAsc: false,
 		policySortField: policySortCount, policySortAsc: false,

@@ -9,6 +9,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
+	"github.com/ivanhahanov/kubectl-audit/internal/compliance"
 	"github.com/ivanhahanov/kubectl-audit/internal/triage"
 )
 
@@ -329,8 +330,15 @@ func (a *app) detailText(r triage.Row) string {
 	if content.Technical != "" {
 		fmt.Fprintf(&b, "[yellow]Technical detail:[white]\n%s\n\n", content.Technical)
 	}
-	if len(f.CIS) > 0 {
-		fmt.Fprintf(&b, "[yellow]CIS:[white] %s\n\n", strings.Join(f.CIS, ", "))
+	primary, related := compliance.SplitPrimary(a.controlIndex[f.PolicyID])
+	if primary == "" && len(f.CIS) > 0 {
+		primary = "CIS: " + strings.Join(f.CIS, ", ")
+	}
+	if primary != "" {
+		fmt.Fprintf(&b, "[yellow]Standard:[white] %s\n\n", primary)
+	}
+	if related != "" {
+		fmt.Fprintf(&b, "[yellow]Related standards:[white] %s\n\n", related)
 	}
 	if content.Remediation != "" {
 		fmt.Fprintf(&b, "[yellow]Remediation:[white]\n%s\n\n", content.Remediation)

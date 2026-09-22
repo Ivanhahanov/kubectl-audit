@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ivanhahanov/kubectl-audit/internal/compliance"
 	"github.com/ivanhahanov/kubectl-audit/internal/findings"
 	"github.com/ivanhahanov/kubectl-audit/internal/triage"
 )
@@ -219,7 +220,7 @@ func TestIssueLabels_AllAutoLabelsOffLeavesOnlyOrgDefinedOnes(t *testing.T) {
 
 func TestRenderIssueSummary_EmptyTemplateUsesDefault(t *testing.T) {
 	f := mustFinding("f1")
-	summary, err := triage.RenderIssueSummary(f, nil, triage.Entry{}, "")
+	summary, err := triage.RenderIssueSummary(f, nil, nil, triage.Entry{}, "")
 	if err != nil {
 		t.Fatalf("RenderIssueSummary: %v", err)
 	}
@@ -231,7 +232,7 @@ func TestRenderIssueSummary_EmptyTemplateUsesDefault(t *testing.T) {
 func TestRenderIssueSummary_KnowledgeBaseOverridesTitle(t *testing.T) {
 	f := mustFinding("f1")
 	kb := map[string]findings.KnowledgeBaseEntry{f.PolicyID: {Title: "Наш заголовок"}}
-	summary, err := triage.RenderIssueSummary(f, kb, triage.Entry{}, "")
+	summary, err := triage.RenderIssueSummary(f, kb, nil, triage.Entry{}, "")
 	if err != nil {
 		t.Fatalf("RenderIssueSummary: %v", err)
 	}
@@ -242,7 +243,7 @@ func TestRenderIssueSummary_KnowledgeBaseOverridesTitle(t *testing.T) {
 
 func TestRenderIssueSummary_CustomTemplateOverrides(t *testing.T) {
 	f := mustFinding("f1")
-	summary, err := triage.RenderIssueSummary(f, nil, triage.Entry{}, "Найдено: {{.Content.Title}}")
+	summary, err := triage.RenderIssueSummary(f, nil, nil, triage.Entry{}, "Найдено: {{.Content.Title}}")
 	if err != nil {
 		t.Fatalf("RenderIssueSummary: %v", err)
 	}
@@ -255,7 +256,7 @@ func TestRenderIssueDescription_EmbedsBackLink(t *testing.T) {
 	f := mustFinding("f1")
 	f.Remediation = "fix it"
 	f.VerificationSteps = "check it first"
-	desc, err := triage.RenderIssueDescription(f, nil, triage.Entry{Note: "looks real"}, "")
+	desc, err := triage.RenderIssueDescription(f, nil, nil, triage.Entry{Note: "looks real"}, "")
 	if err != nil {
 		t.Fatalf("RenderIssueDescription: %v", err)
 	}
@@ -275,7 +276,7 @@ func TestRenderIssueDescription_EmbedsBackLink(t *testing.T) {
 func TestRenderIssueDescription_OmitsEmptyVerificationSteps(t *testing.T) {
 	f := mustFinding("f1")
 	f.VerificationSteps = ""
-	desc, err := triage.RenderIssueDescription(f, nil, triage.Entry{}, "")
+	desc, err := triage.RenderIssueDescription(f, nil, nil, triage.Entry{}, "")
 	if err != nil {
 		t.Fatalf("RenderIssueDescription: %v", err)
 	}
@@ -291,7 +292,7 @@ func TestRenderIssueDescription_KnowledgeBaseShowsTechnicalDetail(t *testing.T) 
 	f := mustFinding("f1")
 	f.Message = "ServiceAccount x can do y"
 	kb := map[string]findings.KnowledgeBaseEntry{f.PolicyID: {Description: "Наше объяснение уязвимости."}}
-	desc, err := triage.RenderIssueDescription(f, kb, triage.Entry{}, "")
+	desc, err := triage.RenderIssueDescription(f, kb, nil, triage.Entry{}, "")
 	if err != nil {
 		t.Fatalf("RenderIssueDescription: %v", err)
 	}
@@ -305,12 +306,65 @@ func TestRenderIssueDescription_KnowledgeBaseShowsTechnicalDetail(t *testing.T) 
 
 func TestRenderIssueDescription_CustomTemplateOverrides(t *testing.T) {
 	f := mustFinding("f1")
-	desc, err := triage.RenderIssueDescription(f, nil, triage.Entry{}, "Сообщение: {{.Content.Description}}")
+	desc, err := triage.RenderIssueDescription(f, nil, nil, triage.Entry{}, "Сообщение: {{.Content.Description}}")
 	if err != nil {
 		t.Fatalf("RenderIssueDescription: %v", err)
 	}
 	if desc != "Сообщение: "+f.Message {
 		t.Errorf("expected the custom template to fully replace the default, got %q", desc)
+	}
+}
+
+// TestRenderIssueDescription_PrimaryStandardFallsBackToCIS guards the
+// baseline behavior (no --frameworks/triage.frameworks configured, or none
+// of them reference this finding's PolicyID): the ticket must still cite
+// something rather than silently dropping its only compliance reference.
+func TestRenderIssueDescription_PrimaryStandardFallsBackToCIS(t *testing.T) {
+	f := mustFinding("f1")
+	f.CIS = []string{"5.1.1", "5.1.2"}
+	desc, err := triage.RenderIssueDescription(f, nil, nil, triage.Entry{}, "")
+	if err != nil {
+		t.Fatalf("RenderIssueDescription: %v", err)
+	}
+	if !strings.Contains(desc, "*Standard:* CIS: 5.1.1, 5.1.2") {
+		t.Errorf("expected a CIS fallback Standard line when no framework matches, got:\n%s", desc)
+	}
+	if strings.Contains(desc, "Related standards") {
+		t.Errorf("expected no Related standards line with nothing else to cite, got:\n%s", desc)
+	}
+}
+
+// TestRenderIssueDescription_CustomFrameworkListedFirstIsPrimary is the
+// core "rely on our own standard, not always CIS" guarantee for tickets:
+// a private mapping listed before "cis" in --frameworks/triage.frameworks
+// must be the headline Standard line, with CIS demoted to Related
+// standards — not the other way around.
+func TestRenderIssueDescription_CustomFrameworkListedFirstIsPrimary(t *testing.T) {
+	f := mustFinding("f1")
+	f.CIS = []string{"5.1.1"}
+	internalMapping := &compliance.Mapping{
+		ID: "internal", Title: "Internal Standard", Version: "1",
+		Controls: []compliance.Control{
+			{ID: "4.5.2", Title: "No floating tags", Applicable: true, PolicyIDs: []string{f.PolicyID}},
+		},
+	}
+	cisMapping := &compliance.Mapping{
+		ID: "cis", Title: "CIS Kubernetes Benchmark", Version: "2.0.1",
+		Controls: []compliance.Control{
+			{ID: "5.1.1", Title: "Wildcard use", Applicable: true, PolicyIDs: []string{f.PolicyID}},
+		},
+	}
+	controlIndex := compliance.BuildControlIndex([]*compliance.Mapping{internalMapping, cisMapping})
+
+	desc, err := triage.RenderIssueDescription(f, nil, controlIndex, triage.Entry{}, "")
+	if err != nil {
+		t.Fatalf("RenderIssueDescription: %v", err)
+	}
+	if !strings.Contains(desc, "*Standard:* Internal Standard: 4.5.2 — No floating tags") {
+		t.Errorf("expected the internal standard (listed first) as the primary Standard line, got:\n%s", desc)
+	}
+	if !strings.Contains(desc, "*Related standards:* CIS Kubernetes Benchmark: 5.1.1 — Wildcard use") {
+		t.Errorf("expected CIS demoted to Related standards, got:\n%s", desc)
 	}
 }
 
@@ -322,7 +376,7 @@ func TestRenderCustomFields(t *testing.T) {
 		"customfield_10010": "severity is {{.Finding.Severity}}",
 		"customfield_10020": map[string]any{"value": "Prod"},
 		"customfield_10030": float64(42),
-	}, f, nil, triage.Entry{}, "")
+	}, f, nil, nil, triage.Entry{}, "")
 	if err != nil {
 		t.Fatalf("RenderCustomFields: %v", err)
 	}
@@ -338,7 +392,7 @@ func TestRenderCustomFields(t *testing.T) {
 }
 
 func TestRenderCustomFields_EmptyMapReturnsNil(t *testing.T) {
-	out, err := triage.RenderCustomFields(nil, mustFinding("f1"), nil, triage.Entry{}, "")
+	out, err := triage.RenderCustomFields(nil, mustFinding("f1"), nil, nil, triage.Entry{}, "")
 	if err != nil {
 		t.Fatalf("RenderCustomFields: %v", err)
 	}
@@ -352,7 +406,7 @@ func TestRenderCustomFields_EmptyMapReturnsNil(t *testing.T) {
 // Markdown/Confluence report header) should drive who a filed Jira ticket
 // gets assigned to, not just be report decoration.
 func TestRenderCustomFields_OwnerBecomesAssignee(t *testing.T) {
-	out, err := triage.RenderCustomFields(nil, mustFinding("f1"), nil, triage.Entry{}, "jsmith")
+	out, err := triage.RenderCustomFields(nil, mustFinding("f1"), nil, nil, triage.Entry{}, "jsmith")
 	if err != nil {
 		t.Fatalf("RenderCustomFields: %v", err)
 	}
@@ -375,7 +429,7 @@ func TestRenderCustomFields_OwnerBecomesAssignee(t *testing.T) {
 func TestRenderCustomFields_ExplicitAssigneeWinsOverOwner(t *testing.T) {
 	out, err := triage.RenderCustomFields(map[string]any{
 		"assignee": map[string]any{"name": "explicit-user"},
-	}, mustFinding("f1"), nil, triage.Entry{}, "jsmith")
+	}, mustFinding("f1"), nil, nil, triage.Entry{}, "jsmith")
 	if err != nil {
 		t.Fatalf("RenderCustomFields: %v", err)
 	}

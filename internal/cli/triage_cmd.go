@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/ivanhahanov/kubectl-audit/internal/compliance"
 	"github.com/ivanhahanov/kubectl-audit/internal/findings"
 	"github.com/ivanhahanov/kubectl-audit/internal/report"
 	"github.com/ivanhahanov/kubectl-audit/internal/triage"
@@ -56,6 +57,13 @@ func newTriageCmd() *cobra.Command {
 	cmd.PersistentFlags().StringVar(&flagTriageServerSource, "triage-server-source", "", "which scan source's findings to triage on the server (default: from config, triage.server.source, \"kubectl-audit\")")
 	cmd.PersistentFlags().StringVar(&flagTriageServerClusterID, "triage-server-cluster-id", "", "which cluster's findings to triage on the server, returned at `kubectl-audit-server` cluster registration (default: from config, triage.server.clusterId)")
 	cmd.PersistentFlags().StringVar(&flagTriageServerToken, "triage-server-token", "", "kubectl-audit-server admin token — triage read/write is an admin-gated action, distinct from the cluster's own ingest token (default: $KUBECTL_AUDIT_TRIAGE_SERVER_TOKEN — never stored in audit.yaml)")
+	// Same flag/config as `scan` (cfg.Compliance.Frameworks, default
+	// "cis") — reused here so a Jira ticket can cite an organization's own
+	// standard instead of (or ahead of) CIS. Persistent so both the
+	// interactive TUI ('j' hotkey) and `jira-sync` see it. Order is
+	// priority: list a private mapping before "cis" to make it primary —
+	// see resolveControlIndex/docs/custom-checks.md.
+	cmd.PersistentFlags().StringArrayVar(&flagFrameworks, "frameworks", nil, "compliance framework(s) to cite in tickets/detail view — first one given is primary: cis|fstec|nsa|capsule, or a path to a custom mapping YAML (repeatable or comma-separated; default: from config, \"cis\")")
 	cmd.AddCommand(newTriageExportCmd())
 	cmd.AddCommand(newTriageJiraSyncCmd())
 	cmd.AddCommand(newTriageJiraCmd())
@@ -190,6 +198,33 @@ func resolveKnowledgeBase(cmd *cobra.Command) (map[string]findings.KnowledgeBase
 	return triage.ResolveKnowledgeBase(cfg.Triage.KnowledgeBaseFile)
 }
 
+// resolveControlIndex loads cfg.Compliance.Frameworks — the same
+// --frameworks/config.compliance.frameworks `scan` uses to build compliance
+// scorecards, default ["cis"] — and reverses them into a PolicyID -> compliance
+// controls index (compliance.BuildControlIndex), so Jira tickets and the TUI
+// detail view can cite an organization's own standard instead of (or ahead
+// of) CIS: whichever framework is listed FIRST is primary (see
+// compliance.SplitPrimary) — list a private --frameworks mapping before
+// "cis" to make it the headline reference in tickets, per
+// docs/custom-checks.md. Unlike scan's warnUnknownPolicyIDs, there's no
+// typo warning here: triage never loads the policy set itself (only
+// findings.json), so it has nothing to validate a policyId against.
+func resolveControlIndex(cmd *cobra.Command) (map[string][]compliance.ControlRef, error) {
+	cfg, err := loadEffectiveConfig(cmd)
+	if err != nil {
+		return nil, err
+	}
+	mappings := make([]*compliance.Mapping, 0, len(cfg.Compliance.Frameworks))
+	for _, id := range cfg.Compliance.Frameworks {
+		m, err := compliance.LoadMapping(id)
+		if err != nil {
+			return nil, err
+		}
+		mappings = append(mappings, m)
+	}
+	return compliance.BuildControlIndex(mappings), nil
+}
+
 func loadFindingsAndState(cmd *cobra.Command) (target string, all []findings.Finding, suppressed []report.SuppressedFinding, state *triage.State, store triage.Store, err error) {
 	findingsPath, statePath, err := resolveTriagePaths(cmd)
 	if err != nil {
@@ -243,6 +278,10 @@ func runTriageOpen(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	controlIndex, err := resolveControlIndex(cmd)
+	if err != nil {
+		return err
+	}
 	cfg, err := loadEffectiveConfig(cmd)
 	if err != nil {
 		return err
@@ -263,6 +302,7 @@ func runTriageOpen(cmd *cobra.Command, args []string) error {
 		Store:          store,
 		Jira:           jiraCfg,
 		KnowledgeBase:  kb,
+		ControlIndex:   controlIndex,
 		DedupThreshold: cfg.Output.NamespaceGroupThreshold,
 	})
 }
@@ -340,6 +380,10 @@ func newTriageJiraSyncCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			controlIndex, err := resolveControlIndex(cmd)
+			if err != nil {
+				return err
+			}
 			if jiraCfg.BaseURL == "" || jiraCfg.ProjectKey == "" || jiraCfg.IssueType == "" {
 				return fmt.Errorf("jira-sync needs a Jira base URL, project key, and issue type — set them via --jira-url/--project/--issue-type or triage.jira in audit.yaml")
 			}
@@ -359,7 +403,7 @@ func newTriageJiraSyncCmd() *cobra.Command {
 			if dryRun {
 				fmt.Printf("Dry run: would create %d Jira issue(s) in project %s (issue type %q):\n", len(targets), jiraCfg.ProjectKey, jiraCfg.IssueType)
 				for _, r := range targets {
-					summary, err := triage.RenderIssueSummary(*r.Finding, kb, r.Entry, jiraCfg.SummaryTemplate)
+					summary, err := triage.RenderIssueSummary(*r.Finding, kb, controlIndex, r.Entry, jiraCfg.SummaryTemplate)
 					if err != nil {
 						return fmt.Errorf("rendering summary for %s: %w", r.Finding.ID, err)
 					}
@@ -375,19 +419,19 @@ func newTriageJiraSyncCmd() *cobra.Command {
 			client := triage.JiraClient{BaseURL: jiraCfg.BaseURL, Token: jiraCfg.Token, ProjectKey: jiraCfg.ProjectKey, IssueType: jiraCfg.IssueType}
 			var created, failed int
 			for _, r := range targets {
-				summary, err := triage.RenderIssueSummary(*r.Finding, kb, r.Entry, jiraCfg.SummaryTemplate)
+				summary, err := triage.RenderIssueSummary(*r.Finding, kb, controlIndex, r.Entry, jiraCfg.SummaryTemplate)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "warning: failed to render summary for %s: %v\n", r.Finding.ID, err)
 					failed++
 					continue
 				}
-				description, err := triage.RenderIssueDescription(*r.Finding, kb, r.Entry, jiraCfg.DescriptionTemplate)
+				description, err := triage.RenderIssueDescription(*r.Finding, kb, controlIndex, r.Entry, jiraCfg.DescriptionTemplate)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "warning: failed to render description for %s: %v\n", r.Finding.ID, err)
 					failed++
 					continue
 				}
-				customFields, err := triage.RenderCustomFields(jiraCfg.CustomFields, *r.Finding, kb, r.Entry, jiraCfg.Owner)
+				customFields, err := triage.RenderCustomFields(jiraCfg.CustomFields, *r.Finding, kb, controlIndex, r.Entry, jiraCfg.Owner)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "warning: failed to render custom fields for %s: %v\n", r.Finding.ID, err)
 					failed++
