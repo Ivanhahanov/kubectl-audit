@@ -13,6 +13,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/ivanhahanov/kubectl-audit/internal/compliance"
 	"github.com/ivanhahanov/kubectl-audit/internal/findings"
 )
 
@@ -41,6 +42,20 @@ type IssueTemplateData struct {
 	Finding findings.Finding
 	Entry   Entry
 	Content ResolvedContent
+	// PrimaryStandard is this finding's headline compliance reference —
+	// "<Framework>: <ID> — <Title>" for the *first* framework listed in
+	// triage.frameworks/--frameworks that has a matching control (see
+	// compliance.SplitPrimary), so a private org standard takes priority
+	// over CIS in tickets just by being listed before it — see
+	// docs/custom-checks.md. Falls back to the raw Finding.CIS annotation
+	// (formatted "CIS: <ids>") when no loaded framework references this
+	// finding's PolicyID at all, so a finding never silently loses its
+	// only compliance reference just because it hasn't been added to a
+	// mapping yet.
+	PrimaryStandard string
+	// RelatedStandards lists every OTHER control (beyond PrimaryStandard),
+	// across every other loaded framework, that references this finding.
+	RelatedStandards string
 }
 
 func issueTemplateFuncs() template.FuncMap {
@@ -50,10 +65,13 @@ func issueTemplateFuncs() template.FuncMap {
 }
 
 // renderIssueTemplate parses and executes tplSource (falling back to def
-// when tplSource is empty) against an IssueTemplateData built from f/kb/e —
-// the shared mechanism behind RenderIssueSummary, RenderIssueDescription,
-// and RenderCustomFields.
-func renderIssueTemplate(name, tplSource, def string, f findings.Finding, kb map[string]findings.KnowledgeBaseEntry, e Entry) (string, error) {
+// when tplSource is empty) against an IssueTemplateData built from
+// f/kb/controlIndex/e — the shared mechanism behind RenderIssueSummary,
+// RenderIssueDescription, and RenderCustomFields. controlIndex may be nil
+// (no --frameworks loaded, or a caller that doesn't need compliance
+// references at all) — PrimaryStandard then falls straight back to
+// Finding.CIS.
+func renderIssueTemplate(name, tplSource, def string, f findings.Finding, kb map[string]findings.KnowledgeBaseEntry, controlIndex map[string][]compliance.ControlRef, e Entry) (string, error) {
 	if tplSource == "" {
 		tplSource = def
 	}
@@ -65,8 +83,13 @@ func renderIssueTemplate(name, tplSource, def string, f findings.Finding, kb map
 	if err != nil {
 		return "", fmt.Errorf("resolving knowledge base content: %w", err)
 	}
+	primary, related := compliance.SplitPrimary(controlIndex[f.PolicyID])
+	if primary == "" && len(f.CIS) > 0 {
+		primary = "CIS: " + strings.Join(f.CIS, ", ")
+	}
 	var buf bytes.Buffer
-	if err := tpl.Execute(&buf, IssueTemplateData{Finding: f, Entry: e, Content: content}); err != nil {
+	data := IssueTemplateData{Finding: f, Entry: e, Content: content, PrimaryStandard: primary, RelatedStandards: related}
+	if err := tpl.Execute(&buf, data); err != nil {
 		return "", fmt.Errorf("executing %s template: %w", name, err)
 	}
 	return buf.String(), nil
@@ -82,13 +105,13 @@ func renderIssueTemplate(name, tplSource, def string, f findings.Finding, kb map
 // purely for a human reader tracing the issue back to its source —
 // idempotency itself (never double-creating on a re-run) is handled by the
 // caller checking Entry.JiraIssueKey, not by searching Jira for this text.
-func RenderIssueSummary(f findings.Finding, kb map[string]findings.KnowledgeBaseEntry, e Entry, tplSource string) (string, error) {
-	s, err := renderIssueTemplate("summary", tplSource, defaultSummaryTemplateSource, f, kb, e)
+func RenderIssueSummary(f findings.Finding, kb map[string]findings.KnowledgeBaseEntry, controlIndex map[string][]compliance.ControlRef, e Entry, tplSource string) (string, error) {
+	s, err := renderIssueTemplate("summary", tplSource, defaultSummaryTemplateSource, f, kb, controlIndex, e)
 	return strings.TrimSpace(s), err
 }
 
-func RenderIssueDescription(f findings.Finding, kb map[string]findings.KnowledgeBaseEntry, e Entry, tplSource string) (string, error) {
-	return renderIssueTemplate("description", tplSource, defaultDescriptionTemplateSource, f, kb, e)
+func RenderIssueDescription(f findings.Finding, kb map[string]findings.KnowledgeBaseEntry, controlIndex map[string][]compliance.ControlRef, e Entry, tplSource string) (string, error) {
+	return renderIssueTemplate("description", tplSource, defaultDescriptionTemplateSource, f, kb, controlIndex, e)
 }
 
 // RenderCustomFields renders triage.jira.customFields into the shape a
@@ -113,7 +136,7 @@ func RenderIssueDescription(f findings.Finding, kb map[string]findings.Knowledge
 // Returns nil only when there is truly nothing to send (no customFields
 // and no owner), so callers can omit "fields" merging entirely in that
 // case.
-func RenderCustomFields(fields map[string]any, f findings.Finding, kb map[string]findings.KnowledgeBaseEntry, e Entry, owner string) (map[string]any, error) {
+func RenderCustomFields(fields map[string]any, f findings.Finding, kb map[string]findings.KnowledgeBaseEntry, controlIndex map[string][]compliance.ControlRef, e Entry, owner string) (map[string]any, error) {
 	var out map[string]any
 	if len(fields) > 0 {
 		out = make(map[string]any, len(fields))
@@ -123,7 +146,7 @@ func RenderCustomFields(fields map[string]any, f findings.Finding, kb map[string
 				out[k] = v
 				continue
 			}
-			rendered, err := renderIssueTemplate("customFields."+k, s, s, f, kb, e)
+			rendered, err := renderIssueTemplate("customFields."+k, s, s, f, kb, controlIndex, e)
 			if err != nil {
 				return nil, fmt.Errorf("customFields[%s]: %w", k, err)
 			}

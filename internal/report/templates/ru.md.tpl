@@ -204,8 +204,11 @@ NetworkPolicy были доступны для наблюдения в рамк�
 |  |  |
 |---|---|
 | Категория | {{ escapeCell .Category }} |
-{{- if .CIS }}
-| CIS | {{ join .CIS ", " }} |
+{{- if .PrimaryStandard }}
+| Стандарт | {{ escapeCell .PrimaryStandard }} |
+{{- end }}
+{{- if .RelatedControls }}
+| Связанные стандарты | {{ escapeCell .RelatedControls }} |
 {{- end }}
 {{- if .Remediation }}
 | Рекомендация | {{ escapeCell .Remediation }} |

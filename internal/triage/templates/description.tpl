@@ -15,8 +15,12 @@
 {{.Content.VerificationSteps}}
 
 {{end -}}
-{{if .Finding.CIS -}}
-*CIS:* {{join .Finding.CIS ", "}}
+{{if .PrimaryStandard -}}
+*Standard:* {{.PrimaryStandard}}
+
+{{end -}}
+{{if .RelatedStandards -}}
+*Related standards:* {{.RelatedStandards}}
 
 {{end -}}
 {{if .Entry.Note -}}

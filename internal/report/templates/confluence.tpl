@@ -141,8 +141,11 @@ h3. {{ .Severity }} ({{ len .Findings }})
 h4. {{ .PolicyID }} — {{ escapeCell .Title }}
 
 |Category|{{ escapeCell .Category }}|
-{{- if .CIS }}
-|CIS|{{ join .CIS ", " }}|
+{{- if .PrimaryStandard }}
+|Standard|{{ escapeCell .PrimaryStandard }}|
+{{- end }}
+{{- if .RelatedControls }}
+|Related standards|{{ escapeCell .RelatedControls }}|
 {{- end }}
 {{- if .Remediation }}
 |Remediation|{{ escapeCell .Remediation }}|

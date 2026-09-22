@@ -59,15 +59,15 @@ func (c JiraConfig) configured() bool {
 // of steps instead of a nested error-check chain.
 func (a *app) createOneIssue(ctx context.Context, client triage.JiraClient, r triage.Row) (key, url string, err error) {
 	f := *r.Finding
-	summary, err := triage.RenderIssueSummary(f, a.knowledgeBase, r.Entry, a.jira.SummaryTemplate)
+	summary, err := triage.RenderIssueSummary(f, a.knowledgeBase, a.controlIndex, r.Entry, a.jira.SummaryTemplate)
 	if err != nil {
 		return "", "", err
 	}
-	description, err := triage.RenderIssueDescription(f, a.knowledgeBase, r.Entry, a.jira.DescriptionTemplate)
+	description, err := triage.RenderIssueDescription(f, a.knowledgeBase, a.controlIndex, r.Entry, a.jira.DescriptionTemplate)
 	if err != nil {
 		return "", "", err
 	}
-	customFields, err := triage.RenderCustomFields(a.jira.CustomFields, f, a.knowledgeBase, r.Entry, a.jira.Owner)
+	customFields, err := triage.RenderCustomFields(a.jira.CustomFields, f, a.knowledgeBase, a.controlIndex, r.Entry, a.jira.Owner)
 	if err != nil {
 		return "", "", err
 	}
@@ -102,7 +102,7 @@ func (a *app) jiraPreviewText(r triage.Row) string {
 	f := *r.Finding
 	fmt.Fprintf(&b, "[yellow]Project:[white] %s      [yellow]Issue type:[white] %s\n", a.jira.ProjectKey, a.jira.IssueType)
 
-	if summary, err := triage.RenderIssueSummary(f, a.knowledgeBase, r.Entry, a.jira.SummaryTemplate); err != nil {
+	if summary, err := triage.RenderIssueSummary(f, a.knowledgeBase, a.controlIndex, r.Entry, a.jira.SummaryTemplate); err != nil {
 		fmt.Fprintf(&b, "\n[red]Summary template error:[white] %v\n", err)
 	} else {
 		fmt.Fprintf(&b, "\n[yellow]Summary:[white]\n%s\n", tview.Escape(summary))
@@ -113,7 +113,7 @@ func (a *app) jiraPreviewText(r triage.Row) string {
 	}
 
 	if len(a.jira.CustomFields) > 0 || a.jira.Owner != "" {
-		if fields, err := triage.RenderCustomFields(a.jira.CustomFields, f, a.knowledgeBase, r.Entry, a.jira.Owner); err != nil {
+		if fields, err := triage.RenderCustomFields(a.jira.CustomFields, f, a.knowledgeBase, a.controlIndex, r.Entry, a.jira.Owner); err != nil {
 			fmt.Fprintf(&b, "\n[red]Custom fields template error:[white] %v\n", err)
 		} else {
 			b.WriteString("\n[yellow]Custom fields:[white]\n")
@@ -132,7 +132,7 @@ func (a *app) jiraPreviewText(r triage.Row) string {
 		}
 	}
 
-	if description, err := triage.RenderIssueDescription(f, a.knowledgeBase, r.Entry, a.jira.DescriptionTemplate); err != nil {
+	if description, err := triage.RenderIssueDescription(f, a.knowledgeBase, a.controlIndex, r.Entry, a.jira.DescriptionTemplate); err != nil {
 		fmt.Fprintf(&b, "\n[red]Description template error:[white] %v\n", err)
 	} else {
 		fmt.Fprintf(&b, "\n[yellow]Description:[white]\n%s\n", tview.Escape(description))
