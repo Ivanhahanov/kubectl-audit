@@ -15,6 +15,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	compliancemappings "github.com/ivanhahanov/kubectl-audit/compliance-mappings"
+	internalstandards "github.com/ivanhahanov/kubectl-audit/internal-standards"
 )
 
 // Control is one row of a framework's control table.
@@ -114,10 +115,19 @@ func readMappingSource(idOrPath string) (data []byte, isCustom bool, err error) 
 		return data, true, nil
 	}
 	data, err = compliancemappings.FS.ReadFile(idOrPath + ".yaml")
-	if err != nil {
-		return nil, false, fmt.Errorf("unknown compliance framework %q (not one of %s, and not a file path — a custom mapping's path must contain \"/\" or end in \".yaml\"/\".yml\")", idOrPath, strings.Join(mustAvailableFrameworks(), ", "))
+	if err == nil {
+		return data, false, nil
 	}
-	return data, false, nil
+	// Not among the publicly bundled frameworks — try whatever an internal
+	// fork embedded into internal-standards.ComplianceFS (see that
+	// package's doc comment): a no-op lookup (clean "file does not exist")
+	// on the default/stub build, a real private framework selectable by
+	// its bare id, the same as "cis"/"fstec", on an internalstandards
+	// build.
+	if data, orgErr := fs.ReadFile(internalstandards.ComplianceFS, idOrPath+".yaml"); orgErr == nil {
+		return data, false, nil
+	}
+	return nil, false, fmt.Errorf("unknown compliance framework %q (not one of %s, and not a file path — a custom mapping's path must contain \"/\" or end in \".yaml\"/\".yml\")", idOrPath, strings.Join(mustAvailableFrameworks(), ", "))
 }
 
 // mustAvailableFrameworks is AvailableFrameworks with errors swallowed, for
@@ -237,11 +247,26 @@ func allHavePrefix(ids []string, prefix string) bool {
 	return true
 }
 
-// AvailableFrameworks lists every embedded framework ID.
+// AvailableFrameworks lists every embedded framework ID — the publicly
+// bundled ones (compliance-mappings/*.yaml) plus whatever an internal fork
+// embedded into internal-standards.ComplianceFS (a no-op on the default/
+// stub build, which enumerates as empty — see that package's doc comment).
 func AvailableFrameworks() ([]string, error) {
-	entries, err := fs.ReadDir(compliancemappings.FS, ".")
+	out, err := frameworkIDsIn(compliancemappings.FS)
 	if err != nil {
 		return nil, fmt.Errorf("listing embedded compliance mappings: %w", err)
+	}
+	org, err := frameworkIDsIn(internalstandards.ComplianceFS)
+	if err != nil {
+		return nil, fmt.Errorf("listing internal-standards compliance mappings: %w", err)
+	}
+	return append(out, org...), nil
+}
+
+func frameworkIDsIn(fsys fs.FS) ([]string, error) {
+	entries, err := fs.ReadDir(fsys, ".")
+	if err != nil {
+		return nil, err
 	}
 	var out []string
 	for _, e := range entries {

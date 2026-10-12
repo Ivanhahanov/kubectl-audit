@@ -8,13 +8,26 @@ import (
 	"sort"
 	"strings"
 
+	internalstandards "github.com/ivanhahanov/kubectl-audit/internal-standards"
 	"github.com/ivanhahanov/kubectl-audit/internal/config"
 	"github.com/ivanhahanov/kubectl-audit/policies"
 )
 
-// LoadBuiltin parses and compiles the bundled default policy set.
+// LoadBuiltin parses and compiles the bundled default policy set, plus
+// whatever an internal fork embedded into internal-standards.PoliciesFS
+// (see that package's doc comment) — a plain, always-merged append: the
+// stub (default) build's PoliciesFS is a valid empty filesystem, so this
+// is a no-op unless the "internalstandards" build tag was used.
 func LoadBuiltin() ([]*CompiledPolicy, error) {
-	return loadFromFS(policies.FS, ".")
+	builtin, err := loadFromFS(policies.FS, ".")
+	if err != nil {
+		return nil, err
+	}
+	org, err := loadFromFS(internalstandards.PoliciesFS, ".")
+	if err != nil {
+		return nil, fmt.Errorf("loading internal-standards policies: %w", err)
+	}
+	return append(builtin, org...), nil
 }
 
 // LoadDir parses and compiles every *.yaml/*.yml file under dir (recursively).
