@@ -9,12 +9,12 @@ import (
 // Version is set via -ldflags at release build time (see Makefile).
 var Version = "dev"
 
-func newVersionCmd() *cobra.Command {
+func newVersionCmd(toolName string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
-		Short: "Print the kubectl-audit version.",
+		Short: "Print the " + toolName + " version.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Println("kubectl-audit " + Version)
+			fmt.Println(toolName + " " + Version)
 			return nil
 		},
 	}

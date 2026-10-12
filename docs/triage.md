@@ -7,7 +7,7 @@ permalink: /triage/
 # Triage: from findings to what actually needs fixing
 
 A `scan` against a real cluster — especially a large, multi-tenant one — commonly produces
-hundreds or thousands of findings. `kubectl audit triage` is a separate, interactive step for a
+hundreds or thousands of findings. `kubectl triage` is a separate, interactive step for a
 human expert to work through that list by hand: mark each finding confirmed / false positive /
 won't fix / duplicate / needs more info, attach notes, and end up with a filtered
 "what actually needs fixing" list — one that can be exported or pushed into Jira as tickets.
@@ -35,8 +35,8 @@ e.g. to add an internal escalation channel or wiki link a generic check can't kn
 ## Getting started
 
 ```sh
-kubectl audit scan --output-json findings.json
-kubectl audit triage
+kubectl audit scan --output json=findings.json
+kubectl triage
 ```
 
 `triage` opens an interactive TUI over `findings.json`, using (and creating, if it doesn't exist
@@ -125,7 +125,7 @@ against a fresh `findings.json`.
 ## Non-interactive export
 
 ```sh
-kubectl audit triage export --status confirmed > confirmed.json
+kubectl triage export --status confirmed > confirmed.json
 ```
 
 Dumps triage-joined findings (optionally filtered by `--status`) as JSON — useful for handing a
@@ -134,7 +134,7 @@ reviewed list to another tool or process without needing Jira at all.
 ## Jira sync
 
 ```sh
-kubectl audit triage jira-sync \
+kubectl triage jira-sync \
   --jira-url https://jira.example.com --project SEC --issue-type Bug \
   --jira-token "$KUBECTL_AUDIT_JIRA_TOKEN"
 ```
@@ -208,8 +208,8 @@ wins over the owner-derived default.
 Get a starting point to restructure with:
 
 ```sh
-kubectl audit triage jira template dump --kind summary --out summary.tpl
-kubectl audit triage jira template dump --kind description --out description.tpl
+kubectl triage jira template dump --kind summary --out summary.tpl
+kubectl triage jira template dump --kind description --out description.tpl
 ```
 
 Both templates render against `{{.Content}}` (`Title`/`Description`/`Remediation`/`Technical` —
@@ -229,7 +229,7 @@ detail view (`enter`) — `what you preview is exactly what gets filed`, there's
 mode" to second-guess. Inspect the bundle with:
 
 ```sh
-kubectl audit triage knowledge-base dump
+kubectl triage knowledge-base dump
 ```
 
 To correct one entry, or add your organization's own internal standard/house style for a check

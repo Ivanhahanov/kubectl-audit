@@ -37,13 +37,13 @@ func newRBACAnalyzeCmd() *cobra.Command {
 			// scan's report.md/findings.json — otherwise running both
 			// commands against the same directory silently overwrites one
 			// report with the other. Only kicks in when the user didn't
-			// pass --output-json/--output-md or set output.json/markdown
+			// pass --output json=.../md=... or set output.json/markdown
 			// explicitly in audit.yaml to something other than scan's
 			// defaults.
-			if flagOutputJSON == "" && cfg.Output.JSON == "findings.json" {
+			if !outputFormatGiven(flagOutputs, "json") && cfg.Output.JSON == "findings.json" {
 				cfg.Output.JSON = "rbac-findings.json"
 			}
-			if flagOutputMD == "" && cfg.Output.Markdown == "report.md" {
+			if !outputFormatGiven(flagOutputs, "md") && cfg.Output.Markdown == "report.md" {
 				cfg.Output.Markdown = "rbac-report.md"
 			}
 

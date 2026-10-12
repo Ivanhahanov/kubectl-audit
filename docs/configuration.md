@@ -143,7 +143,7 @@ compliance:
   frameworks:
     - cis
 
-# Configures `kubectl audit triage` — see Triage. No credential field: the
+# Configures `kubectl triage` — see Triage. No credential field: the
 # Jira Personal Access Token comes from --jira-token or
 # $KUBECTL_AUDIT_JIRA_TOKEN only, never this file.
 triage:

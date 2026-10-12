@@ -4,6 +4,7 @@ package k8sclient
 
 import (
 	"fmt"
+	"time"
 
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/discovery"
@@ -25,8 +26,14 @@ type Client struct {
 
 // New resolves the kubeconfig (respecting an explicit path and/or context
 // override, falling back to the standard loading rules: $KUBECONFIG, then
-// ~/.kube/config) and builds a Client.
-func New(kubeconfigPath, contextName string) (*Client, error) {
+// ~/.kube/config) and builds a Client. timeout bounds every individual
+// request made through the resulting Dynamic/Discovery clients (rest.
+// Config.Timeout — applied per-request, not as one deadline for the whole
+// scan); timeout<=0 disables it, restoring the pre-timeout behavior of
+// however long the apiserver takes. This tool only ever does one-shot
+// List/Get calls, never a Watch, so a flat per-request timeout can't cut
+// off a legitimately long-lived call.
+func New(kubeconfigPath, contextName string, timeout time.Duration) (*Client, error) {
 	overrides := &genericclioptions.ConfigFlags{}
 	if kubeconfigPath != "" {
 		overrides.KubeConfig = &kubeconfigPath
@@ -38,6 +45,9 @@ func New(kubeconfigPath, contextName string) (*Client, error) {
 	restCfg, err := overrides.ToRESTConfig()
 	if err != nil {
 		return nil, fmt.Errorf("resolving kubeconfig: %w", err)
+	}
+	if timeout > 0 {
+		restCfg.Timeout = timeout
 	}
 
 	dyn, err := dynamic.NewForConfig(restCfg)

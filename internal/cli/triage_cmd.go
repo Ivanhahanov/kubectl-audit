@@ -30,17 +30,27 @@ var (
 	flagTriageServerClusterID   string
 )
 
-func newTriageCmd() *cobra.Command {
+// NewTriageRootCmd builds the kubectl-triage command tree — a standalone
+// plugin/binary from kubectl-audit (see cmd/kubectl-triage), deliberately
+// split out so a self-service/CI user of `kubectl audit scan` never pulls
+// in the TUI (tcell/tview) and Jira-client dependencies this needs. Invoked
+// as `kubectl triage <subcommand>` once installed as a kubectl plugin, or
+// directly as `kubectl-triage <subcommand>`.
+func NewTriageRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "triage",
+		Use:   "kubectl-triage",
 		Short: "Interactively review findings.json and record confirmed/false-positive/won't-fix decisions.",
 		Long: "Opens an interactive TUI (see docs/triage.md) joining a scan's findings.json with a " +
 			"persisted triage decision per finding, so a human expert can work through what an automated " +
 			"scan flagged and end up with a filtered \"what actually needs fixing\" list — including " +
 			"guidance (audit.k8s-auditor.io/verification-steps) on how to confirm each one is a true " +
 			"positive before acting on it.",
-		RunE: runTriageOpen,
+		SilenceUsage:  true,
+		SilenceErrors: false,
+		RunE:          runTriageOpen,
 	}
+	cmd.PersistentFlags().StringVar(&flagConfig, "config", "", "path to audit.yaml (default: ~/.kubectl-audit/audit.yaml, if it exists)")
+	cmd.PersistentFlags().BoolVarP(&flagVerbose, "verbose", "v", false, "show debug-level diagnostic detail in addition to warnings")
 	cmd.PersistentFlags().StringVar(&flagTriageFindings, "findings", "", "path to findings.json (default: from config, \"findings.json\")")
 	cmd.PersistentFlags().StringVar(&flagTriageState, "state", "", "path to the triage state file (default: from config, \"triage-state.yaml\")")
 	// Jira flags live on the parent so both the interactive TUI's 'j'
@@ -68,6 +78,7 @@ func newTriageCmd() *cobra.Command {
 	cmd.AddCommand(newTriageJiraSyncCmd())
 	cmd.AddCommand(newTriageJiraCmd())
 	cmd.AddCommand(newTriageKnowledgeBaseCmd())
+	cmd.AddCommand(newVersionCmd("kubectl-triage"))
 	return cmd
 }
 
@@ -252,7 +263,7 @@ func loadFindingsAndState(cmd *cobra.Command) (target string, all []findings.Fin
 
 	target, all, suppressed, err = triage.LoadFindings(findingsPath)
 	if err != nil {
-		return "", nil, nil, nil, nil, fmt.Errorf("%w (run `kubectl audit scan --output-json %s` first)", err, findingsPath)
+		return "", nil, nil, nil, nil, fmt.Errorf("%w (run `kubectl audit scan --output json=%s` first)", err, findingsPath)
 	}
 	state, err = store.Load()
 	if err != nil {
@@ -312,7 +323,7 @@ func newTriageExportCmd() *cobra.Command {
 		Use:   "export",
 		Short: "Non-interactively dump triage-joined findings, optionally filtered by --status, as JSON.",
 		Long: "Useful standalone (no Jira needed) to hand a reviewed list to another tool or process — " +
-			"e.g. `kubectl audit triage export --status confirmed` for exactly the findings a human has " +
+			"e.g. `kubectl triage export --status confirmed` for exactly the findings a human has " +
 			"confirmed are real and worth fixing.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_, all, suppressed, state, _, err := loadFindingsAndState(cmd)

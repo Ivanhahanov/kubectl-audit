@@ -76,7 +76,7 @@ type State struct {
 
 // LoadState reads a triage state file. A missing file is not an error —
 // it's simply an empty, fresh State (the common case: the first time
-// `kubectl audit triage` runs against a given findings.json).
+// `kubectl triage` runs against a given findings.json).
 func LoadState(path string) (*State, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

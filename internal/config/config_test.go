@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ivanhahanov/kubectl-audit/internal/config"
 	"github.com/ivanhahanov/kubectl-audit/internal/thirdparty"
@@ -34,7 +35,7 @@ func TestDefault_NamespaceGroupThresholdIsOnByDefault(t *testing.T) {
 	}
 }
 
-// TestDefault_TriageStateFileHasADefault guards that `kubectl audit triage`
+// TestDefault_TriageStateFileHasADefault guards that `kubectl triage`
 // works out of the box without requiring a --state flag or audit.yaml
 // entry first.
 func TestDefault_TriageStateFileHasADefault(t *testing.T) {
@@ -279,5 +280,48 @@ components:
 	}
 	if got := cfg.Components.Extra[0].Category; got != thirdparty.CategorySystem {
 		t.Errorf("expected explicit Category to be preserved, got %q", got)
+	}
+}
+
+func TestRequestTimeoutDuration_EmptyUsesDefault(t *testing.T) {
+	cfg := config.Default()
+	got, err := cfg.RequestTimeoutDuration()
+	if err != nil {
+		t.Fatalf("RequestTimeoutDuration: %v", err)
+	}
+	if got != config.RequestTimeoutDefault {
+		t.Errorf("expected the default %v, got %v", config.RequestTimeoutDefault, got)
+	}
+}
+
+func TestRequestTimeoutDuration_ZeroDisablesIt(t *testing.T) {
+	cfg := config.Default()
+	cfg.Target.RequestTimeout = "0"
+	got, err := cfg.RequestTimeoutDuration()
+	if err != nil {
+		t.Fatalf("RequestTimeoutDuration: %v", err)
+	}
+	if got != 0 {
+		t.Errorf("expected \"0\" to parse to a zero duration (disabled), got %v", got)
+	}
+}
+
+func TestRequestTimeoutDuration_ParsesExplicitValue(t *testing.T) {
+	cfg := config.Default()
+	cfg.Target.RequestTimeout = "45s"
+	got, err := cfg.RequestTimeoutDuration()
+	if err != nil {
+		t.Fatalf("RequestTimeoutDuration: %v", err)
+	}
+	if got != 45*time.Second {
+		t.Errorf("expected 45s, got %v", got)
+	}
+}
+
+func TestRequestTimeoutDuration_InvalidValueErrors(t *testing.T) {
+	cfg := config.Default()
+	cfg.Target.RequestTimeout = "not-a-duration"
+	if _, err := cfg.RequestTimeoutDuration(); err == nil {
+		t.Error("expected an error for an invalid duration string, got nil")
 	}
 }

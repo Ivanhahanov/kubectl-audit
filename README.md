@@ -35,8 +35,8 @@ A `kubectl` plugin (`kubectl audit ...`) for auditing Kubernetes security postur
   pre-deploy / CI checks), or both at once.
 - Outputs a machine-readable `findings.json`, a human-readable `report.md` rendered from a fully
   customizable Go `text/template` (`--report-template`), and optionally a `findings.csv`
-  (`--output-csv`) for spreadsheet sort/filter/pivot, with a `--fail-on <severity>` gate for CI
-  pipelines.
+  (`--output csv=findings.csv`) for spreadsheet sort/filter/pivot, with a `--fail-on <severity>`
+  gate for CI pipelines.
 
 ## Install
 
@@ -47,23 +47,41 @@ go install github.com/ivanhahanov/kubectl-audit/cmd/kubectl-audit@latest
 kubectl audit version
 ```
 
-Or build from a clone:
+That alone is the full self-service/CI audit tool — no TUI or Jira-client dependencies. If you
+also want the triage workflow (reviewing findings, Jira sync), install the separate
+`kubectl-triage` plugin too:
+
+```sh
+go install github.com/ivanhahanov/kubectl-audit/cmd/kubectl-triage@latest
+kubectl triage version
+```
+
+Or build both from a clone:
 
 ```sh
 git clone https://github.com/ivanhahanov/kubectl-audit.git
 cd kubectl-audit
-make build              # builds ./bin/kubectl-audit
-make install             # installs it onto $GOPATH/bin as kubectl-audit, so `kubectl audit` works
+make build              # builds ./bin/kubectl-audit and ./bin/kubectl-triage
+make install             # installs both onto $GOPATH/bin, so `kubectl audit`/`kubectl triage` work
 kubectl audit version
+kubectl triage version
 ```
 
 For multi-platform release archives (e.g. for krew distribution), see `make cross-compile` and
-`krew/kubectl-audit.yaml` (a template — bump the version and fill in release checksums before
-submitting to krew).
+`krew/kubectl-audit.yaml`/`krew/kubectl-triage.yaml` (templates — bump the version and fill in
+release checksums before submitting to krew).
 
 ## Quick start
 
+### Build and run
+
 ```sh
+git clone https://github.com/ivanhahanov/kubectl-audit.git
+cd kubectl-audit
+make build          # -> ./bin/kubectl-audit
+make install        # installs onto $GOPATH/bin, so `kubectl audit` works as a plugin
+kubectl audit version
+
 # Audit a live cluster (current kube-context) and write findings.json + report.md
 kubectl audit scan
 
@@ -73,12 +91,56 @@ kubectl audit scan -f ./manifests --mode static
 # Both cluster and static manifests, gated for CI (non-zero exit on HIGH+ findings)
 kubectl audit scan -f ./manifests --fail-on high
 
-# Try it against a deliberately misconfigured example
-kubectl audit scan -f examples/insecure-manifests --fail-on none
-
-# Score against several compliance frameworks at once
-kubectl audit scan --frameworks cis,fstec,nsa
+# Try it against a deliberately misconfigured example, with a colorized
+# console summary alongside the usual findings.json/report.md
+kubectl audit scan -f examples/insecure-manifests --fail-on none --output console=-
 ```
+
+### Running against a specific compliance framework
+
+```sh
+# Score against several bundled frameworks at once
+kubectl audit scan --frameworks cis,fstec,nsa
+
+# Bring your own standard (see docs/custom-checks.md for the full mapping
+# schema) — any --frameworks value containing "/" or ending in .yaml/.yml
+# is read from disk instead of looked up among the bundled frameworks
+kubectl audit scan --frameworks ./our-standard.yaml
+```
+
+Choosing a framework explicitly (either of the above) also scopes the *findings themselves* to
+that standard by default, not just the scorecard: `--frameworks-only` defaults to `true` whenever
+`--frameworks` is given, so a check your standard never asked about doesn't show up as noise in
+the report or trip `--fail-on` — only scored controls matter for that run. Pass
+`--frameworks-only=false` if you want the full check set *and* a scorecard for one standard in the
+same run.
+
+### Suppressing a finding yourself
+
+A false positive or an accepted risk shouldn't require waiting on someone else — add an exclusion
+rule to your own `audit.yaml` (see [`examples/audit.yaml`](examples/audit.yaml) for the fully-commented
+reference; the schema is also covered in [docs/configuration.md](docs/configuration.md)):
+
+```yaml
+exclusions:
+  - policyIds: ["workload.no-latest-tag"]   # omit (or ["*"]) to apply to every check
+    match:                                   # at least one field required; all set fields must match (AND)
+      kind: Deployment
+      namespace: legacy
+      name: "legacy-*"                       # path.Match glob — a literal name still works as exact
+    reason: "Legacy app pending migration, tracked in JIRA-1234"   # required — shown next to the finding
+```
+
+```sh
+kubectl audit scan --config audit.yaml
+```
+
+Suppressed findings are never silently dropped — they still show up in `report.md`'s "Suppressed"
+section (with the `reason` attached) and in `findings.json`'s `suppressed` array, they just don't
+count toward `--fail-on`. `--disable-builtin-exception-id`/`--no-builtin-exceptions` are the same
+mechanism for this tool's own *built-in* exceptions (well-known privileged infrastructure like
+Cilium's agent) — see [Noise reduction](#noise-reduction-owner-chains-platform-namespaces--repeated-tenant-namespaces)
+below.
 
 ## Commands
 
@@ -87,16 +149,34 @@ kubectl audit scan --frameworks cis,fstec,nsa
 | `kubectl audit scan` | Full audit: policy checks + RBAC analysis + NetworkPolicy coverage + Pod Security Standards + compliance scorecards. Prints both a severity summary and a compliance summary. |
 | `kubectl audit policy validate <dir>...` | Parse and CEL-compile every policy in the given directories; reports every error found. |
 | `kubectl audit policy list` | List every policy that would load for a scan, with severity/category/CIS refs. |
+| `kubectl audit policy export` | Write the loaded policy set out as plain `ValidatingAdmissionPolicy` YAML (`--format vap`, default) or converted Kyverno `ValidatingPolicy`/`ClusterPolicy` YAML (`--format kyverno --kind ...`), optionally filtered to just the policies a given `--frameworks` maps to (plus an `--exclude-policy` list) — see [Kyverno export](docs/kyverno-export.md). |
 | `kubectl audit rbac analyze` | Standalone RBAC role-model + least-privilege report (no workload policies, no compliance scorecards). |
 | `kubectl audit template dump` | Write the built-in `report.md.tpl` to disk as a starting point for `--report-template`. |
-| `kubectl audit triage` | Interactive TUI to review `findings.json`, record triage decisions, and export or push confirmed findings to Jira — see [Triage](https://ivanhahanov.github.io/kubectl-audit/triage/). |
+| `kubectl audit push` | Upload a scan's `findings.json` to a `kubectl-audit-server` instance. |
 | `kubectl audit version` | Print the build version. |
+
+`kubectl-audit` is deliberately the whole self-service/CI surface and nothing else — no TUI, no
+Jira client. Reviewing findings and syncing them to Jira is a separate plugin/binary,
+**`kubectl-triage`** (`kubectl triage ...` once installed via krew), so a CI runner or a developer
+running their own cluster check never pulls in those dependencies:
+
+| Command | Description |
+|---|---|
+| `kubectl triage` | Interactive TUI to review `findings.json`, record triage decisions, and export or push confirmed findings to Jira — see [Triage](https://ivanhahanov.github.io/kubectl-audit/triage/). |
+| `kubectl triage export` | Non-interactively dump triage-joined findings, optionally filtered by `--status`, as JSON. |
+| `kubectl triage jira-sync` | Create Jira issues for confirmed findings that don't have one yet. |
+| `kubectl triage knowledge-base dump` | Write a ready-made knowledge base to disk, as a starting point for `triage.knowledgeBaseFile`. |
+| `kubectl triage version` | Print the build version. |
 
 Run any command with `--help` for its full flag list — each command only shows the flags actually
 relevant to it. Key flags available on `scan` and `rbac analyze`:
 
 - `--config audit.yaml` — load settings from a config file (see below); CLI flags override it. Global, works on every command.
 - `--context`, `--kubeconfig` — cluster targeting.
+- `--request-timeout <duration>` — per-request timeout for every call to the apiserver (default
+  `120s`; `0` disables it). Bounds a *hung* apiserver (not an outright-unreachable one, which
+  already fails fast) from blocking the scan forever — the failure mode you don't want in an
+  unattended CI job.
 - `--cluster-name` — human-readable name for the report's Target field and every finding's Source
   instead of the raw context name; cosmetic only.
 - `-f/--filename` (repeatable) — static manifest files or directories, matching `kubectl apply`'s own `-f/--filename`.
@@ -105,9 +185,18 @@ relevant to it. Key flags available on `scan` and `rbac analyze`:
 - `-n/--namespace` (repeatable), `-A/--all-namespaces` — namespace scoping in cluster mode.
 - `--exclude-namespace` (repeatable) — see [Noise reduction](#noise-reduction-owner-chains-platform-namespaces--repeated-tenant-namespaces) below.
 - `--include-system-rbac` — see [Noise reduction](#noise-reduction-owner-chains-platform-namespaces--repeated-tenant-namespaces) below.
-- `--output-json`, `--output-md` — output paths. Defaults differ per command so `scan` and
-  `rbac analyze` don't collide when pointed at the same directory.
-- `--output-csv` — write findings as CSV, one row per finding; not written by default.
+- `--output format=path` (repeatable) — where to write each report format: `json`, `md`, `csv`,
+  `confluence`, `console` (grouped-by-check, colorized listing — `console=-` means stdout, for a CI
+  job log or a local terminal run; color is on for a real terminal or when `$CI`/`$GITLAB_CI` is
+  set, off when piped/redirected or `$NO_COLOR` is set), `table` (a bordered, colorized
+  `SEVERITY|POLICY|RESOURCE|TITLE` table, `+CONTROLS` whenever `--frameworks` is active; long
+  cells are truncated with `…` to keep it terminal-width-friendly), e.g. `--output json=findings.json
+  --output console=-`. `json`/`md` default to `findings.json`/`report.md` (or
+  `rbac-findings.json`/`rbac-report.md` for `rbac analyze`, so the two commands don't collide when
+  pointed at the same directory) unless overridden here or in `audit.yaml`; `csv`/`confluence`/
+  `console`/`table` are not written unless given. `console`/`table`'s check titles localize via
+  `triage.knowledgeBaseFile` the same way `report.md` does — Russian out of the box, since
+  `triage.ResolveKnowledgeBase` always merges in the bundled Russian knowledge base by default.
 - `--report-template <file>` — custom `report.md.tpl` (Go `text/template`); default renders the
   same structure as before. See [Report template customization](#report-template-customization).
 - `--report-view check|namespace|both` — how the Findings section(s) are structured (default
@@ -120,6 +209,11 @@ relevant to it. Key flags available on `scan` and `rbac analyze`:
   [Noise reduction](#noise-reduction-owner-chains-platform-namespaces--repeated-tenant-namespaces)
   below.
 - `--fail-on none|low|medium|high|critical` — CI exit-code gate (default `high`).
+- `--min-severity none|low|medium|high|critical` — a *display* filter: drops findings below this
+  severity from every rendered report (findings.json/report.md/CSV/Confluence/console). Doesn't
+  affect `--fail-on` or compliance scorecards, which always see every finding regardless — so
+  tightening what's shown can never silently stop CI from catching something. Default `none`
+  (render everything, same as before this flag existed).
 
 `scan`-only:
 
@@ -127,6 +221,17 @@ relevant to it. Key flags available on `scan` and `rbac analyze`:
 - `--frameworks cis,fstec,nsa` — compliance framework(s) to score against (repeatable or
   comma-separated; default `cis`), or a path to a custom mapping. See
   [Compliance framework scope](#compliance-framework-scope).
+- `--frameworks-only` — drop every finding whose check isn't referenced
+  (`policyIds`/`nativeCheckIds`) by at least one control in `--frameworks`, before scorecards,
+  `--fail-on`, or any output — scopes the whole audit to exactly what the selected standard(s) ask
+  about, rather than this tool's full check set. Compliance scorecards are identical either way
+  (`BuildScorecard` already only looks at findings matching a control's own check IDs), so this
+  only ever removes findings a loaded framework never asked about in the first place — it never
+  adds or changes a pass/fail. **Defaults to `true` whenever `--frameworks` is explicitly given**
+  (choosing a standard implies auditing against just that standard) and `false` when `--frameworks`
+  is left at its implicit `cis` default (the full, unrestricted check set) — pass
+  `--frameworks-only`/`--frameworks-only=false` explicitly to override either direction regardless
+  of whether `--frameworks` was given.
 - `--check-updates` — live EOL/patch-currency check against endoflife.date (the only network call
   this tool ever makes beyond the target cluster; off by default).
 
@@ -271,8 +376,10 @@ available (`.Findings`, `.Frameworks`, `.RBACModel`, `escapeCell`, `crossRefs`, 
 ## Architecture
 
 ```
-cmd/kubectl-audit        entrypoint
-internal/cli              cobra commands, config/CLI-flag merging, scan orchestration
+cmd/kubectl-audit        entrypoint: scan/policy/rbac/template/inspect/push/version
+cmd/kubectl-triage        entrypoint: the separate triage/Jira-sync/knowledge-base plugin
+internal/cli              cobra commands for both binaries, config/CLI-flag merging, scan orchestration
+internal/triage            findings.json + triage-state join, Jira client, knowledge base (kubectl-triage only)
 internal/config            audit.yaml schema + loader
 internal/k8sclient          kubeconfig/context resolution, dynamic + discovery clients
 internal/loader              resource loading: live cluster (dynamic client) and static YAML/JSON

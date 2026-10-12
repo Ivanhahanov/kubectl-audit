@@ -138,7 +138,7 @@ kubectl audit template dump --format ru --out report.ru.md.tpl
 
 ## Confluence output
 
-`--output-confluence <file>` (or `output.confluence` in `audit.yaml`) writes the same report as
+`--output confluence=<file>` (or `output.confluence` in `audit.yaml`) writes the same report as
 **Confluence Server/Data Center wiki markup** — `h2.` headings, `||table||` headers, `{expand}`
 collapsible sections, `[text|url]` links — ready to paste straight into a Confluence page. This
 targets Server/Data Center's wiki markup specifically; Confluence **Cloud** uses a different
@@ -153,7 +153,7 @@ Markdown.
 
 ```sh
 kubectl audit template dump --format confluence --out confluence.tpl
-kubectl audit scan --confluence-template confluence.tpl --output-confluence report.confluence
+kubectl audit scan --confluence-template confluence.tpl --output confluence=report.confluence
 ```
 
 The Confluence function set is the same as Markdown's above, minus `slug` (unneeded — paste the

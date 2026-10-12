@@ -59,7 +59,7 @@ kubectl audit scan --frameworks cis,fstec,nsa
 | `kubectl audit policy list` | List every policy that would load for a scan, with severity/category/CIS refs. |
 | `kubectl audit rbac analyze` | Standalone RBAC role-model + least-privilege report (no workload policies, no compliance scorecards). |
 | `kubectl audit template dump` | Write the built-in `report.md.tpl` to disk as a starting point for `--report-template` — see [Report Templates]({{ '/report-templates/' | relative_url }}). |
-| `kubectl audit triage` | Interactive TUI to review `findings.json`, record confirmed/false-positive/won't-fix decisions, and export or push confirmed findings to Jira — see [Triage]({{ '/triage/' | relative_url }}). |
+| `kubectl triage` | Interactive TUI to review `findings.json`, record confirmed/false-positive/won't-fix decisions, and export or push confirmed findings to Jira — see [Triage]({{ '/triage/' | relative_url }}). |
 | `kubectl audit version` | Print the build version. |
 
 Run any command with `--help` for its full flag list — each command only shows the flags actually
@@ -91,14 +91,14 @@ Available on `scan` and `rbac analyze`:
 - `-n/--namespace` (repeatable), `-A/--all-namespaces` — namespace scoping in cluster mode.
 - `--exclude-namespace` (repeatable) — see [Noise reduction](#noise-reduction) below.
 - `--include-system-rbac` — see [Noise reduction](#noise-reduction) below.
-- `--output-json`, `--output-md` — output paths. Defaults differ per command so `scan` and
-  `rbac analyze` don't overwrite each other when run against the same directory: `scan` writes
-  `findings.json`/`report.md`, `rbac analyze` writes `rbac-findings.json`/`rbac-report.md`.
-- `--output-csv` — write findings as CSV (one row per finding: severity, policy ID, category, CIS
-  refs, resource, message, remediation, source, id), sorted most-severe first. Not written by
-  default. Meant for opening in a spreadsheet to sort/filter/pivot or hand off to someone tracking
-  remediation who doesn't want the full Markdown/JSON — JSON is the better fit for feeding another
-  tool programmatically.
+- `--output format=path` (repeatable) — where to write each report format: `json`, `md`, `csv`,
+  `confluence`, e.g. `--output json=findings.json --output csv=findings.csv`. `json`/`md` default
+  differ per command so `scan` and `rbac analyze` don't overwrite each other when run against the
+  same directory: `scan` writes `findings.json`/`report.md`, `rbac analyze` writes
+  `rbac-findings.json`/`rbac-report.md`. `csv` (one row per finding: severity, policy ID, category,
+  CIS refs, resource, message, remediation, source, id, sorted most-severe first) and `confluence`
+  are not written unless given — `csv` is meant for opening in a spreadsheet to sort/filter/pivot or
+  hand off to someone tracking remediation who doesn't want the full Markdown/JSON.
 - `--report-template <file>` — custom `report.md.tpl`; see [Report Templates]({{ '/report-templates/' | relative_url }}).
 - `--report-view check|namespace|both` — how the Markdown report's Findings section(s) are
   structured (default `check`). `check` groups findings by check/policy ID — each check's

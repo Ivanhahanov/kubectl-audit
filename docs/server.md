@@ -6,7 +6,7 @@ permalink: /server/
 
 # kubectl-audit-server: multi-cluster aggregation, triage, and automation
 
-Everything on this page is optional. `kubectl audit scan` and `kubectl audit triage` work exactly
+Everything on this page is optional. `kubectl audit scan` and `kubectl triage` work exactly
 as documented in [Getting Started]({{ '/getting-started/' | relative_url }}) and
 [Triage]({{ '/triage/' | relative_url }}) with zero server involvement — findings.json and a local
 triage-state.yaml are still the default, permanently. `kubectl-audit-server` is a separate,
@@ -85,7 +85,7 @@ curl -X POST http://localhost:8080/api/v1/clusters \
 Push a real scan with the new CLI command:
 
 ```sh
-kubectl audit scan -A --output-json findings.json
+kubectl audit scan -A --output json=findings.json
 kubectl-audit push --server http://localhost:8080 --token <cluster token> --findings findings.json
 # or: export KUBECTL_AUDIT_SERVER_URL / KUBECTL_AUDIT_SERVER_TOKEN and drop the flags
 ```
@@ -97,12 +97,12 @@ for the exact fingerprinting rules if you're curious.
 
 ## Triage against the server
 
-`kubectl audit triage` (the same interactive TUI, `export`, and `jira-sync` you already know) can
+`kubectl triage` (the same interactive TUI, `export`, and `jira-sync` you already know) can
 persist decisions centrally instead of to a local `triage-state.yaml`, with **no other behavior
 change** — add four things:
 
 ```sh
-kubectl audit triage \
+kubectl triage \
   --triage-server http://localhost:8080 \
   --triage-server-cluster-id <cluster id> \
   --triage-server-token <admin token> \

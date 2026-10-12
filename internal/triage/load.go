@@ -23,7 +23,7 @@ type findingsFile struct {
 }
 
 // LoadFindings reads a findings.json file (as written by `kubectl audit
-// scan --output-json`) and returns the scan's target label (e.g.
+// scan --output json=...`) and returns the scan's target label (e.g.
 // "cluster:my-context" or "static:./manifests" — report.Result.Target,
 // unchanged), its active findings, and its suppressed findings (each with
 // the exclusion rule's Reason — see report.SuppressedFinding). Findings

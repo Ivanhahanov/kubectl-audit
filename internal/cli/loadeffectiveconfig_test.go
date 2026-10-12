@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 // TestResolveConfigPath_ExplicitFlagWins guards that --config always beats
@@ -163,5 +165,94 @@ func TestLoadEffectiveConfig_UnsetBooleanFlagsLeaveConfigAlone(t *testing.T) {
 	// all, that default must survive untouched.
 	if !cfg.Target.AllNamespaces {
 		t.Errorf("expected config.Default()'s AllNamespaces: true to survive when --all-namespaces was never passed, got %v", cfg.Target.AllNamespaces)
+	}
+}
+
+// resetScanFlags clears every package-level flag var a fresh newScanCmd()
+// parse could be affected by — cobra flag vars are package globals, so a
+// prior test's parse otherwise leaks into the next one.
+func resetScanFlags(t *testing.T) *cobra.Command {
+	t.Helper()
+	flagOutputs = nil
+	flagFrameworks = nil
+	flagFrameworksOnly = false
+	flagRequestTimeout = ""
+	flagConfig = ""
+	flagFiles = nil
+	t.Setenv("HOME", t.TempDir())
+	return newScanCmd()
+}
+
+func TestLoadEffectiveConfig_OutputFlagsMergeIntoConfig(t *testing.T) {
+	cmd := resetScanFlags(t)
+	if err := cmd.Flags().Parse([]string{"--output", "json=out.json", "--output", "console=-"}); err != nil {
+		t.Fatalf("parsing: %v", err)
+	}
+	cfg, err := loadEffectiveConfig(cmd)
+	if err != nil {
+		t.Fatalf("loadEffectiveConfig: %v", err)
+	}
+	if cfg.Output.JSON != "out.json" {
+		t.Errorf("expected Output.JSON = %q, got %q", "out.json", cfg.Output.JSON)
+	}
+	if cfg.Output.Console != "-" {
+		t.Errorf("expected Output.Console = \"-\", got %q", cfg.Output.Console)
+	}
+}
+
+func TestLoadEffectiveConfig_InvalidOutputFormatErrors(t *testing.T) {
+	cmd := resetScanFlags(t)
+	if err := cmd.Flags().Parse([]string{"--output", "xml=report.xml"}); err != nil {
+		t.Fatalf("parsing: %v", err)
+	}
+	if _, err := loadEffectiveConfig(cmd); err == nil {
+		t.Error("expected an error for an unknown --output format, got nil")
+	}
+}
+
+func TestLoadEffectiveConfig_InvalidRequestTimeoutErrors(t *testing.T) {
+	cmd := resetScanFlags(t)
+	if err := cmd.Flags().Parse([]string{"--request-timeout", "not-a-duration"}); err != nil {
+		t.Fatalf("parsing: %v", err)
+	}
+	if _, err := loadEffectiveConfig(cmd); err == nil {
+		t.Error("expected an error for an invalid --request-timeout, got nil")
+	}
+}
+
+// TestLoadEffectiveConfig_FrameworksOnlyDefault guards the default-flip
+// behavior: choosing a framework explicitly scopes the audit to it by
+// default, not choosing one (the implicit "cis" default) keeps the full
+// check set, and an explicit --frameworks-only always overrides either
+// direction — see AuditConfig.FrameworksOnlyEnabled's own doc comment for
+// why "was --frameworks explicitly given" is the signal.
+func TestLoadEffectiveConfig_FrameworksOnlyDefault(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{"no --frameworks at all: stays false", nil, false},
+		{"explicit --frameworks: defaults true", []string{"--frameworks", "cis"}, true},
+		{"explicit --frameworks + explicit override false", []string{"--frameworks", "cis", "--frameworks-only=false"}, false},
+		{"no --frameworks + explicit override true", []string{"--frameworks-only=true"}, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			cmd := resetScanFlags(t)
+			if err := cmd.Flags().Parse(c.args); err != nil {
+				t.Fatalf("parsing %v: %v", c.args, err)
+			}
+			cfg, err := loadEffectiveConfig(cmd)
+			if err != nil {
+				t.Fatalf("loadEffectiveConfig: %v", err)
+			}
+			if cfg.Compliance.FrameworksOnly == nil {
+				t.Fatal("expected FrameworksOnly to always be resolved (non-nil) after loadEffectiveConfig")
+			}
+			if got := *cfg.Compliance.FrameworksOnly; got != c.want {
+				t.Errorf("args %v: got FrameworksOnly=%v, want %v", c.args, got, c.want)
+			}
+		})
 	}
 }

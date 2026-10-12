@@ -1,0 +1,51 @@
+# krew plugin manifest template.
+#
+# Fill in ivanhahanov/kubectl-audit, bump `version`, and replace each sha256
+# with `sha256sum` of the corresponding release archive before submitting
+# to (or privately indexing with) krew. Build the archives with:
+#   make cross-compile
+apiVersion: krew.googlecontainertools.github.com/v1alpha2
+kind: Plugin
+metadata:
+  name: triage
+spec:
+  version: "v0.1.0"
+  homepage: https://github.com/ivanhahanov/kubectl-audit
+  shortDescription: "Review kubectl-audit findings.json: triage decisions, Jira sync"
+  description: |
+    kubectl-triage is the companion plugin to kubectl-audit: an interactive
+    TUI for joining a scan's findings.json with persisted
+    confirmed/false-positive/won't-fix decisions, non-interactive export of
+    a reviewed list, and Jira Server/Data Center issue sync for confirmed
+    findings. A separate plugin/binary from kubectl-audit so a self-service/
+    CI user running `kubectl audit scan` never pulls in this plugin's TUI
+    (tcell/tview) and Jira-client dependencies.
+  platforms:
+    - selector:
+        matchLabels:
+          os: linux
+          arch: amd64
+      uri: https://github.com/ivanhahanov/kubectl-audit/releases/download/v0.1.0/kubectl-triage-linux-amd64.tar.gz
+      sha256: "REPLACE_ME"
+      bin: kubectl-triage
+    - selector:
+        matchLabels:
+          os: linux
+          arch: arm64
+      uri: https://github.com/ivanhahanov/kubectl-audit/releases/download/v0.1.0/kubectl-triage-linux-arm64.tar.gz
+      sha256: "REPLACE_ME"
+      bin: kubectl-triage
+    - selector:
+        matchLabels:
+          os: darwin
+          arch: amd64
+      uri: https://github.com/ivanhahanov/kubectl-audit/releases/download/v0.1.0/kubectl-triage-darwin-amd64.tar.gz
+      sha256: "REPLACE_ME"
+      bin: kubectl-triage
+    - selector:
+        matchLabels:
+          os: darwin
+          arch: arm64
+      uri: https://github.com/ivanhahanov/kubectl-audit/releases/download/v0.1.0/kubectl-triage-darwin-arm64.tar.gz
+      sha256: "REPLACE_ME"
+      bin: kubectl-triage

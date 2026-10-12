@@ -17,7 +17,7 @@ var starterKnowledgeBaseRU string
 
 // StarterKnowledgeBase returns the bundled knowledge base (Russian
 // title/description/remediation for every built-in check) as raw YAML
-// source — e.g. for `kubectl audit triage knowledge-base dump` to give a
+// source — e.g. for `kubectl triage knowledge-base dump` to give a
 // user a copyable starting point to adapt to their organization's own
 // wording.
 func StarterKnowledgeBase() string { return starterKnowledgeBaseRU }
