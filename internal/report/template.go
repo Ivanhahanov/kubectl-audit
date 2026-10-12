@@ -415,10 +415,10 @@ func buildControlIndex(frameworks []compliance.Scorecard) map[string][]complianc
 // primaryStandard resolves f's headline compliance reference (see
 // CheckGroup.PrimaryStandard's own doc comment) and every other control
 // beyond it, from controlIndex (built via buildControlIndex from
-// Result.Frameworks) — shared by groupByCheck and the console/table
-// writers (RenderConsole/RenderTable) so every output surfaces the same
-// "which section does this rule belong to" answer when --frameworks is
-// in play.
+// Result.Frameworks) — shared by groupByCheck and RenderConsole (both
+// the per-finding listing and the stats tables it appends) so every
+// output surfaces the same "which section does this rule belong to"
+// answer when --frameworks is in play.
 //
 // allowCISFallback, when true, falls back to the raw Finding.CIS
 // annotation (every bundled policy's own baked-in "audit.k8s-auditor.io/
@@ -430,7 +430,8 @@ func buildControlIndex(frameworks []compliance.Scorecard) map[string][]complianc
 // CONTROLS column when the user explicitly loaded a *different*,
 // unrelated framework (e.g. --frameworks ./our-standard.yaml) reads as
 // "this matched CIS", which it didn't — an empty cell is the honest
-// answer there ("not mapped to anything in what you selected").
+// answer there ("not mapped to anything in what you selected"). console
+// passes false for both its per-finding listing and its stats tables.
 func primaryStandard(f findings.Finding, controlIndex map[string][]compliance.ControlRef, allowCISFallback bool) (primary, related string) {
 	primary, related = compliance.SplitPrimary(controlIndex[f.PolicyID])
 	if primary == "" && allowCISFallback && len(f.CIS) > 0 {
@@ -442,7 +443,8 @@ func primaryStandard(f findings.Finding, controlIndex map[string][]compliance.Co
 // controlIDs returns just the bare control ID(s) (e.g. "5.1.11", or
 // "5.1.11, 5.1.12" when more than one control in the loaded framework(s)
 // references this check) — no framework name, no control title. Used by
-// RenderTable's CONTROLS column: the full "<Framework>: <ID> — <Title>"
+// the per-check stats table's CONTROLS column (writeCheckTable in
+// table.go): the full "<Framework>: <ID> — <Title>"
 // citation primaryStandard/FormatControlRefs produce routinely runs well
 // past 100 characters (a framework's title plus a full English control
 // sentence), which a fixed-width table column can't carry without
@@ -498,7 +500,7 @@ func groupByCheck(sorted []findings.Finding, namespaceGroupThreshold int, byPatt
 // one check's hoisted Title/Category/Remediation — the same precedence
 // triage.Resolve uses (internal/triage/knowledgebase.go): f.KnowledgeBase
 // (inline, set via a VAP's kb-* annotations) first, then kb[f.PolicyID] (an
-// external triage.knowledgeBaseFile) layered on top, external always wins
+// external knowledgeBaseFile) layered on top, external always wins
 // field-by-field. Each field is rendered as a Go template against
 // {{.Finding}} (f — the same representative finding already hoisted for
 // Title/CIS/Remediation elsewhere in groupByCheck), same as

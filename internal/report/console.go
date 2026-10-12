@@ -69,18 +69,29 @@ type consoleGroup struct {
 // showRemediation, when true, adds a "Remediation: ..." line — resolved
 // through the exact same resolveCheckKB report.md's own Remediation
 // column uses, so it's just as actionable and localizes the same way
-// (Russian by default). This is the whole reason console exists as a
-// distinct output from --output table=... (aggregate statistics only,
-// see RenderTable): a DevOps engineer scanning their own cluster needs
-// to know what to actually do about a finding without necessarily
+// (Russian by default): a DevOps engineer scanning their own cluster
+// needs to know what to actually do about a finding without necessarily
 // opening report.md separately or asking a security specialist — see
 // the session this was added in for the concrete gap (console used to
 // show only Title+Message, never Remediation, even though the knowledge
 // base already had it).
 //
-// color wraps just the "[SEVERITY]" tag in an ANSI code; pass false when
-// writing to a real file or a non-terminal, non-CI stdout (see
-// internal/cli's color-enablement decision).
+// The per-finding list is followed by the same aggregate-statistics
+// tables a separate --output table=... used to produce on its own
+// (severity breakdown, per-check counts, compliance scorecard — see
+// writeSeverityTable/writeCheckTable/writeComplianceTable in table.go):
+// console used to be one of two different, differently-shaped stdout
+// formats a user had to choose between for CI, which read as "too many
+// outputs showing different things" — findings first (what to fix,
+// right where you're already looking), tables last (the at-a-glance
+// numbers, in the position a CI log is actually read from — the tail —
+// the same convention `go test`/`pytest` use: detail first, summary
+// last).
+//
+// color wraps just the "[SEVERITY]" tag (and each table's SEVERITY
+// cell) in an ANSI code; pass false when writing to a real file or a
+// non-terminal, non-CI stdout (see internal/cli's color-enablement
+// decision).
 func RenderConsole(r Result, color bool, showRemediation bool, kb map[string]findings.KnowledgeBaseEntry) []byte {
 	sorted := append([]findings.Finding{}, r.Findings...)
 	findings.SortBySeverity(sorted)
@@ -149,6 +160,20 @@ func RenderConsole(r Result, color bool, showRemediation bool, kb map[string]fin
 		if truncated {
 			fmt.Fprintf(&buf, "  → (+%d more)\n", len(g.resources)-len(resources))
 		}
+	}
+
+	if len(groups) > 0 {
+		buf.WriteByte('\n')
+	}
+	buf.WriteString("Findings by severity:\n")
+	writeSeverityTable(&buf, r, color)
+
+	buf.WriteString("\nFindings by check:\n")
+	writeCheckTable(&buf, r, color)
+
+	if len(r.Frameworks) > 0 {
+		buf.WriteString("\nCompliance scorecard:\n")
+		writeComplianceTable(&buf, r)
 	}
 	return buf.Bytes()
 }

@@ -110,16 +110,19 @@ exclusions:
     # Required — shown next to every finding this rule suppresses.
     reason: "Legacy app pending migration, tracked in JIRA-1234"
 
+# A bundled Russian title/description/remediation applies to every check
+# automatically, no config needed (see docs/triage.md > Knowledge base).
+# Point this at a file to correct one entry or add your own organization's
+# wording; merged on top of the bundle, field by field. Used by both
+# `scan` (console/report.md/Confluence Remediation text) and `triage`
+# (Jira ticket filing, the TUI's detail view).
+# knowledgeBaseFile: knowledge-base.yaml
+
 # Configures `kubectl triage` (see docs/triage.md). No credential
 # field here: the Jira Personal Access Token always comes from
 # --jira-token or $KUBECTL_AUDIT_JIRA_TOKEN, never this file.
 # triage:
 #   stateFile: triage-state.yaml
-#   # A bundled Russian title/description/remediation applies to every check
-#   # automatically, no config needed (see docs/triage.md > Knowledge base).
-#   # Point this at a file to correct one entry or add your own
-#   # organization's wording; merged on top of the bundle, field by field.
-#   # knowledgeBaseFile: knowledge-base.yaml
 #   jira:
 #     baseUrl: https://jira.example.com
 #     projectKey: SEC

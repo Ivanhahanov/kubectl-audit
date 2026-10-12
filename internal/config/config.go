@@ -167,18 +167,17 @@ type OutputConfig struct {
 	// default Confluence template — same convention as Template above.
 	ConfluenceTemplate string `json:"confluenceTemplate,omitempty"`
 	// Console is a path to write a colorized (when the destination supports
-	// it) one-line-per-finding listing — "-" means stdout, meant for a CI
-	// job log or a local terminal rather than a saved artifact. Empty (the
-	// default) skips this output entirely, same convention as CSV/Confluence
-	// above.
+	// it) per-finding listing followed by aggregate-statistics tables (a
+	// severity breakdown, a per-check breakdown, and, when --frameworks is
+	// active, a compliance scorecard) — "-" means stdout, meant for a CI
+	// job log or a local terminal rather than a saved artifact. See
+	// report.RenderConsole. This used to be two separate formats
+	// ("console" for per-finding detail, "table" for stats-only); they
+	// were merged into one so a CI run has a single stdout format to
+	// reach for instead of choosing between two differently-shaped ones.
+	// Empty (the default) skips this output entirely, same convention as
+	// CSV/Confluence above.
 	Console string `json:"console,omitempty"`
-	// Table is a path to write aggregate statistics — a severity
-	// breakdown, a per-check breakdown, and (when --frameworks is active)
-	// a compliance scorecard, as bordered tables — "-" means stdout. Not
-	// per-finding/per-resource detail; that's Console/JSON/Markdown's job
-	// — see report.RenderTable. Empty (the default) skips this output
-	// entirely, same convention as above.
-	Table string `json:"table,omitempty"`
 	// ShowRemediation controls whether --output console=... includes each
 	// check's remediation guidance (resolved through the same knowledge
 	// base as report.md's own Remediation column — Russian by default,
@@ -192,8 +191,8 @@ type OutputConfig struct {
 	// ready-made Russian translation of the report skeleton (headings,
 	// "Category"/"Remediation"/... labels), not a general i18n system. A
 	// finding's own Title/Message/Remediation only change language if a
-	// Russian knowledge base (triage.knowledgeBaseFile — the bundled
-	// default already is one) overrides them; ReportLang only picks the
+	// Russian knowledge base (knowledgeBaseFile — the bundled default
+	// already is one) overrides them; ReportLang only picks the
 	// surrounding template. Ignored when Template is set — a custom
 	// template always fully replaces the built-in one, same precedent as
 	// every other --report-template override.
@@ -286,7 +285,7 @@ type ComplianceConfig struct {
 	// FrameworksOnly restricts scan results to findings whose check is
 	// actually referenced (policyIds/nativeCheckIds) by at least one
 	// control in Frameworks — everything else is dropped before it ever
-	// reaches findings.json/report.md/CSV/console/table, compliance
+	// reaches findings.json/report.md/CSV/console, compliance
 	// scorecards, or --fail-on, not just hidden from a display column.
 	// For a compliance audit scoped to one standard, a finding the
 	// standard never asked about isn't in scope for that audit at all —
@@ -424,19 +423,6 @@ type TriageConfig struct {
 	// internal/triage.State.
 	StateFile string     `json:"stateFile,omitempty"`
 	Jira      JiraConfig `json:"jira,omitempty"`
-	// KnowledgeBaseFile is a path to a YAML file (PolicyID -> {title,
-	// description, remediation}) merged on top of the tool's bundled
-	// knowledge base (see internal/triage.ResolveKnowledgeBase — the
-	// bundle applies automatically, no config needed) — for correcting a
-	// bundled entry or adding your organization's own wording/standards
-	// for a check the bundle doesn't cover. Applied both when filing a
-	// Jira ticket and in the triage TUI's detail view (so what you
-	// preview is what gets filed — see internal/triage.Resolve). Not
-	// nested under Jira: the detail view uses it independent of Jira
-	// being configured at all. See `kubectl triage knowledge-base
-	// dump` to inspect the bundle. Read fresh from disk on every run, no
-	// rebuild.
-	KnowledgeBaseFile string `json:"knowledgeBaseFile,omitempty"`
 	// Server points triage at a kubectl-audit-server instance instead of
 	// StateFile — see TriageServerConfig.
 	Server TriageServerConfig `json:"server,omitempty"`
@@ -511,6 +497,19 @@ type AuditConfig struct {
 	// Components extends the built-in third-party component inventory —
 	// see ComponentsConfig.
 	Components ComponentsConfig `json:"components,omitempty"`
+	// KnowledgeBaseFile is a path to a YAML file (PolicyID -> {title,
+	// description, remediation}) merged on top of the tool's bundled
+	// knowledge base (see internal/triage.ResolveKnowledgeBase — the
+	// bundle applies automatically, no config needed) — for correcting a
+	// bundled entry or adding your organization's own wording/standards
+	// for a check the bundle doesn't cover. Not nested under Triage: both
+	// `kubectl audit scan` (console/report.md/Confluence Remediation text
+	// — see runScan's own ResolveKnowledgeBase call) and `kubectl triage`
+	// (Jira ticket filing, the TUI's detail view) resolve it the same
+	// way, independent of either Jira or triage being configured at all.
+	// See `kubectl triage knowledge-base dump` to inspect the bundle.
+	// Read fresh from disk on every run, no rebuild.
+	KnowledgeBaseFile string `json:"knowledgeBaseFile,omitempty"`
 	// Triage configures `kubectl triage` — see TriageConfig.
 	Triage TriageConfig `json:"triage,omitempty"`
 }
@@ -583,22 +582,23 @@ func Load(path string) (*AuditConfig, error) {
 		}
 	}
 	expandTriagePaths(&cfg.Triage)
+	cfg.KnowledgeBaseFile = expandHome(cfg.KnowledgeBaseFile)
 	return cfg, nil
 }
 
 // expandTriagePaths expands a leading "~/" in the triage config's own
-// file-path fields — StateFile, KnowledgeBaseFile, and the Jira summary/
-// description templates — the same convenience `~/.kube/config` users
-// expect from a path, but that Go's os.ReadFile doesn't do on its own (no
-// shell involved to expand it). Lets an audit.yaml living in
-// ~/.kubectl-audit/ (see resolveConfigPath in internal/cli) reference
-// sibling files there — "~/.kubectl-audit/knowledge-base.yaml" — without
-// spelling out the full absolute path. A path not starting with "~/" is
-// left untouched, so ordinary CWD-relative paths (e.g. a project's own
-// checked-in audit.yaml) behave exactly as before.
+// file-path fields — StateFile and the Jira summary/description
+// templates — the same convenience `~/.kube/config` users expect from a
+// path, but that Go's os.ReadFile doesn't do on its own (no shell
+// involved to expand it). Lets an audit.yaml living in ~/.kubectl-audit/
+// (see resolveConfigPath in internal/cli) reference sibling files there
+// without spelling out the full absolute path. A path not starting with
+// "~/" is left untouched, so ordinary CWD-relative paths (e.g. a
+// project's own checked-in audit.yaml) behave exactly as before.
+// KnowledgeBaseFile gets the same treatment directly in Load, since it's
+// no longer a Triage-only field.
 func expandTriagePaths(t *TriageConfig) {
 	t.StateFile = expandHome(t.StateFile)
-	t.KnowledgeBaseFile = expandHome(t.KnowledgeBaseFile)
 	t.Jira.SummaryTemplate = expandHome(t.Jira.SummaryTemplate)
 	t.Jira.DescriptionTemplate = expandHome(t.Jira.DescriptionTemplate)
 }

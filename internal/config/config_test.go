@@ -127,9 +127,9 @@ func TestLoad_ExpandsHomeTildeInTriagePaths(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	path := writeConfig(t, `
+knowledgeBaseFile: ~/.kubectl-audit/knowledge-base.yaml
 triage:
   stateFile: ~/.kubectl-audit/triage-state.yaml
-  knowledgeBaseFile: ~/.kubectl-audit/knowledge-base.yaml
   jira:
     summaryTemplate: ~/.kubectl-audit/summary.tpl
     descriptionTemplate: ~/.kubectl-audit/description.tpl
@@ -142,8 +142,8 @@ triage:
 	if cfg.Triage.StateFile != want(".kubectl-audit/triage-state.yaml") {
 		t.Errorf("StateFile: got %q", cfg.Triage.StateFile)
 	}
-	if cfg.Triage.KnowledgeBaseFile != want(".kubectl-audit/knowledge-base.yaml") {
-		t.Errorf("KnowledgeBaseFile: got %q", cfg.Triage.KnowledgeBaseFile)
+	if cfg.KnowledgeBaseFile != want(".kubectl-audit/knowledge-base.yaml") {
+		t.Errorf("KnowledgeBaseFile: got %q", cfg.KnowledgeBaseFile)
 	}
 	if cfg.Triage.Jira.SummaryTemplate != want(".kubectl-audit/summary.tpl") {
 		t.Errorf("Jira.SummaryTemplate: got %q", cfg.Triage.Jira.SummaryTemplate)
@@ -158,15 +158,14 @@ triage:
 // completely unaffected by the "~/" expansion.
 func TestLoad_LeavesNonTildePathsUnchanged(t *testing.T) {
 	path := writeConfig(t, `
-triage:
-  knowledgeBaseFile: knowledge-base.yaml
+knowledgeBaseFile: knowledge-base.yaml
 `)
 	cfg, err := config.Load(path)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.Triage.KnowledgeBaseFile != "knowledge-base.yaml" {
-		t.Errorf("expected a plain relative path to be left untouched, got %q", cfg.Triage.KnowledgeBaseFile)
+	if cfg.KnowledgeBaseFile != "knowledge-base.yaml" {
+		t.Errorf("expected a plain relative path to be left untouched, got %q", cfg.KnowledgeBaseFile)
 	}
 }
 

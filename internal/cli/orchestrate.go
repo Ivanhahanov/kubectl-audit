@@ -133,9 +133,6 @@ func loadEffectiveConfig(cmd *cobra.Command) (*config.AuditConfig, error) {
 	if path, ok := outputs["console"]; ok {
 		cfg.Output.Console = path
 	}
-	if path, ok := outputs["table"]; ok {
-		cfg.Output.Table = path
-	}
 	if flagFailOn != "" {
 		cfg.Output.FailOn = flagFailOn
 	}
@@ -695,10 +692,10 @@ func runScan(ctx context.Context, cfg *config.AuditConfig) (report.Result, error
 	kept, suppressed := suppress.Apply(all, effectiveExclusions(cfg), suppress.BuildLabelIndex(unfiltered))
 	detected := thirdparty.Detect(unfiltered, effectiveComponents(cfg))
 
-	// Reuses triage.knowledgeBaseFile: an org's Title/Category/Remediation
-	// overrides should read the same whether triaging or reading the
-	// static report, not live in two separate places.
-	kb, err := triage.ResolveKnowledgeBase(cfg.Triage.KnowledgeBaseFile)
+	// Reuses the top-level knowledgeBaseFile: an org's Title/Category/
+	// Remediation overrides should read the same whether triaging or
+	// reading the static report, not live in two separate places.
+	kb, err := triage.ResolveKnowledgeBase(cfg.KnowledgeBaseFile)
 	if err != nil {
 		return report.Result{}, fmt.Errorf("loading knowledge base: %w", err)
 	}
@@ -815,7 +812,7 @@ func warnUnknownPolicyIDs(mapping *compliance.Mapping, validPolicyIDs map[string
 }
 
 // validOutputFormats are the accepted format keys for --output format=path.
-var validOutputFormats = map[string]bool{"json": true, "md": true, "csv": true, "confluence": true, "console": true, "table": true}
+var validOutputFormats = map[string]bool{"json": true, "md": true, "csv": true, "confluence": true, "console": true}
 
 // parseOutputFlags parses repeated --output format=path flags into a
 // format -> path map. Rejects an unknown format, a missing "=", an empty
@@ -908,11 +905,6 @@ func writeOutputs(cfg *config.AuditConfig, result report.Result) error {
 	if cfg.Output.Console != "" {
 		if err := report.WriteConsole(cfg.Output.Console, result, colorEnabled(cfg.Output.Console), cfg.Output.ShowRemediationEnabled()); err != nil {
 			return fmt.Errorf("writing %s: %w", cfg.Output.Console, err)
-		}
-	}
-	if cfg.Output.Table != "" {
-		if err := report.WriteTable(cfg.Output.Table, result, colorEnabled(cfg.Output.Table)); err != nil {
-			return fmt.Errorf("writing %s: %w", cfg.Output.Table, err)
 		}
 	}
 	return nil

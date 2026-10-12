@@ -21,7 +21,7 @@ type knowledgeBaseEntryDTO struct {
 
 // handleGetKnowledgeBaseEntry and handlePutKnowledgeBaseEntry are admin-
 // token-gated, like cluster registration: this is organization-level
-// configuration (today's local triage.knowledgeBaseFile, centralized), not
+// configuration (today's local knowledgeBaseFile, centralized), not
 // per-cluster scan data — see NewServer's doc comment.
 //
 //	@Summary		Get a knowledge base entry

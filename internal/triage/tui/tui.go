@@ -118,7 +118,7 @@ type Config struct {
 	// triage.Store's doc comment.
 	Store triage.Store
 	Jira  JiraConfig // may be zero-value; the 'j' action reports a clear error if so
-	// KnowledgeBase (triage.knowledgeBaseFile, already loaded) overrides a
+	// KnowledgeBase (knowledgeBaseFile, already loaded) overrides a
 	// finding's Title/Description/Remediation with an organization's own
 	// ticket wording — see triage.Resolve. Used both for Jira issue
 	// content and the detail view (enter), so it's independent of Jira

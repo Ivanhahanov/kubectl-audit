@@ -65,7 +65,7 @@ func parseKnowledgeBase(data []byte) (map[string]findings.KnowledgeBaseEntry, er
 // MergeKnowledgeBases combines knowledge-base maps in order, later maps
 // overriding earlier ones per-PolicyID, field by field (a field left empty
 // in a later map doesn't blank out an earlier one's value for it) — so
-// ResolveKnowledgeBase can layer a user's triage.knowledgeBaseFile on top
+// ResolveKnowledgeBase can layer a user's knowledgeBaseFile on top
 // of the bundled default and correct or extend individual entries without
 // repeating the rest of the bundle.
 func MergeKnowledgeBases(maps ...map[string]findings.KnowledgeBaseEntry) map[string]findings.KnowledgeBaseEntry {
@@ -146,7 +146,7 @@ type ResolvedContent struct {
 // f.KnowledgeBase (set inline on the policy itself — see
 // internal/engine/vap.go's kb-title/kb-description/kb-remediation
 // annotations), then apply kb[f.PolicyID] (an external
-// triage.knowledgeBaseFile) on top of that — so an explicit external
+// knowledgeBaseFile) on top of that — so an explicit external
 // override always wins over whatever a policy author baked into the check
 // itself, field by field. Each knowledge-base field is rendered as a Go
 // template against {{.Finding}} before use (see renderKBField), so an

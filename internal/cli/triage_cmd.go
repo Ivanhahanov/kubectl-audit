@@ -196,8 +196,8 @@ func resolveTriageStore(cmd *cobra.Command, statePath string) (triage.Store, err
 	return triage.ServerStore{BaseURL: baseURL, Token: token, ClusterID: clusterID, Source: source}, nil
 }
 
-// resolveKnowledgeBase loads triage.knowledgeBaseFile (see
-// config.TriageConfig) — the same empty-path-means-nothing convention as
+// resolveKnowledgeBase loads the top-level knowledgeBaseFile (see
+// config.AuditConfig) — the same empty-path-means-nothing convention as
 // loadTemplateFile. Independent of Jira: the triage TUI's detail view
 // applies it too, so it's resolved regardless of whether Jira is even
 // configured.
@@ -206,7 +206,7 @@ func resolveKnowledgeBase(cmd *cobra.Command) (map[string]findings.KnowledgeBase
 	if err != nil {
 		return nil, err
 	}
-	return triage.ResolveKnowledgeBase(cfg.Triage.KnowledgeBaseFile)
+	return triage.ResolveKnowledgeBase(cfg.KnowledgeBaseFile)
 }
 
 // resolveControlIndex loads cfg.Compliance.Frameworks — the same
@@ -503,10 +503,10 @@ func newTriageKnowledgeBaseDumpCmd() *cobra.Command {
 	var out string
 	cmd := &cobra.Command{
 		Use:   "dump",
-		Short: "Write a ready-made knowledge base to disk, as a starting point for triage.knowledgeBaseFile customization.",
+		Short: "Write a ready-made knowledge base to disk, as a starting point for knowledgeBaseFile customization.",
 		Long: "A starting point for your organization's own ticket wording: dump it, edit whichever " +
 			"entries you want (your own title/description/remediation for a check, in your own words " +
-			"or language), save as your own (possibly smaller) file, and point triage.knowledgeBaseFile " +
+			"or language), save as your own (possibly smaller) file, and point knowledgeBaseFile " +
 			"at it. Entries you don't touch simply aren't used — you don't need to keep every one. No " +
 			"rebuild needed: the file is read fresh on every `triage jira-sync`/TUI 'j'/'enter' run.",
 		RunE: func(cmd *cobra.Command, args []string) error {

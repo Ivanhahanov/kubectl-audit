@@ -11,7 +11,7 @@ import (
 // policy carrying kb-title/kb-description/kb-remediation annotations
 // should get them parsed into PolicyMeta.KnowledgeBase, letting a
 // custom-policy author avoid also maintaining a separate
-// triage.knowledgeBaseFile entry for it — see docs/writing-policies.md.
+// knowledgeBaseFile entry for it — see docs/writing-policies.md.
 func TestExtractMeta_ParsesInlineKnowledgeBase(t *testing.T) {
 	docs, err := engine.ParsePolicyDocs("inline", []byte(`
 apiVersion: admissionregistration.k8s.io/v1

@@ -3,7 +3,6 @@ package report
 import (
 	"bytes"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -12,11 +11,17 @@ import (
 	"github.com/ivanhahanov/kubectl-audit/internal/findings"
 )
 
+// This file renders the aggregate-statistics tables (severity breakdown,
+// per-check counts, compliance scorecard) that RenderConsole appends
+// after its per-finding listing — these used to be a separate --output
+// table=... format, folded into console so a CI run has exactly one
+// stdout format to reach for instead of two differently-shaped ones (see
+// RenderConsole's doc comment for why).
+//
 // Per-column bounds the per-check table's width-budget split respects —
 // see checkTableColumnWidths. POLICY/CONTROLS have no competing free-text
-// column to protect here (unlike this package's first cut at table mode,
-// which also tried to carry TITLE/RESOURCE — moved to --output
-// console=-, since this table is statistics, not per-finding detail), so
+// column to protect here (this table is statistics, not per-finding
+// detail — that's RenderConsole's own listing above these tables), so
 // they're capped only to guard against one pathological long value, not
 // fought over.
 const (
@@ -25,32 +30,6 @@ const (
 	maxPolicyWidth   = 60
 	maxControlsWidth = 40
 )
-
-// RenderTable renders aggregate statistics as bordered tables — never
-// per-finding or per-resource detail, which is --output console=-/
-// json=.../md=...'s job instead: a severity breakdown ("how many,
-// total"), a per-check breakdown ("how many, broken down by which
-// check"), and — when --frameworks is active — a compliance scorecard
-// ("pass/fail per framework"). Table mode answers "how many and of
-// what", not "what do I do about it".
-//
-// color wraps each SEVERITY cell in an ANSI code, same palette as
-// RenderConsole; pass false for the same cases RenderConsole's own color
-// argument documents (a real file, or a non-terminal non-CI stdout).
-func RenderTable(r Result, color bool) []byte {
-	var buf bytes.Buffer
-	buf.WriteString("Findings by severity:\n")
-	writeSeverityTable(&buf, r, color)
-
-	buf.WriteString("\nFindings by check:\n")
-	writeCheckTable(&buf, r, color)
-
-	if len(r.Frameworks) > 0 {
-		buf.WriteString("\nCompliance scorecard:\n")
-		writeComplianceTable(&buf, r)
-	}
-	return buf.Bytes()
-}
 
 // severityOrder is most-severe-first, matching findings.SortBySeverity's
 // own ordering convention used everywhere else in this package.
@@ -229,15 +208,4 @@ func writeTableRow(buf *bytes.Buffer, cells []string, widths []int, color bool, 
 		}
 	}
 	buf.WriteString(" │\n")
-}
-
-// WriteTable writes RenderTable's output to path, or to os.Stdout when
-// path is "-" (same convention as WriteConsole).
-func WriteTable(path string, r Result, color bool) error {
-	data := RenderTable(r, color)
-	if path == "-" {
-		_, err := os.Stdout.Write(data)
-		return err
-	}
-	return os.WriteFile(path, data, 0o644)
 }
