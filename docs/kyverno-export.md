@@ -1,115 +1,119 @@
----
-layout: default
-title: "Kyverno Export"
-permalink: /kyverno-export/
----
+# Экспорт политик в Kyverno
 
-# Exporting policies to Kyverno
+`kubectl audit policy export` записывает набор политик, который загрузил бы `scan` (встроенные по
+умолчанию + любой `--policy-dir`), обратно в виде YAML — `--format` выбирает семейство вывода:
 
-`kubectl audit policy export` writes the policy set a `scan` would load (bundled defaults + any
-`--policy-dir`) back out as YAML — `--format` picks the output family:
+- `--format vap` (по умолчанию) — обычный YAML `ValidatingAdmissionPolicy`, ничего не
+  преобразуется, плюс сгенерированный `ValidatingAdmissionPolicyBinding` (`--validation-action`, по
+  умолчанию `Audit`): голая `ValidatingAdmissionPolicy` вообще ничего не применяет принудительно,
+  если применена без биндинга (`validationActions` находится у Binding, а не у Policy, в нативном
+  API Kubernetes), поэтому оба объекта записываются в один файл как многодокументный поток YAML,
+  разделённый `---`, и применяются вместе одним `kubectl apply -f`. Проверено целиком на реальном
+  кластере (kind, Kubernetes 1.31): совместимый объект допускается, нарушающий — отклоняется с
+  собственным сообщением этой проверки, точно так же, как его пометил бы `kubectl-audit scan`.
+- `--format kyverno` — вместо этого преобразует в YAML политик Kyverno, для организаций, уже
+  стандартизировавшихся на Kyverno для принудительного применения в кластере. `--kind` затем
+  выбирает, какую форму(ы) Kyverno использовать. Также проверено целиком (тот же кластер kind,
+  актуальный релиз Kyverno): обе формы ниже корректно допускают совместимый объект и отклоняют
+  нарушающий.
 
-- `--format vap` (the default) — plain `ValidatingAdmissionPolicy` YAML, nothing converted, plus a
-  generated `ValidatingAdmissionPolicyBinding` (`--validation-action`, default `Audit`): a bare
-  `ValidatingAdmissionPolicy` enforces nothing at all once applied without one (`validationActions`
-  lives on the Binding, not the Policy, in the native K8s API), so both are written to the same
-  file as a `---`-separated multi-document YAML stream, applied together in one `kubectl apply -f`.
-  Verified end-to-end against a real cluster (kind, Kubernetes 1.31): a compliant object is
-  admitted, a violating one is denied with this check's own message, exactly as `kubectl-audit
-  scan` would have flagged it.
-- `--format kyverno` — converts into Kyverno policy YAML instead, for organizations already
-  standardized on Kyverno for in-cluster enforcement. `--kind` then picks which Kyverno shape(s).
-  Also verified end-to-end (same kind cluster, Kyverno's latest release): both shapes below
-  correctly admit a compliant object and deny a violating one.
+## Две цели Kyverno
 
-## The two Kyverno targets
+У Kyverno сейчас есть две формы политик, и `--kind` (учитывается только с `--format kyverno`)
+выбирает, какая из них будет записана:
 
-Kyverno currently has two policy shapes, and `--kind` (only consulted with `--format kyverno`)
-picks which one(s) get written:
+- **`validatingpolicy`** (по умолчанию) — `ValidatingPolicy` из `policies.kyverno.io/v1` в Kyverno.
+  Она повторно использует ровно те же формы `matchConstraints` (сопоставление ресурсов по apiGroup +
+  множественному числу ресурса, например `"deployments"`) и `validations` (CEL `expression`/
+  `message`), которые уже есть у нативной VAP, поэтому преобразование — это без потерь структурная
+  копия: ничего не переинтерпретируется.
+- **`clusterpolicy`** — классический `ClusterPolicy` из `kyverno.io/v1`, с теми же выражениями CEL,
+  встроенными в `validate.cel.expressions` (не переведёнными в синтаксис JMESPath/pattern —
+  универсальный транслятор CEL→JMESPath нельзя надёжно автоматизировать). Сам Kyverno теперь
+  предупреждает, что этот вид устарел в пользу `validatingpolicy` (`kubectl apply` выводит
+  `Warning: kyverno.io/v1 ClusterPolicy is deprecated...` в актуальном релизе Kyverno) —
+  предпочитайте `--kind validatingpolicy`, если вам конкретно не нужен классический `ClusterPolicy`
+  для старой установки Kyverno или существующего пайплайна, построенного вокруг него. Его блоки
+  match требуют настоящих имён Kind (например, `"Deployment"`), которых у VAP никогда нет — только
+  GVR (например, `"deployments"`). Сам Kubernetes разрешает GVR→Kind только через живой RESTMapper,
+  опирающийся на обнаружение кластера; множественное число ресурса нельзя надёжно превратить в его
+  Kind простым переводом из множественного числа в единственное и капитализацией (многословные Kind
+  теряют границы слов, например `virtualmachineinstances` → `VirtualMachineInstance`). Поэтому
+  разрешение Kind происходит так:
+  1. Встроенная таблица, покрывающая именно те ресурсы, которые используют *поставляемые* политики
+     (core/v1, apps/v1, batch/v1, `rbac.authorization.k8s.io/v1`, `networking.k8s.io/v1`,
+     `admissionregistration.k8s.io/v1`) — работает офлайн, кластер не нужен.
+  2. Живое обнаружение через `--context`/`--kubeconfig` для всего, что не покрывает таблица
+     (пользовательские политики, сторонние CRD).
 
-- **`validatingpolicy`** (default) — Kyverno's `policies.kyverno.io/v1 ValidatingPolicy`.
-  This reuses the exact same `matchConstraints` (resource-matching by apiGroup + resource plural,
-  e.g. `"deployments"`) and `validations` (CEL `expression`/`message`) shapes a native VAP already
-  has, so the conversion is a lossless structural copy — nothing is reinterpreted.
-- **`clusterpolicy`** — the classic `kyverno.io/v1 ClusterPolicy`, with the same CEL expressions
-  embedded in `validate.cel.expressions` (not translated to JMESPath/pattern syntax — a general
-  CEL→JMESPath translator isn't reliably automatable). Kyverno itself now warns this kind is
-  deprecated in favor of `validatingpolicy` (`kubectl apply` prints `Warning: kyverno.io/v1
-  ClusterPolicy is deprecated...` as of Kyverno's current release) — prefer `--kind
-  validatingpolicy` unless you specifically need classic `ClusterPolicy` for an older Kyverno
-  install or an existing pipeline built around it. Its match blocks need real Kind names
-  (e.g. `"Deployment"`), which a VAP never carries — only the GVR (e.g. `"deployments"`).
-  Kubernetes itself only resolves GVR→Kind via a live RESTMapper backed by cluster discovery; a
-  resource plural can't be reliably turned into its Kind by de-pluralizing and capitalizing alone
-  (multi-word Kinds lose their word boundaries, e.g. `virtualmachineinstances` →
-  `VirtualMachineInstance`). So Kind resolution is:
-  1. A built-in table covering exactly the resources the *bundled* policies use (core/v1, apps/v1,
-     batch/v1, `rbac.authorization.k8s.io/v1`, `networking.k8s.io/v1`,
-     `admissionregistration.k8s.io/v1`) — works offline, no cluster needed.
-  2. Live discovery via `--context`/`--kubeconfig`, for anything the table doesn't cover (custom
-     policies, thirdparty CRDs).
+  Политика, чьи ресурсы не удаётся разрешить ни тем, ни другим способом, **пропускается для вывода
+  `clusterpolicy`**, с предупреждением в stderr, называющим политику и неразрешённый ресурс(ы) —
+  никогда не угадывается. Вывод `validatingpolicy` для той же самой политики не затрагивается,
+  поскольку ему Kind вообще никогда не требовался.
 
-  A policy whose resources can't be resolved either way is **skipped for `clusterpolicy` output**,
-  with a warning on stderr naming the policy and the unresolved resource(s) — never a guess.
-  `validatingpolicy` output for that same policy is unaffected, since it never needed Kind at all.
+- **`both`** записывает оба варианта: как `<id>.validatingpolicy.yaml` и `<id>.clusterpolicy.yaml`.
 
-- **`both`** writes both, as `<id>.validatingpolicy.yaml` and `<id>.clusterpolicy.yaml`.
+## Старые установки Kyverno (поддержка CEL зависит от версии Kyverno, а не от версии Kubernetes)
 
-## Old Kyverno installs (CEL support is Kyverno-version-gated, not Kubernetes-version-gated)
+Kyverno реализует CEL самостоятельно (собственный webhook, собственное встроенное выполнение CEL) —
+он вообще не зависит от собственной поддержки `ValidatingAdmissionPolicy` в кластере, поэтому одна
+лишь старая версия Kubernetes не исключает это: `validate.cel.expressions` у `ClusterPolicy`
+появился в **Kyverno 1.11**, а его официально поддерживаемый диапазон Kubernetes уже включает 1.26.
+CRD `ValidatingPolicy` ещё новее (**Kyverno 1.13+**). Что реально имеет значение — это какая
+*версия* Kyverno установлена, независимо от версии Kubernetes кластера.
 
-Kyverno implements CEL itself (its own webhook, its own embedded CEL evaluation) — it doesn't
-depend on the cluster's own `ValidatingAdmissionPolicy` support at all, so an old Kubernetes
-version alone doesn't rule this out: `ClusterPolicy`'s `validate.cel.expressions` shipped in
-**Kyverno 1.11**, and its officially-supported Kubernetes range already includes 1.26. The
-`ValidatingPolicy` CRD is newer still (**Kyverno 1.13+**). What actually matters is which Kyverno
-*version* is installed, independent of the cluster's Kubernetes version.
+Однако сам факт существования обоих CRD не доказывает поддержку CEL — `ClusterPolicy` существует с
+первого релиза Kyverno, задолго до CEL. Применение `validate.cel.expressions` к более старой схеме
+CRD не вызывает ошибку; обрезка structural-schema apiserver-ом просто молча отбрасывает
+нераспознанное поле, оставляя `ClusterPolicy`, которая применяется без ошибок и не применяет
+принудительно *вообще ничего* — тот же сбой «выглядит защищённым, но это не так», который этот
+инструмент существует, чтобы перехватывать в других местах. Поэтому при указании
+`--context`/`--kubeconfig` `export` проверяет реальный, живой кластер перед тем как что-либо
+записывать:
 
-Both CRDs existing at all doesn't prove CEL support, though — `ClusterPolicy` has existed since
-Kyverno's first release, long before CEL. Applying `validate.cel.expressions` against an older
-CRD schema doesn't error; the apiserver's structural-schema pruning just silently drops the field
-it doesn't recognize, leaving a `ClusterPolicy` that applies cleanly and enforces *nothing at all*
-— the same "looks protected, isn't" failure this tool exists to catch elsewhere. So with
-`--context`/`--kubeconfig` given, `export` checks the real, live cluster before writing anything:
+- `validatingpolicy`: разрешает Kind `ValidatingPolicy` через RESTMapper — если CRD вообще не
+  зарегистрирован (Kyverno < 1.13), этот вывод полностью пропускается.
+- `clusterpolicy`: получает живой CRD `clusterpolicies.kyverno.io` и проверяет его схему на наличие
+  блока `validate` с поддержкой CEL — если это форма до появления CEL (Kyverno < 1.11), этот вывод
+  полностью пропускается.
 
-- `validatingpolicy`: resolves the `ValidatingPolicy` Kind via the RESTMapper — if the CRD isn't
-  registered at all (Kyverno < 1.13), that output is skipped entirely.
-- `clusterpolicy`: fetches the live `clusterpolicies.kyverno.io` CRD and checks its schema for a
-  CEL-capable `validate` block — if it's the pre-CEL shape (Kyverno < 1.11), that output is
-  skipped entirely.
-
-Either skip prints a clear warning naming what's missing and the minimum Kyverno version needed —
-never a silent, unusable export. If *neither* target is supported on the live cluster, `export`
-exits non-zero with "nothing to export" rather than writing empty output. Without
-`--context`/`--kubeconfig` at all, neither check can run — `export` proceeds (as it always has)
-but can't promise the result will actually enforce anything on a cluster it never looked at.
+Любой из пропусков печатает понятное предупреждение, называющее, чего не хватает, и минимальную
+необходимую версию Kyverno — никогда не молчаливый, непригодный к использованию экспорт. Если на
+живом кластере *ни одна* из целей не поддерживается, `export` завершается с ненулевым кодом и
+сообщением «nothing to export», вместо записи пустого вывода. Без указания `--context`/
+`--kubeconfig` вообще ни одна из проверок не может выполниться — `export` продолжает работу (как и
+всегда), но не может гарантировать, что результат действительно будет что-то применять принудительно
+на кластере, на который он так и не взглянул.
 
 ```sh
-# Offline, bundled-policy-set only: every policy that targets only
-# core/apps/batch/rbac/networking resources converts; thirdparty-CRD
-# policies are skipped for clusterpolicy (still exported as validatingpolicy).
+# Офлайн, только поставляемый набор политик: конвертируется каждая политика,
+# нацеленная только на ресурсы core/apps/batch/rbac/networking; политики
+# для сторонних CRD пропускаются для clusterpolicy (но всё равно
+# экспортируются как validatingpolicy).
 kubectl audit policy export --format kyverno --kind both --out ./kyverno-policies
 
-# With a live cluster, custom/thirdparty policies resolve too:
+# С живым кластером разрешаются и пользовательские/сторонние политики:
 kubectl audit policy export --format kyverno --kind clusterpolicy --context prod --out ./kyverno-policies
 ```
 
-## Filtering by compliance framework
+## Фильтрация по фреймворку соответствия
 
-`--frameworks` (same values as `scan`'s own `--frameworks`: `cis`, `fstec`, `nsa`, `capsule`, or a
-path to a custom mapping YAML) applies regardless of `--format` — it exports only the policies
-mapped to at least one control in those framework(s), instead of the whole loaded set, e.g. "give
-me just what CIS requires" rather than every bundled check. `--exclude-policy` (repeatable or
-comma-separated policy IDs) drops specific policies regardless of framework.
+`--frameworks` (те же значения, что и у собственного `--frameworks` у `scan`: `cis`, `fstec`, `nsa`,
+`capsule` или путь к пользовательскому YAML-маппингу) применяется независимо от `--format` — он
+экспортирует только политики, сопоставленные хотя бы с одним контролем в этих фреймворках, вместо
+всего загруженного набора, например «дай мне только то, что требует CIS», а не каждую поставляемую
+проверку. `--exclude-policy` (повторяемый или через запятую список policy ID) отбрасывает конкретные
+политики независимо от фреймворка.
 
-When `--frameworks` is given, every exported policy also gets an
-`audit.k8s-auditor.io/framework-controls` annotation citing exactly which control(s) justified
-including it — the same `<Framework>: <ID> — <Title>` format reports and Jira tickets already cite
-controls with:
+Когда указан `--frameworks`, каждая экспортированная политика также получает аннотацию
+`audit.k8s-auditor.io/framework-controls`, цитирующую именно тот контроль(и), который обосновал её
+включение — в том же формате `<Framework>: <ID> — <Title>`, которым отчёты и тикеты Jira уже цитируют
+контроли:
 
 ```sh
 kubectl audit policy export --format kyverno --frameworks cis --out ./cis-only
 kubectl audit policy export --frameworks cis --exclude-policy rbac.no-anonymous-binding --out ./cis-vap
 ```
 
-With no `--frameworks`, every loaded policy (minus `--exclude-policy`) is exported unchanged, with
-no `framework-controls` annotation added.
+Без `--frameworks` экспортируется без изменений каждая загруженная политика (за вычетом
+`--exclude-policy`), без добавления аннотации `framework-controls`.

@@ -1,248 +1,290 @@
----
-layout: default
-title: "Getting Started"
-permalink: /getting-started/
----
+# Начало работы
 
-# Getting Started
+## Установка
 
-## Install
-
-Requires Go 1.24+.
+Требуется Go 1.26.4+ (см. `go.mod`).
 
 ```sh
-go install github.com/{{ site.repository }}/cmd/kubectl-audit@latest
+go install github.com/ivanhahanov/kubectl-audit/cmd/kubectl-audit@latest
 kubectl audit version
 ```
 
-Or build from a clone:
+Либо соберите из клонированного репозитория:
 
 ```sh
-git clone https://github.com/{{ site.repository }}.git
+git clone https://github.com/ivanhahanov/kubectl-audit.git
 cd kubectl-audit
-make build      # builds ./bin/kubectl-audit
-make install     # installs onto $GOPATH/bin as kubectl-audit, so `kubectl audit` works
+make build      # собирает ./bin/kubectl-audit
+make install     # устанавливает в $GOPATH/bin как kubectl-audit, чтобы `kubectl audit` работал
 kubectl audit version
 ```
 
-For multi-platform release archives (e.g. for krew), see `make cross-compile` and
+Для мультиплатформенных архивов релизов (например, для krew) см. `make cross-compile` и
 `krew/kubectl-audit.yaml`.
 
-## Quick start
+## Быстрый старт
 
 ```sh
-# Audit the current cluster (kubeconfig context)
+# Проверить текущий кластер (контекст kubeconfig)
 kubectl audit scan
 
-# Audit static manifests only — e.g. in CI, before deploy
+# Проверить только статические манифесты — например, в CI, перед деплоем
 kubectl audit scan -f ./manifests --mode static
 
-# Both cluster and static manifests, gated for CI (non-zero exit on HIGH+ findings)
+# И кластер, и статические манифесты, с гейтом для CI (ненулевой код выхода при находках HIGH+)
 kubectl audit scan -f ./manifests --fail-on high
 
-# Scope to one namespace
+# Ограничиться одним неймспейсом
 kubectl audit scan -n my-namespace
 
-# Try it against a deliberately misconfigured example from the repo
+# Попробовать на заведомо небезопасном примере из репозитория
 kubectl audit scan -f examples/insecure-manifests --fail-on none
 
-# Score against several compliance frameworks at once
+# Оценить сразу по нескольким фреймворкам соответствия
 kubectl audit scan --frameworks cis,fstec,nsa
 ```
 
-## Commands
+## Команды
 
-| Command | Description |
+| Команда | Описание |
 |---|---|
-| `kubectl audit scan` | Full audit: policy checks + RBAC analysis + NetworkPolicy coverage + Pod Security Standards + compliance scorecards. Prints both a severity summary and a compliance summary. |
-| `kubectl audit policy validate <dir>...` | Parse and CEL-compile every policy in the given directories; reports every error found. |
-| `kubectl audit policy list` | List every policy that would load for a scan, with severity/category/CIS refs. |
-| `kubectl audit rbac analyze` | Standalone RBAC role-model + least-privilege report (no workload policies, no compliance scorecards). |
-| `kubectl audit template dump` | Write the built-in `report.md.tpl` to disk as a starting point for `--report-template` — see [Report Templates]({{ '/report-templates/' | relative_url }}). |
-| `kubectl triage` | Interactive TUI to review `findings.json`, record confirmed/false-positive/won't-fix decisions, and export or push confirmed findings to Jira — see [Triage]({{ '/triage/' | relative_url }}). |
-| `kubectl audit version` | Print the build version. |
+| `kubectl audit scan` | Полный аудит: проверки политик + анализ RBAC + покрытие NetworkPolicy + Pod Security Standards + таблицы оценок соответствия. Выводит и сводку по серьёзности, и сводку по соответствию. |
+| `kubectl audit policy validate <dir>...` | Парсит и CEL-компилирует каждую политику в указанных директориях; сообщает обо всех найденных ошибках. |
+| `kubectl audit policy list` | Выводит список всех политик, которые загрузились бы для сканирования, с серьёзностью/категорией/ссылками на CIS. |
+| `kubectl audit rbac analyze` | Самостоятельный отчёт по ролевой модели RBAC и принципу наименьших привилегий (без проверок политик рабочих нагрузок, без таблиц оценок соответствия). |
+| `kubectl audit template dump` | Записывает встроенный `report.md.tpl` на диск как отправную точку для `--report-template` — см. [Report Templates](./report-templates.md). |
+| `kubectl triage` | Интерактивный TUI для просмотра `findings.json`, фиксации решений confirmed/false-positive/won't-fix и экспорта или отправки подтверждённых находок в Jira — см. [Triage](./triage.md). |
+| `kubectl audit version` | Выводит версию сборки. |
 
-Run any command with `--help` for its full flag list — each command only shows the flags actually
-relevant to it (e.g. `--frameworks` only appears on `scan`, not `rbac analyze` or `policy list`).
+Запустите любую команду с `--help`, чтобы увидеть полный список её флагов — каждая команда
+показывает только те флаги, которые действительно к ней относятся (например, `--frameworks`
+появляется только у `scan`, но не у `rbac analyze` или `policy list`).
 
-## Key flags
+## Основные флаги
 
-Available on `scan` and `rbac analyze`:
+Доступны у `scan` и `rbac analyze`:
 
-- `--config audit.yaml` — load settings from a config file (see [Configuration]({{ '/configuration/' | relative_url }})); CLI flags override it. Global, works on every command.
-- `-v/--verbose` — show debug-level diagnostic detail in addition to warnings (which are always
-  shown): per-optional-CRD resolution outcomes ("CRD group X is not registered on this cluster —
-  skipping"), and similar routine decisions that are silent by default because they'd otherwise be
-  noise on every ordinary scan. Useful for troubleshooting *why* a check or component didn't fire —
-  see [Third-Party Operators]({{ '/third-party-operators/' | relative_url }}) for what those
-  decisions actually gate. Global, works on every command.
-- `--context`, `--kubeconfig` — cluster targeting.
-- `--cluster-name` — human-readable name to use in the report's Target field and every finding's
-  Source, instead of the raw kube-context name (which defaults to `current-context` when
-  `--context` isn't set, or can be an unreadable cloud-provider ARN/UUID). Doesn't change what's
-  scanned. Useful when scanning several clusters and archiving/diffing their reports — and, beyond
-  cosmetics, it also scopes every finding's `id` (findings.json), so the same resource/policy pair
-  in two different clusters never collides into one ID: set it consistently per cluster (including
-  for static-manifest `-f` scans, e.g. per-environment `helm template` output, where there'd
-  otherwise be no cluster identity in scope at all) if you plan to aggregate findings.json/triage
-  state from more than one cluster into a shared store.
-- `-f/--filename` (repeatable) — static manifest files or directories, matching `kubectl apply`'s own `-f/--filename`.
-- `--mode cluster|static|both` — defaults to `both`, or `static` automatically if `-f` is given without an explicit `--mode`.
-- `-n/--namespace` (repeatable), `-A/--all-namespaces` — namespace scoping in cluster mode.
-- `--exclude-namespace` (repeatable) — see [Noise reduction](#noise-reduction) below.
-- `--include-system-rbac` — see [Noise reduction](#noise-reduction) below.
-- `--output format=path` (repeatable) — where to write each report format: `json`, `md`, `csv`,
-  `confluence`, e.g. `--output json=findings.json --output csv=findings.csv`. `json`/`md` default
-  differ per command so `scan` and `rbac analyze` don't overwrite each other when run against the
-  same directory: `scan` writes `findings.json`/`report.md`, `rbac analyze` writes
-  `rbac-findings.json`/`rbac-report.md`. `csv` (one row per finding: severity, policy ID, category,
-  CIS refs, resource, message, remediation, source, id, sorted most-severe first) and `confluence`
-  are not written unless given — `csv` is meant for opening in a spreadsheet to sort/filter/pivot or
-  hand off to someone tracking remediation who doesn't want the full Markdown/JSON.
-- `--report-template <file>` — custom `report.md.tpl`; see [Report Templates]({{ '/report-templates/' | relative_url }}).
-- `--report-view check|namespace|both` — how the Markdown report's Findings section(s) are
-  structured (default `check`). `check` groups findings by check/policy ID — each check's
-  title/remediation shown once, followed by the resources it fired on. `namespace` groups by
-  namespace/resource instead, full detail per finding — useful for a per-team/per-app handoff.
-  `both` renders the check-grouped view plus a compact by-namespace index. On a large cluster
-  `both` roughly doubles the number of finding lines in the report (every finding listed once per
-  view); pick `check` or `namespace` alone once the finding count gets into the hundreds/thousands.
-- `--namespace-group-threshold <n>` — collapse a check's repeated findings in the Markdown report
-  (default `3`; `0` disables); see [Noise reduction](#noise-reduction) below.
-- `--group-by-name-pattern` — also collapse names sharing a generated-identifier shape (a UUID or
-  other long hex/digit run), not just an identical literal name; on by default; see
-  [Noise reduction](#noise-reduction) below.
-- `--fail-on none|low|medium|high|critical` — CI exit-code gate (default `high`).
+- `--config audit.yaml` — загрузить настройки из файла конфигурации (см.
+  [Конфигурация](./configuration.md)); флаги CLI переопределяют его. Глобальный, работает для любой
+  команды.
+- `-v/--verbose` — показывать диагностические детали уровня debug в дополнение к предупреждениям
+  (которые показываются всегда): результаты разрешения по каждой опциональной CRD ("CRD group X is
+  not registered on this cluster — skipping") и похожие рутинные решения, которые по умолчанию не
+  выводятся, поскольку иначе были бы шумом в каждом обычном сканировании. Полезно для выяснения,
+  *почему* проверка или компонент не сработали — см. [Third-Party Operators](./third-party-operators.md)
+  о том, что именно эти решения определяют. Глобальный, работает для любой команды.
+- `--context`, `--kubeconfig` — выбор целевого кластера.
+- `--cluster-name` — человекочитаемое имя для использования в поле Target отчёта и Source каждой
+  находки, вместо необработанного имени kube-контекста (которое по умолчанию равно
+  `current-context`, если `--context` не задан, либо может быть нечитаемым ARN/UUID облачного
+  провайдера). Не меняет то, что сканируется. Полезно при сканировании нескольких кластеров и
+  архивировании/сравнении их отчётов — и, помимо косметики, также определяет область `id` каждой
+  находки (findings.json), так что одна и та же пара ресурс/политика в двух разных кластерах никогда
+  не схлопнется в один ID: задавайте его последовательно для каждого кластера (включая сканирования
+  статических манифестов через `-f`, например, вывод `helm template` по окружениям, где иначе вообще
+  не было бы идентичности кластера в контексте), если вы планируете агрегировать
+  findings.json/состояние triage из более чем одного кластера в общее хранилище.
+- `-f/--filename` (можно указывать несколько раз) — файлы или директории со статическими
+  манифестами, по аналогии с собственным `-f/--filename` у `kubectl apply`.
+- `--mode cluster|static|both` — по умолчанию `both`, либо автоматически `static`, если передан
+  `-f` без явного `--mode`.
+- `-n/--namespace` (можно указывать несколько раз), `-A/--all-namespaces` — ограничение по
+  неймспейсам в режиме кластера.
+- `--exclude-namespace` (можно указывать несколько раз) — см. [Снижение шума](#снижение-шума) ниже.
+- `--include-system-rbac` — см. [Снижение шума](#снижение-шума) ниже.
+- `--output format=path` (можно указывать несколько раз) — куда записывать каждый формат отчёта:
+  `json`, `md`, `csv`, `confluence`, `console` (`console=-` означает stdout — для лога CI или
+  локального терминала; одна находка с рекомендацией по устранению, за которой следуют таблицы
+  статистики: разбивка по серьёзности, по проверкам, и — если активен `--frameworks` — итоговая
+  таблица соответствия), например `--output json=findings.json --output csv=findings.csv`. Значения
+  по умолчанию для `json`/`md` различаются в зависимости от команды, чтобы `scan` и `rbac analyze`
+  не перезаписывали друг друга при запуске в одной директории: `scan` пишет
+  `findings.json`/`report.md`, `rbac analyze` пишет `rbac-findings.json`/`rbac-report.md`.
+  `csv` (одна строка на находку: severity, policy ID, category, ссылки на CIS, resource, message,
+  remediation, source, id, отсортировано от самых серьёзных), `confluence` и `console` не
+  записываются, пока не заданы — `csv` предназначен для открытия в табличном редакторе для
+  сортировки/фильтрации/сводных таблиц или передачи тому, кто отслеживает устранение и кому не нужны
+  полные Markdown/JSON.
+- `--remediation` — включать ли рекомендацию по устранению каждой проверки в `--output console=...`
+  (включено по умолчанию; `false`, чтобы убрать).
+- `--min-severity none|low|medium|high|critical` — минимальная серьёзность, попадающая в
+  findings.json/report.md/CSV/Confluence/console — это только фильтр отображения, не влияет на
+  `--fail-on` или итоговые таблицы соответствия (по умолчанию `none` — показывается всё).
+- `--request-timeout <duration>` — таймаут на каждый отдельный запрос к apiserver, как
+  Go-длительность (например, `60s`, `5m`); `0` отключает его полностью (по умолчанию `120s`).
+- `--confluence-template <file>` — пользовательский `confluence.tpl` для `--output confluence=...`;
+  по умолчанию используется встроенный шаблон вики-разметки Confluence.
+- `--report-lang en|ru` — язык встроенного Markdown-шаблона отчёта (по умолчанию `en`).
+  Игнорируется, если задан `--report-template`.
+- `--owner <имя>` — кто отвечает за этот отчёт; отображается в заголовке отчёта, а если это имя
+  пользователя Jira — triage также назначает на него каждую созданную задачу (по умолчанию не
+  задаётся).
+- `--report-template <file>` — пользовательский `report.md.tpl`; см.
+  [Report Templates](./report-templates.md).
+- `--report-view check|namespace|both` — как структурирован(ы) раздел(ы) Findings в
+  Markdown-отчёте (по умолчанию `check`). `check` группирует находки по ID проверки/политики —
+  title/remediation каждой проверки показывается один раз, за которым следуют ресурсы, на которых
+  она сработала. `namespace` вместо этого группирует по неймспейсу/ресурсу, полная детализация на
+  каждую находку — полезно для передачи по командам/приложениям. `both` отображает вид с
+  группировкой по проверкам плюс компактный индекс по неймспейсам. На большом кластере `both`
+  примерно удваивает число строк находок в отчёте (каждая находка перечисляется один раз на каждый
+  вид); выбирайте `check` или `namespace` по отдельности, когда число находок достигает
+  сотен/тысяч.
+- `--namespace-group-threshold <n>` — схлопывать повторяющиеся находки проверки в Markdown-отчёте
+  (по умолчанию `3`; `0` отключает); см. [Снижение шума](#снижение-шума) ниже.
+- `--group-by-name-pattern` — также схлопывать имена, разделяющие форму сгенерированного
+  идентификатора (UUID или другая длинная последовательность hex/цифр), а не только идентичное
+  буквальное имя; включено по умолчанию; см. [Снижение шума](#снижение-шума) ниже.
+- `--fail-on none|low|medium|high|critical` — CI-гейт по коду выхода (по умолчанию `high`).
 
-`scan`-only:
+Только для `scan`:
 
-- `--policy-dir` (repeatable) — extra custom policy directories (also on `policy list`).
-- `--frameworks cis,fstec,nsa` — compliance framework(s) to score against (repeatable or
-  comma-separated; default `cis`), or a path to a [custom mapping]({{ '/custom-checks/' | relative_url }});
-  see [Compliance Frameworks]({{ '/compliance/' | relative_url }}).
-- `--check-updates` — live EOL/patch-currency check against endoflife.date; see
-  [Compliance Frameworks]({{ '/compliance/' | relative_url }}).
-- `--read-secret-values` — off by default; lets a small number of checks read Secret values to
-  detect authentication left at its documented default/disabled state. Needs a different,
-  Secrets-granting ClusterRole — see [Secrets Mode]({{ '/secrets-mode/' | relative_url }}) and
-  [Required Permissions]({{ '/permissions/' | relative_url }}).
+- `--policy-dir` (можно указывать несколько раз) — дополнительные директории с пользовательскими
+  политиками (также есть у `policy list`).
+- `--frameworks cis,fstec,nsa` — фреймворк(и) соответствия для оценки (можно указывать несколько
+  раз или через запятую; по умолчанию `cis`), либо путь к [пользовательскому маппингу](./custom-checks.md);
+  см. [Compliance Frameworks](./compliance.md).
+- `--frameworks-only` — ограничивает находки только теми, чья проверка действительно упомянута хотя
+  бы в одном контроле из `--frameworks`, ещё до итоговых таблиц/`--fail-on`/любого вывода. По
+  умолчанию становится `true`, как только `--frameworks` задан явно (выбор стандарта подразумевает
+  аудит именно по нему), и `false`, когда `--frameworks` остаётся на неявном значении по умолчанию
+  `cis` (полный, неограниченный набор проверок) — передайте флаг явно (`true` или `false`), чтобы
+  переопределить любое из направлений.
+- `--check-updates` — живая проверка актуальности EOL/патчей через endoflife.date; см.
+  [Compliance Frameworks](./compliance.md).
+- `--read-secret-values` — выключено по умолчанию; позволяет небольшому числу проверок читать
+  значения Secret, чтобы обнаружить аутентификацию, оставленную в документированном состоянии по
+  умолчанию/отключённом состоянии. Требует другого ClusterRole, предоставляющего доступ к Secrets —
+  см. [Secrets Mode](./secrets-mode.md) и [Required Permissions](./permissions.md).
 
-Note: `-n/--namespace` scopes *workload* resources (Pods, Deployments, ...) to the given
-namespace(s). RBAC objects (Role/ClusterRole/\*Binding/ServiceAccount) are still loaded
-cluster-wide, since a binding can reference a subject outside the scanned namespace and effective
-permissions can't be resolved correctly without the full graph. Add `--exclude-namespace` if you
-also want to exclude a namespace's RBAC objects.
+Примечание: `-n/--namespace` ограничивает *рабочие нагрузки* (Pod, Deployment, ...) указанным(и)
+неймспейсом(ами). Объекты RBAC (Role/ClusterRole/\*Binding/ServiceAccount) по-прежнему загружаются
+в масштабе всего кластера, поскольку binding может ссылаться на субъект вне сканируемого
+неймспейса, и эффективные права доступа нельзя корректно разрешить без полного графа. Добавьте
+`--exclude-namespace`, если вы также хотите исключить объекты RBAC неймспейса.
 
-## Scope
+## Область охвата
 
-Every `report.md` opens with a **Scope** section stating plainly what this particular scan could
-and couldn't see — computed once from what was actually loaded, instead of leaving you to infer it
-from a dozen individually-worded `NOT_APPLICABLE` compliance rows. Two situations drive most of
-what shows up there:
+Каждый `report.md` открывается разделом **Scope**, прямо указывающим, что именно это конкретное
+сканирование могло и не могло увидеть — вычисляется один раз на основе того, что было фактически
+загружено, вместо того чтобы заставлять вас делать вывод по десятку отдельно сформулированных
+строк `NOT_APPLICABLE` в таблицах соответствия. Большую часть того, что там появляется, определяют
+две ситуации:
 
-- **A single manifest or partial file set** (`scan -f one-deployment.yaml`): RBAC and NetworkPolicy
-  findings only reflect what's in the given file(s) — a workload flagged as "no NetworkPolicy"
-  might actually be covered by a policy that lives in a file you didn't include in this scan.
-- **A managed cluster** (EKS/GKE/AKS, ...): control-plane configuration checks (CIS Section 1/2)
-  can't run at all, since the API server/etcd/controller-manager/scheduler aren't exposed as Pods
-  there — see [Compliance Frameworks]({{ '/compliance/' | relative_url }}) for what that covers.
+- **Один манифест или неполный набор файлов** (`scan -f one-deployment.yaml`): находки RBAC и
+  NetworkPolicy отражают только то, что есть в переданном(ых) файле(ах) — рабочая нагрузка,
+  помеченная как «нет NetworkPolicy», на самом деле может быть покрыта политикой, которая находится
+  в файле, не включённом в это сканирование.
+- **Управляемый кластер** (EKS/GKE/AKS, ...): проверки конфигурации control plane (разделы 1/2
+  CIS) вообще не могут выполняться, поскольку API server/etcd/controller-manager/scheduler там не
+  представлены как Pod'ы — см. [Compliance Frameworks](./compliance.md), что это покрывает.
 
-If nothing was structurally out of reach, the section just says so ("Full scope") instead of
-listing anything.
+Если структурно ничего не было недоступно, раздел просто сообщает об этом («Full scope»), вместо
+того чтобы что-либо перечислять.
 
-## Noise reduction
+## Снижение шума
 
-Three things keep a cluster scan from being dominated by duplicate or non-actionable findings:
+Три механизма не дают сканированию кластера переполниться дублирующимися или не требующими
+действий находками:
 
-- **Owner-chain dedup.** A Deployment, its ReplicaSet, and its Pods (likewise a DaemonSet/
-  StatefulSet and its Pods, or a CronJob/Job and its Pods) all carry the *same* container spec.
-  Auditing all of them separately would report the same misconfiguration 2-3 times. `scan` drops a
-  resource whenever its controller owner (via `ownerReferences[].controller`) was also loaded,
-  keeping only the top-level object as the single representative. If the owner was excluded by
-  `--include-kind`/`--exclude-kind`, the owned resource is kept instead, so the template is never
-  silently lost.
-- **Empty-namespace exclusion.** `kube-public` and `kube-node-lease` are excluded by default —
-  they hold nothing worth auditing (a public ConfigMap, Lease objects). `kube-system` is
-  deliberately **not** excluded by default: it commonly hosts real, auditable third-party
-  infrastructure (CNI, CSI drivers, ...) alongside core Kubernetes plumbing, and blanket-excluding
-  the whole namespace would hide genuine problems in it along with the unavoidable ones — this
-  tool used to exclude it too, until testing turned up a real privileged CSI driver sitting
-  silently unflagged in `kube-system` precisely because of that blanket exclusion.
-- **Built-in exceptions for unavoidable core-plumbing violations**, instead of hiding the
-  namespace. kube-proxy (needs `hostNetwork` + `privileged` to manage host iptables/ipvs rules)
-  and the kubeadm static control-plane pods (`kube-apiserver`/`kube-controller-manager`/
-  `kube-scheduler`/`etcd` — need `hostNetwork` + host-mounted certs/data by the static-pod model
-  itself, only relevant on a self-managed/kubeadm cluster) get precise, label-matched exceptions
-  for exactly their documented-unavoidable violations — see
-  [Third-Party Operators: Built-in exceptions]({{ '/third-party-operators/#built-in-exceptions-for-privileged-system-infrastructure' | relative_url }})
-  for the full list and sourcing; everything else about these objects (missing seccomp profile,
-  running as root, the default ServiceAccount, ...) is still flagged normally as a genuine
-  hardening opportunity.
-- **RBAC `system:` prefix exclusion.** `Role`/`ClusterRole`/`RoleBinding`/`ClusterRoleBinding`
-  objects with the reserved `system:` name prefix (Kubernetes' own built-in RBAC,
-  e.g. `system:controller:*`) are excluded by default — cluster-managed, not something an operator
-  can remediate. Third-party components' own RBAC objects (e.g. a CSI driver's non-`system:`
-  ClusterRoleBinding) are **not** filtered by this.
+- **Дедупликация по цепочке владения (owner-chain).** Deployment, его ReplicaSet и его Pod'ы
+  (аналогично DaemonSet/StatefulSet и его Pod'ы, или CronJob/Job и его Pod'ы) несут *одну и ту же*
+  спецификацию контейнера. Аудит всех их по отдельности сообщил бы об одной и той же неправильной
+  настройке 2-3 раза. `scan` отбрасывает ресурс, если его владелец-контроллер (через
+  `ownerReferences[].controller`) тоже был загружен, оставляя только объект верхнего уровня как
+  единственного представителя. Если владелец был исключён через `target.includeKinds`/
+  `target.excludeKinds` в `audit.yaml`, вместо него сохраняется принадлежащий ему ресурс, так что
+  шаблон никогда не теряется незаметно.
+- **Исключение пустых неймспейсов.** `kube-public` и `kube-node-lease` исключаются по умолчанию —
+  в них нет ничего достойного аудита (публичный ConfigMap, объекты Lease). `kube-system` намеренно
+  **не** исключается по умолчанию: там часто размещается реальная, подлежащая аудиту инфраструктура
+  третьих сторон (CNI, CSI-драйверы, ...) наряду с базовой инфраструктурой Kubernetes, а огульное
+  исключение всего неймспейса скрыло бы в нём реальные проблемы вместе с неизбежными — этот
+  инструмент тоже раньше исключал его, пока тестирование не выявило реальный привилегированный
+  CSI-драйвер, молча остававшийся незамеченным в `kube-system` именно из-за этого огульного
+  исключения.
+- **Встроенные исключения для неизбежных нарушений базовой инфраструктуры**, вместо скрытия
+  неймспейса. kube-proxy (требует `hostNetwork` + `privileged` для управления правилами
+  iptables/ipvs на хосте) и статические Pod'ы control plane kubeadm
+  (`kube-apiserver`/`kube-controller-manager`/`kube-scheduler`/`etcd` — требуют `hostNetwork` +
+  смонтированные с хоста сертификаты/данные самой моделью статических Pod'ов, актуально только на
+  самоуправляемом/kubeadm-кластере) получают точные, сопоставленные по меткам исключения именно для
+  их документированно-неизбежных нарушений — см.
+  [Third-Party Operators: Встроенные исключения](./third-party-operators.md) для полного списка и
+  источников; всё остальное в этих объектах (отсутствующий профиль seccomp, запуск от root,
+  ServiceAccount по умолчанию, ...) по-прежнему помечается в обычном порядке как реальная
+  возможность для усиления защиты.
+- **Исключение RBAC по префиксу `system:`.** Объекты `Role`/`ClusterRole`/`RoleBinding`/
+  `ClusterRoleBinding` с зарезервированным префиксом имени `system:` (собственный встроенный RBAC
+  Kubernetes, например `system:controller:*`) по умолчанию исключаются — они управляются кластером,
+  и оператор не может их исправить. Собственные объекты RBAC компонентов третьих сторон (например,
+  не-`system:` ClusterRoleBinding CSI-драйвера) этим **не** фильтруются.
 
-  Override with `--exclude-namespace ""` (clears the defaults), `--exclude-namespace <ns>`
-  (repeatable, adds more), `-n/--namespace` (an explicit allowlist bypasses the default excludes
-  entirely), `--no-builtin-exceptions` (disables the core-plumbing and third-party exceptions
-  above), and `--include-system-rbac`.
-- **Repeated-tenant-namespace collapsing.** Multi-tenant clusters commonly provision one namespace
-  per tenant/customer/environment — Capsule-provisioned tenants are the canonical example, but this
-  applies to any "one namespace per X" convention. Two shapes of the same underlying problem show
-  up:
-  - The *same* manifest deployed into every tenant namespace, so an object like `Deployment/app`
-    repeats with an identical name across dozens of namespaces.
-  - The *namespace itself* named per-tenant with a generated identifier (e.g. `usersvs-<uuid>`) —
-    seen on a real Capsule-managed cluster with 9000+ tenant namespaces, where a native Go analyzer
-    whose findings target the `Namespace` object directly (`psa-analyzer.no-active-enforcement`,
-    checking for the `pod-security.kubernetes.io/enforce` label) produced one finding per tenant,
-    each on a differently-named — but structurally identical — object.
+  Переопределяется через `--exclude-namespace ""` (сбрасывает значения по умолчанию),
+  `--exclude-namespace <ns>` (можно указывать несколько раз, добавляет ещё), `-n/--namespace`
+  (явный allowlist полностью обходит исключения по умолчанию), `--no-builtin-exceptions` (отключает
+  описанные выше исключения для базовой инфраструктуры и сторонних компонентов) и
+  `--include-system-rbac`.
+- **Схлопывание повторяющихся тенантских неймспейсов.** Многотенантные кластеры обычно создают
+  один неймспейс на тенанта/клиента/окружение — тенанты, создаваемые Capsule, являются
+  каноническим примером, но это применимо к любому соглашению «один неймспейс на X». Проявляются
+  две формы одной и той же основной проблемы:
+  - *Один и тот же* манифест, развёрнутый в каждый неймспейс тенанта, так что объект вроде
+    `Deployment/app` повторяется с идентичным именем в десятках неймспейсов.
+  - Сам *неймспейс*, названный по тенанту со сгенерированным идентификатором (например,
+    `usersvs-<uuid>`) — наблюдалось на реальном управляемом Capsule кластере с более чем 9000
+    тенантских неймспейсов, где нативный Go-анализатор, чьи находки нацелены прямо на объект
+    `Namespace` (`psa-analyzer.no-active-enforcement`, проверяющий метку
+    `pod-security.kubernetes.io/enforce`), выдавал одну находку на тенанта, каждую на по-разному
+    названном, но структурно идентичном объекте.
 
-  Either way, the same misconfiguration gets flagged once per tenant, and with dozens or thousands
-  of them this can drown out everything else in the report. In the Markdown report, whenever a
-  check's message is identical for every finding (true of essentially every built-in VAP/CEL check,
-  and some native analyzer checks — like `psa-analyzer.no-active-enforcement` — whose message
-  doesn't embed anything resource-specific; native checks that *do* build a per-resource message,
-  like most of RBAC/PSS/control-plane, are never affected) and it fires on the same Kind, with
-  names that are either identical or share a generated-identifier shape, at least `N` times, those
-  findings are shown as one row — `Namespace/usersvs-* — repeated identically across N objects:
-  usersvs-<uuid1>, usersvs-<uuid2>, ... (+N-8 more)` — instead of one bullet each. The example list
-  is capped at 8 regardless of how large the group actually is.
+  В любом случае одна и та же неправильная настройка помечается один раз на каждого тенанта, и при
+  десятках или тысячах тенантов это может заглушить всё остальное в отчёте. В Markdown-отчёте,
+  когда сообщение проверки одинаково для каждой находки (верно практически для всех встроенных
+  проверок VAP/CEL и некоторых нативных проверок анализаторов — таких как
+  `psa-analyzer.no-active-enforcement` — чьё сообщение не содержит ничего специфичного для ресурса;
+  нативные проверки, которые *действительно* формируют сообщение для каждого ресурса, например
+  большинство проверок RBAC/PSS/control-plane, этим никогда не затрагиваются) и она срабатывает на
+  одном и том же Kind, с именами, которые либо идентичны, либо разделяют форму сгенерированного
+  идентификатора, как минимум `N` раз, такие находки показываются одной строкой —
+  `Namespace/usersvs-* — repeated identically across N objects: usersvs-<uuid1>,
+  usersvs-<uuid2>, ... (+N-8 more)` — вместо отдельного пункта на каждую. Список примеров
+  ограничен 8 элементами независимо от того, насколько велика группа на самом деле.
 
-  This is purely a Markdown rendering choice: `findings.json` and CSV output always list every
-  finding individually with its own namespace/name, so `--fail-on` gating, suppression accounting,
-  and any CI tooling consuming JSON see no difference at all.
+  Это исключительно вопрос рендеринга Markdown: вывод `findings.json` и CSV всегда перечисляет
+  каждую находку по отдельности с её собственным неймспейсом/именем, так что гейтинг `--fail-on`,
+  учёт подавлений и любые CI-инструменты, потребляющие JSON, вообще не видят разницы.
 
-  Both knobs are on by default:
-  - `--namespace-group-threshold <n>` / `output.namespaceGroupThreshold` (default `N = 3`) — the
-    count threshold; `0` disables collapsing entirely.
-  - `--group-by-name-pattern` / `output.groupByNamePattern` (default `true`) — whether names are
-    first normalized (a UUID, or another run of 8+ hex or 4+ digit characters, replaced with `*`)
-    before matching, so differently-named tenant objects can still collapse, or only an identical
-    literal name collapses. Short numeric segments (`app-v2`, `web-01`) are deliberately left
-    alone — collapsing those would misleadingly imply unrelated resources are the same tenant's
-    repeated template.
+  Оба переключателя включены по умолчанию:
+  - `--namespace-group-threshold <n>` / `output.namespaceGroupThreshold` (по умолчанию `N = 3`) —
+    пороговое значение количества; `0` полностью отключает схлопывание.
+  - `--group-by-name-pattern` / `output.groupByNamePattern` (по умолчанию `true`) — нормализуются
+    ли имена перед сопоставлением (UUID или другая последовательность из 8+ hex- или 4+ цифровых
+    символов заменяется на `*`), так что по-разному названные объекты тенантов всё же могут
+    схлопнуться, или схлопывается только идентичное буквальное имя. Короткие числовые сегменты
+    (`app-v2`, `web-01`) намеренно оставлены без изменений — их схлопывание ввело бы в заблуждение,
+    будто несвязанные ресурсы являются повторяющимся шаблоном одного и того же тенанта.
 
-## Engine limitations
+## Ограничения движка
 
-These are deliberate, documented boundaries rather than bugs:
+Это осознанные, документированные границы, а не ошибки:
 
-- `spec.variables` is not supported in VAP policies — policies that declare it fail to compile
-  with a clear message. Inline the expression instead.
-- The `authorizer` CEL variable is not declared — policies referencing `authorizer.*` fail to
-  compile. This engine audits standing state, not live admission requests, so there's no
-  SubjectAccessReview backing it. Use the RBAC analyzer for RBAC-aware checks instead.
-- `matchConstraints.resourceRules[].operations` is not filtered on: every loaded resource is
-  evaluated regardless of the rule's declared operations, since the engine audits existing objects
-  rather than simulating a specific CREATE/UPDATE/DELETE request.
-- `ValidatingAdmissionPolicyBinding` objects are not consumed — every loaded policy's
-  `matchConstraints` is applied directly to every resource.
-- Cilium/Calico NetworkPolicy coverage is presence-based, not a full selector simulation — see
-  [NetworkPolicy Coverage]({{ '/network-policy/' | relative_url }}).
-- `matchConstraints.resourceRules[].resources` is matched against a fixed Kind→plural-resource-name
-  table (`internal/loader/kinds.go`), not derived from cluster discovery — a custom policy
-  targeting a Kind not in that table never matches anything (compiles fine, silently finds
-  nothing). Built-in Kinds and CRDs the bundled policies already target (e.g. Capsule's `Tenant`)
-  are covered; a custom policy for an unlisted Kind needs an entry added there.
+- `spec.variables` не поддерживается в VAP-политиках — политики, объявляющие его, не
+  компилируются и выдают понятное сообщение. Вместо этого встраивайте выражение инлайново.
+- CEL-переменная `authorizer` не объявлена — политики, ссылающиеся на `authorizer.*`, не
+  компилируются. Этот движок аудирует текущее (standing) состояние, а не живые admission-запросы,
+  поэтому за ним не стоит SubjectAccessReview. Вместо этого используйте анализатор RBAC для
+  проверок, учитывающих RBAC.
+- `matchConstraints.resourceRules[].operations` не используется для фильтрации: каждый загруженный
+  ресурс оценивается независимо от объявленных в правиле операций, поскольку движок аудирует
+  существующие объекты, а не симулирует конкретный запрос CREATE/UPDATE/DELETE.
+- Объекты `ValidatingAdmissionPolicyBinding` не обрабатываются — `matchConstraints` каждой
+  загруженной политики применяется напрямую к каждому ресурсу.
+- Покрытие Cilium/Calico NetworkPolicy основано на факте наличия, а не на полной симуляции
+  селекторов — см. [NetworkPolicy Coverage](./network-policy.md).
+- `matchConstraints.resourceRules[].resources` сопоставляется с фиксированной таблицей
+  Kind→имя-ресурса-во-множественном-числе (`internal/loader/kinds.go`), а не выводится из cluster
+  discovery — пользовательская политика, нацеленная на Kind, отсутствующий в этой таблице, никогда
+  ничего не находит (компилируется нормально, но молча ничего не находит). Встроенные Kind'ы и
+  CRD, на которые уже нацелены встроенные политики (например, `Tenant` у Capsule), покрыты; для
+  пользовательской политики с неперечисленным Kind нужно добавить туда запись.

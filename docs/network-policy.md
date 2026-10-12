@@ -1,105 +1,103 @@
----
-layout: default
-title: "NetworkPolicy Coverage"
-permalink: /network-policy/
----
+# Покрытие NetworkPolicy
 
-# NetworkPolicy coverage
+Чтобы ответить на вопрос «есть ли у этого workload-а вообще какие-либо ограничения трафика», нужно
+сопоставить его метки с каждым NetworkPolicy в его неймспейсе — рассуждение между объектами, которое
+политика CEL VAP для одного объекта выполнить не может, поэтому это нативный анализатор
+([`internal/netpol`](../internal/netpol)), то же
+обоснование, что и у [Анализа RBAC](./rbac.md). Он сопоставлен с контролем CIS `5.3.2` и выполняется
+как часть `kubectl audit scan`.
 
-Answering "does this workload have any traffic restrictions at all" requires matching its labels
-against every NetworkPolicy in its namespace — cross-object reasoning a single-object VAP CEL
-policy can't do, so this is a native analyzer
-([`internal/netpol`](https://github.com/{{ site.repository }}/tree/main/internal/netpol)), same
-rationale as [RBAC Analysis]({{ '/rbac/' | relative_url }}). It maps to CIS control `5.3.2` and
-runs as part of `kubectl audit scan`.
+## Нативный NetworkPolicy Kubernetes — проверяется точно
 
-## Native Kubernetes NetworkPolicy — checked precisely
+Для каждого workload-а (`Pod` или контроллера с шаблоном pod-а: `Deployment`, `StatefulSet`,
+`DaemonSet`, `ReplicaSet`, `Job`, `CronJob`) анализатор извлекает метки шаблона pod-а и проверяет,
+есть ли в том же неймспейсе `NetworkPolicy`, который:
 
-For every workload (`Pod`, or a controller with a pod template: `Deployment`, `StatefulSet`,
-`DaemonSet`, `ReplicaSet`, `Job`, `CronJob`), the analyzer extracts its pod-template labels and
-checks whether any `NetworkPolicy` in the same namespace:
+1. имеет `podSelector`, совпадающий с этими метками (пустой `podSelector: {}` совпадает с каждым
+   pod-ом в неймспейсе), **и**
+2. действительно ограничивает `Ingress` — политика только с `policyTypes: ["Egress"]` не
+   засчитывается, поскольку она оставляет входящий трафик полностью открытым, несмотря на то что
+   технически «выбирает» pod. Опущенное поле `policyTypes` по умолчанию включает как минимум
+   `Ingress`, согласно собственным правилам умолчания API NetworkPolicy.
 
-1. has a `podSelector` matching those labels (an empty `podSelector: {}` matches every pod in the
-   namespace), **and**
-2. actually restricts `Ingress` — a `policyTypes: ["Egress"]`-only policy doesn't count, since it
-   leaves ingress traffic completely open despite technically "selecting" the pod. An omitted
-   `policyTypes` defaults to at least `Ingress`, per the NetworkPolicy API's own defaulting rules.
+Если ни одно из условий не выполняется, workload получает находку
+`netpol-analyzer.no-network-policy-coverage` (серьёзность High).
 
-If neither holds, the workload gets a `netpol-analyzer.no-network-policy-coverage` finding
-(severity High).
+## Достижимость: две проверки сверх наличия покрытия
 
-## Reachability: two checks beyond presence
+Покрытие отвечает на вопрос «выбирает ли *какой-нибудь* NetworkPolicy этот workload» — оно не
+говорит, что политика на самом деле строгая или что egress вообще как-то ограничен. Ещё две проверки,
+существующие только для нативного NetworkPolicy, отвечают на конкретные вопросы «куда это на самом
+деле может пойти», которые легче всего упустить, читая YAML глазами. Обе — намеренно узкие,
+однозначные структурные проверки, а не полная симуляция графа связности (см.
+[np-guard/netpol-analyzer](https://github.com/np-guard/netpol-analyzer), если вам нужен такой уровень
+детализации как отдельный инструмент) — тот же пропуск на основе наличия Cilium/Calico, что и у
+покрытия выше, поэтому ни одна из них не даёт ложного срабатывания на кластере, который полагается на
+них вместо нативного NetworkPolicy.
 
-Coverage answers "does *some* NetworkPolicy select this workload" — it doesn't say the policy is
-actually tight, or that egress is restricted at all. Two further, native-NetworkPolicy-only checks
-answer the concrete "where can this actually go" questions that are easiest to miss reading YAML by
-eye. Both are deliberately narrow, unambiguous structural checks, not a full connectivity-graph
-simulation (see [np-guard/netpol-analyzer](https://github.com/np-guard/netpol-analyzer) if you want
-that level of detail as a separate tool) — same Cilium/Calico presence-based skip as coverage above,
-so neither produces a false positive on a cluster that relies on them instead of native
-NetworkPolicy.
+- **`netpol-analyzer.broad-namespace-selector-rule`** (Medium): запись `from`/`to` правила задаёт
+  `namespaceSelector` без `podSelector`. Согласно API NetworkPolicy, это совпадает с **каждым pod-ом**
+  в выбранном неймспейсе(ах), а не с конкретными — хорошо известная, легко упускаемая неожиданность
+  при просмотре политики. Дополнительно пустой `namespaceSelector: {}` (совпадает со всеми
+  неймспейсами) явно выделяется в сообщении как максимально широкий случай.
+- **`netpol-analyzer.no-egress-restriction`** (Medium): зеркальная для egress проверка покрытия — ни
+  один NetworkPolicy реально не ограничивает исходящий трафик этого workload-а, поэтому он может
+  достичь любого адресата, включая сам API-сервер Kubernetes, любой другой неймспейс и (если позволяет
+  сетевой уровень) интернет. Корректно следует собственным правилам умолчания `policyTypes` API
+  NetworkPolicy: явный `policyTypes: ["Egress"]` засчитывается даже с нулевыми правилами `egress` (это
+  строгий запрет всего, но всё равно «ограничено»); *опущенный* `policyTypes` подразумевает покрытие
+  Egress только если у политики реально есть непустые правила `egress`, зеркально тому, как это
+  интерпретирует сам Kubernetes.
 
-- **`netpol-analyzer.broad-namespace-selector-rule`** (Medium): a rule's `from`/`to` entry sets
-  `namespaceSelector` without a `podSelector`. Per the NetworkPolicy API, that matches **every pod**
-  in the matched namespace(s), not specific ones — a well-known, easy-to-miss surprise when
-  reviewing a policy. An additionally-empty `namespaceSelector: {}` (matches all namespaces) is
-  called out explicitly in the message as the maximally broad case.
-- **`netpol-analyzer.no-egress-restriction`** (Medium): the egress mirror of the coverage check —
-  no NetworkPolicy actually restricts this workload's egress, so it can reach any destination
-  outbound, including the Kubernetes API server itself, every other namespace, and (network layer
-  permitting) the internet. Correctly follows the NetworkPolicy API's own `policyTypes` defaulting:
-  an explicit `policyTypes: ["Egress"]` counts even with zero `egress` rules (that's a strict
-  deny-all, still "restricted"); an *omitted* `policyTypes` only implies Egress coverage if the
-  policy actually has non-empty `egress` rules, mirroring how Kubernetes itself interprets it.
+Ни одна из них пока не сопоставлена ни с одним контролем CIS/FSTEC/NSA — это сигнал повышенной
+точности поверх проверки наличия из `5.3.2`, а не отдельное внешнее требование.
 
-Neither is currently mapped to a CIS/FSTEC/NSA control — they're a precision signal on top of
-`5.3.2`'s presence check, not a distinct external requirement.
+## Сверх наличия: действительно ли покрывающее правило ограничивающее
 
-## Beyond presence: is the covering rule actually restrictive
-
-A workload can have "coverage" — some NetworkPolicy selects it — while that same policy still
-permits everything for that direction, via a rule with no peer restriction at all. NetworkPolicy
-rules are additive across every policy selecting the same pod (never intersected), so one such rule
-makes the workload's *effective* policy allow-all regardless of how strict any other policy also
-selecting it looks:
+У workload-а может быть «покрытие» — какой-то NetworkPolicy его выбирает — при этом та же самая
+политика всё равно разрешает всё для этого направления через правило без какого-либо ограничения по
+пирам. Правила NetworkPolicy складываются (аддитивны) по всем политикам, выбирающим один и тот же pod
+(никогда не пересекаются), поэтому одно такое правило делает *эффективную* политику workload-а
+разрешающей всё, независимо от того, насколько строгой выглядит любая другая политика, также его
+выбирающая:
 
 - **`netpol-analyzer.ingress-allow-all-rule`** / **`netpol-analyzer.egress-allow-all-rule`**
-  (Medium): a covering policy has an ingress/egress rule with an empty peer list (`from: []` /
-  `to: []`, which the NetworkPolicy API treats as "matches everything"), or an `ipBlock` of
-  `0.0.0.0/0`/`::/0` with no `except` carving anything back out. A workload with zero coverage at
-  all is out of scope here entirely — that's `no-network-policy-coverage`/`no-egress-restriction`'s
-  job.
-- **`netpol-analyzer.egress-to-metadata-allowed`** (High): same unrestricted-rule detection,
-  narrowed to specifically whether the cloud metadata endpoint (`169.254.169.254`) is reachable —
-  commonly the path from an SSRF/RCE in a workload to that workload's node/instance IAM
-  credentials. Only evaluated for workloads that already have at least one egress-restricting
-  policy selecting them (a workload with none is, again, `no-egress-restriction`'s job).
+  (Medium): у покрывающей политики есть правило ingress/egress с пустым списком пиров (`from: []` /
+  `to: []`, что API NetworkPolicy трактует как «совпадает со всем»), либо `ipBlock` вида
+  `0.0.0.0/0`/`::/0` без `except`, вырезающего что-либо обратно. Workload с нулевым покрытием вообще
+  сюда не входит — это работа `no-network-policy-coverage`/`no-egress-restriction`.
+- **`netpol-analyzer.egress-to-metadata-allowed`** (High): то же обнаружение неограниченного правила,
+  сужено конкретно до того, достижим ли эндпоинт облачных метаданных (`169.254.169.254`) — часто
+  используемый путь от SSRF/RCE в workload-е к IAM-учётным данным узла/инстанса этого workload-а.
+  Оценивается только для workload-ов, у которых уже есть хотя бы одна выбирающая их политика,
+  ограничивающая egress (workload без неё — это снова работа `no-egress-restriction`).
 
-## Cilium and Calico — presence, not simulation
+## Cilium и Calico — наличие, а не симуляция
 
-Both are detected automatically:
+Оба обнаруживаются автоматически:
 
-- **Cilium**: `CiliumNetworkPolicy` (namespaced) and `CiliumClusterwideNetworkPolicy`
-  (cluster-scoped), group `cilium.io/v2`.
-- **Calico**: `NetworkPolicy` and `GlobalNetworkPolicy`, group `crd.projectcalico.org/v1` — the
-  CRD-mode storage the large majority of self-managed Calico installs use. The alternative
-  aggregated-API-server mode (`projectcalico.org/v3`, `calico-apiserver`) isn't covered.
+- **Cilium**: `CiliumNetworkPolicy` (в рамках неймспейса) и `CiliumClusterwideNetworkPolicy` (в
+  рамках кластера), группа `cilium.io/v2`.
+- **Calico**: `NetworkPolicy` и `GlobalNetworkPolicy`, группа `crd.projectcalico.org/v1` — хранение в
+  режиме CRD, которое использует подавляющее большинство самостоятельно управляемых установок Calico.
+  Альтернативный режим с агрегированным API-сервером (`projectcalico.org/v3`, `calico-apiserver`) не
+  покрывается.
 
-In cluster mode, these are only fetched if the corresponding CRD is actually registered
-(checked via discovery) — most clusters run neither, and that's the common, silent case, not a
-warning.
+В режиме кластера они запрашиваются только если соответствующий CRD реально зарегистрирован
+(проверяется через discovery) — в большинстве кластеров нет ни того, ни другого, и это обычный, тихий
+случай, а не предупреждение.
 
-Their selector languages (`endpointSelector`, entities, services, `ipBlock`s for Cilium;
-similarly rich selectors for Calico) are materially different from a plain Kubernetes label
-selector, and reimplementing either policy engine is out of scope for this tool. Instead:
+Их языки селекторов (`endpointSelector`, сущности, сервисы, `ipBlock` у Cilium; столь же богатые
+селекторы у Calico) существенно отличаются от обычного селектора меток Kubernetes, а повторная
+реализация любого из этих движков политик выходит за рамки этого инструмента. Вместо этого:
 
-- Any namespaced Cilium/Calico policy object in a namespace is treated as "this namespace has
-  some coverage" — every workload in it is skipped.
-- Any **cluster-scoped** Cilium/Calico policy anywhere in the cluster is treated as "potentially
-  covers everything" — every workload in every namespace is skipped.
+- Любой объект политики Cilium/Calico в рамках неймспейса трактуется как «у этого неймспейса есть
+  какое-то покрытие» — каждый workload в нём пропускается.
+- Любая политика Cilium/Calico **в рамках кластера** где угодно в кластере трактуется как «потенциально
+  покрывает всё» — каждый workload в каждом неймспейсе пропускается.
 
-This is a deliberately conservative, presence-based signal to avoid false positives on clusters
-that rely on Cilium/Calico instead of native NetworkPolicy. It means a cluster running Cilium with
-genuinely incomplete policy coverage won't be flagged as precisely as one running native
-NetworkPolicy — if that matters for your environment, treat a `PASS` here from Cilium/Calico
-presence alone as "verify manually," not as a hard guarantee.
+Это намеренно консервативный сигнал на основе наличия, чтобы избежать ложных срабатываний на
+кластерах, которые полагаются на Cilium/Calico вместо нативного NetworkPolicy. Это означает, что
+кластер, работающий на Cilium с реально неполным покрытием политик, не будет помечен так же точно,
+как кластер с нативным NetworkPolicy — если это важно для вашей среды, относитесь к `PASS` здесь,
+основанному только на наличии Cilium/Calico, как к «проверить вручную», а не как к твёрдой гарантии.

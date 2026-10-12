@@ -1,57 +1,53 @@
----
-layout: default
-title: "Required Permissions"
-permalink: /permissions/
----
+# Необходимые права доступа
 
-# Required permissions
+kubectl-audit работает с кластером, который сканирует, только в режиме чтения: он никогда не
+создаёт, не обновляет, не патчит и не удаляет ничего. В режиме работы с кластером ему нужны
+`get`/`list`/`watch` на те виды ресурсов, которые он запрашивает — и ничего больше.
 
-kubectl-audit is read-only against the cluster it scans: it never creates, updates, patches, or
-deletes anything. In cluster mode it needs `get`/`list`/`watch` on the resource kinds it fetches —
-nothing more.
+## Два уровня
 
-## Two tiers
-
-- **`examples/rbac/clusterrole-readonly.yaml`** — the default. Everything a normal `kubectl audit
-  scan`/`kubectl audit rbac analyze` needs: the built-in kinds
-  ([`internal/loader/cluster.go`](https://github.com/{{ site.repository }}/blob/main/internal/loader/cluster.go)'s
-  `defaultResources` — Pods, Services, Namespaces, ServiceAccounts, ConfigMaps, Deployments,
-  StatefulSets, DaemonSets, ReplicaSets, Jobs, CronJobs, Roles/ClusterRoles/\*Bindings,
-  NetworkPolicies, Ingresses) plus every third-party operator CRD this tool has checks for
+- **`examples/rbac/clusterrole-readonly.yaml`** — вариант по умолчанию. Всё, что нужно обычному
+  `kubectl audit scan`/`kubectl audit rbac analyze`: встроенные виды ресурсов
+  ([`internal/loader/cluster.go`](../internal/loader/cluster.go),
+  поле `defaultResources` — Pods, Services, Namespaces, ServiceAccounts, ConfigMaps, ResourceQuotas,
+  LimitRanges, Deployments, StatefulSets, DaemonSets, ReplicaSets, Jobs, CronJobs,
+  Roles/ClusterRoles/\*Bindings, NetworkPolicies, Ingresses, Validating-/MutatingWebhookConfigurations),
+  плюс CRD каждого стороннего оператора, для которого в этом инструменте есть проверки
   (`optionalResources` — Cilium, Calico, Istio, ArgoCD, Vault Secrets Operator, Fluent Operator,
-  VictoriaMetrics Operator, CloudNativePG, Kyverno, APISIX, Capsule, KubeVirt). Granting a rule for
-  a CRD group that isn't installed on a given cluster is harmless — it's simply inert, and this tool
-  resolves each group's installed status via API discovery before ever listing it, rather than
-  erroring on a missing one. **Deliberately excludes Secrets.**
-- **`examples/rbac/clusterrole-with-secrets.yaml`** — everything above, plus `get`/`list`/`watch` on
-  `secrets`. Needed only when running with `--read-secret-values` — see [Secrets
-  Mode]({{ '/secrets-mode/' | relative_url }}). Apply this *instead of* the readonly one, not
-  alongside it.
+  VictoriaMetrics Operator, CloudNativePG, Kyverno, APISIX, Capsule, KubeVirt, Strimzi, Temporal,
+  Grafana Loki). Выдача правила для группы CRD, которая не установлена на конкретном кластере,
+  безвредна — оно просто остаётся неактивным: инструмент определяет, установлена ли группа, через
+  API discovery, прежде чем вообще пытаться её запрашивать, а не падает с ошибкой на
+  отсутствующей. **Намеренно исключает Secrets.**
+- **`examples/rbac/clusterrole-with-secrets.yaml`** — всё то же самое, плюс `get`/`list`/`watch`
+  на `secrets`. Нужен только при запуске с `--read-secret-values` — см. [Режим работы с
+  секретами](./secrets-mode.md). Применяйте его *вместо* readonly-варианта, а не вместе с ним.
 
-Both are plain `ClusterRole` manifests — `kubectl apply -f examples/rbac/clusterrole-readonly.yaml`.
-`examples/rbac/serviceaccount-and-binding.yaml` shows the `ServiceAccount` + `ClusterRoleBinding`
-wiring for running this as an in-cluster Job/CronJob; a human running it locally via their own
-kubeconfig just needs the same verbs on their own user/group instead (or whatever your org already
-uses for read access, e.g. the built-in `view` ClusterRole plus the third-party CRD groups above,
-which `view` doesn't cover).
+Оба манифеста — обычные `ClusterRole` — `kubectl apply -f examples/rbac/clusterrole-readonly.yaml`.
+`examples/rbac/serviceaccount-and-binding.yaml` показывает связку `ServiceAccount` +
+`ClusterRoleBinding` для запуска этого инструмента как Job/CronJob внутри кластера; человеку,
+запускающему его локально через свой kubeconfig, нужны те же глаголы доступа на собственного
+пользователя/группу (либо то, что ваша организация уже использует для доступа на чтение, например
+встроенный `ClusterRole` `view` плюс группы CRD сторонних операторов выше, которые `view` не
+покрывает).
 
-## Why grant CRD access for operators that might not even be installed
+## Зачем выдавать доступ к CRD операторов, которые могут быть даже не установлены
 
-`kubectl-audit`'s own component-detection logic (see [Third-Party
-Operators]({{ '/third-party-operators/' | relative_url }})) already treats "CRD group not
-registered" as the ordinary, expected case for most clusters — it's a `debug`-level log line, not a
-warning, and doesn't affect the scan otherwise. Splitting the readonly ClusterRole per-vendor (so you
-only grant what's actually installed) would need to be hand-maintained per cluster and would silently
-go stale the moment this tool adds a new supported operator. The single bundled manifest is simpler
-to keep correct and has no meaningful downside: an RBAC rule referencing a resource that doesn't
-exist grants nothing.
+Собственная логика определения компонентов `kubectl-audit` (см. [Сторонние
+операторы](./third-party-operators.md)) уже считает «группа CRD не зарегистрирована» обычным,
+ожидаемым случаем для большинства кластеров — это строка лога уровня `debug`, а не предупреждение,
+и никак не влияет на сканирование. Разбиение readonly-варианта `ClusterRole` по вендорам (чтобы
+выдавать только то, что реально установлено) потребовало бы ручной поддержки для каждого кластера
+и незаметно устаревало бы при каждом добавлении в инструмент нового поддерживаемого оператора.
+Единый поставляемый манифест проще поддерживать в актуальном состоянии и не имеет существенных
+недостатков: правило RBAC, ссылающееся на несуществующий ресурс, ничего не выдаёт.
 
-## Keeping this in sync
+## Поддержание актуальности
 
-Both manifests are maintained by hand, not generated. If you're extending this tool with a new
-third-party component (see [Writing Policies]({{ '/writing-policies/' | relative_url }})) and it
-needs a new CRD fetched from live clusters, add the resource to `internal/loader/cluster.go`'s
-`optionalResources` **and** to both `examples/rbac/clusterrole-*.yaml` files —
-`internal/loader/clusterrole_test.go`'s `TestClusterRoleManifestsCoverKnownResources` fails the build
-if either manifest drifts from what the loader actually knows how to fetch, so this can't go stale
-silently.
+Оба манифеста ведутся вручную, а не генерируются. Если вы расширяете этот инструмент новым
+сторонним компонентом (см. [Написание политик](./writing-policies.md)) и ему нужен новый CRD,
+получаемый из живого кластера, добавьте ресурс в `optionalResources` файла
+`internal/loader/cluster.go` **и** в оба файла `examples/rbac/clusterrole-*.yaml` —
+`TestClusterRoleManifestsCoverKnownResources` из `internal/loader/clusterrole_test.go` ломает
+сборку, если хотя бы один манифест расходится с тем, что загрузчик реально умеет запрашивать,
+так что это не может незаметно устареть.

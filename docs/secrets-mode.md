@@ -1,104 +1,102 @@
----
-layout: default
-title: "Secrets Mode"
-permalink: /secrets-mode/
----
+# Режим работы с секретами (`--read-secret-values`)
 
-# Secrets mode (`--read-secret-values`)
+Каждая проверка, которую этот инструмент поставляет по умолчанию, работает только на основе ConfigMap,
+спецификаций CRD или конфигурации workload-а — она никогда не читает значение Secret (см.
+[Требуемые права доступа](./permissions.md)).
+`--read-secret-values` открывает три разных вида анализа, которым структурно необходимо заглянуть в
+реальное содержимое Secret, каждый со своим дизайном и своим набором гарантий — прочитайте страницу
+целиком, прежде чем считать это универсальным сканером секретов, потому что это осознанно не так; см.
+«Чего это НЕ делает» в конце.
 
-Every check this tool ships by default works from ConfigMaps, CRD specs, or workload config alone —
-it never reads a Secret's value (see [Required Permissions]({{ '/permissions/' | relative_url }})).
-`--read-secret-values` unlocks three different kinds of analysis that structurally need to look at a
-Secret's actual content, each with a different design and a different set of guarantees — read the
-whole page before assuming this is a general-purpose secret scanner, because it deliberately isn't
-one; see "What this does NOT do" at the bottom.
+## Что это делает
 
-## What it does
+- **Режим кластера**: получает объекты Secret с API-сервера (иначе они вообще никогда не запрашиваются —
+  см. `secretsResource` в `internal/loader/cluster.go`).
+- **Режим статических манифестов (`-f`)**: позволяет любому объекту Secret, уже присутствующему в
+  просканированной директории манифестов, дойти до анализа. Без этого флага `internal/loader.FilterSecrets`
+  убирает каждый объект Secret из набора ресурсов непосредственно перед оценкой — это единая точка
+  принудительного применения, которая действует независимо от того, пришёл ли Secret из кластера или из
+  файла, поэтому директория `-f`, в которой случайно оказался реальный YAML с Secret, никогда не будет
+  незаметно раскрыта.
+- Требует расширенную ClusterRole (`examples/rbac/clusterrole-with-secrets.yaml`), а не стандартную —
+  см. [Требуемые права доступа](./permissions.md). В RBAC Kubernetes нет способа выдать право «перечислять
+  объекты Secret» без одновременной выдачи доступа на чтение тела объекта (нет отдельного глагола для
+  частичных полей), поэтому каждая проверка на этой странице требует одного и того же расширенного права
+  независимо от того, читает ли она на самом деле `.data` — проверка возраста ниже не читает, но более
+  узкого права для неё просто не существует.
 
-- **Cluster mode**: fetches Secret objects from the API server (otherwise never requested at all —
-  see `internal/loader/cluster.go`'s `secretsResource`).
-- **Static-manifest (`-f`) mode**: lets any Secret object already present in a scanned manifest
-  directory reach analysis. Without this flag, `internal/loader.FilterSecrets` strips every Secret
-  object out of the resource set right before evaluation — the single enforcement point that applies
-  regardless of whether the Secret came from the cluster or a file, so a `-f` directory that happens
-  to contain real Secret YAML is never silently exposed.
-- Requires the elevated ClusterRole (`examples/rbac/clusterrole-with-secrets.yaml`), not the default
-  one — see [Required Permissions]({{ '/permissions/' | relative_url }}). Kubernetes RBAC has no way
-  to grant "list Secret objects" without also granting body read access (there's no partial-field
-  verb), so every check on this page needs the same elevated grant regardless of whether it actually
-  reads `.data` — the age check below doesn't, but there's no narrower permission to give it.
+## Три вида проверок, которые это открывает
 
-## The three kinds of check this unlocks
+### 1. Проверки известных значений по умолчанию для конкретных продуктов (политики CEL/VAP)
 
-### 1. Product-specific known-default checks (CEL/VAP policies)
+Один точный ключ, сравниваемый с одним точным, задокументированным вендором значением по умолчанию —
+например, `superset.secret-key-default-value` (CVE-2023-27524). См. раздел каждого компонента в
+[Сторонние операторы](./third-party-operators.md) для актуального списка; каждая проверка, требующая
+`--read-secret-values`, явно указывает это в своём тексте `audit.k8s-auditor.io/remediation`.
 
-One exact key, compared against one exact, vendor-documented default value — e.g.
-`superset.secret-key-default-value` (CVE-2023-27524). See each component's section in
-[Third-Party Operators]({{ '/third-party-operators/' | relative_url }}) for the current list; every
-check that requires `--read-secret-values` says so explicitly in its
-`audit.k8s-auditor.io/remediation` text.
+### 2. Универсальная проверка известных слабых/заглушечных значений (политика CEL/VAP)
 
-### 2. A generic known-weak/placeholder-value check (CEL/VAP policy)
+`secrets.known-weak-placeholder-value` (Critical) — помечает любой Secret типа `type: Opaque`/
+`kubernetes.io/basic-auth`, чьи данные содержат значение, точно равное одному из короткого, намеренно
+узкого списка самоочевидно не случайных литералов (`changeme`, `changeit`, `password`, `admin`, `secret`,
+`guest`, `root`, `123456`, `letmein`, `qwerty`). В отличие от проверок для конкретных продуктов выше, эта
+не нуждается в цитате вендора — утверждение не «продукт X по умолчанию использует это значение», а «эта
+буквальная строка по определению не является случайным учётным данным, независимо от того, какому
+продукту она принадлежит». Основано на требовании NIST SP 800-63B §5.1.1.2 отклонять запоминаемые
+секреты, найденные в корпусах утечек/словарях — применено здесь на уровне объекта, а не на уровне ввода.
+Риск ложного срабатывания практически нулевой: вероятность того, что действительно случайный секрет
+случайно совпадёт с одним из этих коротких литеральных строк, астрономически мала.
 
-`secrets.known-weak-placeholder-value` (Critical) — flags any `type: Opaque`/`kubernetes.io/basic-auth`
-Secret whose data
-contains a value exactly equal to one of a short, deliberately narrow list of self-evidently
-non-random literals (`changeme`, `changeit`, `password`, `admin`, `secret`, `guest`, `root`,
-`123456`, `letmein`, `qwerty`). Unlike the product-specific checks above, this doesn't need a vendor
-citation — the claim isn't "product X defaults to this," it's "this literal string is definitionally
-not a random credential, regardless of which product it belongs to." Grounded in NIST SP 800-63B
-§5.1.1.2's direction to reject memorized secrets found in breach corpuses/dictionaries — applied here
-at the object level rather than at input time. False-positive risk is effectively zero: the odds of a
-genuinely random secret coincidentally equaling one of these short literal strings are astronomically
-low.
+### 3. Нативный Go-анализатор (`internal/secrets`) — не политика CEL
 
-### 3. A native Go analyzer (`internal/secrets`) — not a CEL policy
+Три проверки, которые действительно невозможно выразить одной политикой CEL для одного объекта, потому
+что им нужна либо статистика по данным одного объекта, либо сравнение *между* объектами — та же причина,
+по которой `internal/rbac` существует как нативный Go-код, а не как поставляемая политика:
 
-Three checks that genuinely cannot be expressed as a single-object CEL policy, because they need
-either a statistic over one object's own data, or a comparison *across* objects — the same reason
-`internal/rbac` exists as native Go instead of a bundled policy:
-
-| Check ID | Severity | What it flags |
+| Check ID | Серьёзность | Что обнаруживает |
 |---|---|---|
-| `secrets-analyzer.weak-credential-value` | High | A credential-shaped key's decoded value is short (&lt;8 chars) or low-entropy by a Shannon-entropy heuristic — the same core technique gitleaks/truffleHog/detect-secrets use as one of their detectors. Heuristic, not proof: the finding message says so. |
-| `secrets-analyzer.value-reused-across-objects` | High | The exact same value appears in a credential-shaped key across two or more *different* Secret objects — a real blast-radius risk (one leak compromises every object sharing it). Doesn't fire on one Secret mirroring its own value across two of its own keys. |
-| `secrets-analyzer.not-rotated-recently` | Low | A Secret's `.metadata.creationTimestamp` is over a year old. Deliberately Low severity and explicitly not tied to a rotation-mandate citation — NIST SP 800-63B actually recommends *against* mandatory periodic rotation for human-memorized secrets. This is a narrower, informational claim about machine/service credentials specifically: an unrotated credential has a wider blast-radius window if it was ever leaked undetected. Applies to every Secret type, not just Opaque — age doesn't depend on the data shape. |
+| `secrets-analyzer.weak-credential-value` | High | Декодированное значение ключа, похожего на учётные данные, короткое (&lt;8 символов) или низкоэнтропийное по эвристике на основе энтропии Шеннона — та же основная техника, которую используют в качестве одного из детекторов gitleaks/truffleHog/detect-secrets. Эвристика, не доказательство: сообщение находки прямо об этом говорит. |
+| `secrets-analyzer.value-reused-across-objects` | High | Одно и то же значение встречается в ключе, похожем на учётные данные, в двух или более *разных* объектах Secret — реальный риск расширения зоны поражения (одна утечка компрометирует все объекты, разделяющие это значение). Не срабатывает, если один Secret просто отражает своё собственное значение в двух своих собственных ключах. |
+| `secrets-analyzer.not-rotated-recently` | Low | Значение `.metadata.creationTimestamp` объекта Secret старше года. Намеренно низкая серьёзность и явно не привязана к мандату на ротацию — NIST SP 800-63B на самом деле *не рекомендует* обязательную периодическую ротацию для запоминаемых человеком секретов. Это более узкое, информационное утверждение конкретно про машинные/сервисные учётные данные: нератированное учётное данное имеет более широкое окно зоны поражения, если оно когда-либо было незаметно скомпрометировано. Применяется к любому типу Secret, не только Opaque — возраст не зависит от формы данных. |
 
-Both value-based checks are restricted to `type: Opaque` (or type absent) and `kubernetes.io/basic-auth`
-Secrets — the latter is a real, built-in Kubernetes type whose data is literally `username`/`password`,
-the same flat-credential shape as Opaque; it was missing from the first version of this check (found by
-an adversarial stress-test pass, since fixed). Also restricted to keys whose name looks credential-shaped
-(`password`, `secret`, `token`, `key`, `credential`, `auth`, ... — explicitly excluding anything
-containing `public`, since a *public* key/cert isn't sensitive even though its name contains "key").
-`kubernetes.io/tls`, `dockerconfigjson`, `service-account-token`, and other typed Secrets have
-structurally different data shapes (PEM blocks, JSON, JWTs) that these heuristics aren't tuned for and
-would misfire on.
+Обе проверки на основе значения ограничены Secret-ами типа `type: Opaque` (или без указанного типа) и
+`kubernetes.io/basic-auth` — последний является реальным, встроенным типом Kubernetes, чьи данные
+буквально `username`/`password`, та же плоская форма учётных данных, что и у Opaque; он отсутствовал в
+первой версии этой проверки (обнаружено в ходе состязательного стресс-тестирования, с тех пор исправлено).
+Также ограничены ключами, чьё имя похоже на учётные данные (`password`, `secret`, `token`, `key`,
+`credential`, `auth`, ... — явно исключая всё, что содержит `public`, поскольку *публичный* ключ/сертификат
+не является чувствительным, даже если его имя содержит «key»). `kubernetes.io/tls`, `dockerconfigjson`,
+`service-account-token` и другие типизированные Secret-ы имеют структурно иные формы данных (блоки PEM,
+JSON, JWT), для которых эти эвристики не настроены и на которых они будут давать ложные срабатывания.
 
-## Why a finding can never leak the actual secret value
+## Почему находка никогда не может раскрыть реальное значение секрета
 
-**CEL checks** (categories 1 and 2 above): every expression compares `object.data['key']` against a
-**known, hardcoded literal** and always emits a **static** `message:` string — there is no code path
-where a live Secret value can end up in a finding. Enforced structurally, not just by convention:
-`internal/engine/secret_policy_safety_test.go`'s `TestSecretTargetingPoliciesNeverUseMessageExpression`
-fails the build if any bundled check that targets Secrets ever uses `messageExpression` (the one CEL
-mechanism that could otherwise embed live object content into a message).
+**Проверки CEL** (категории 1 и 2 выше): каждое выражение сравнивает `object.data['key']` с
+**известным, захардкоженным литералом** и всегда формирует **статическую** строку `message:` — нет ни
+одного пути кода, по которому реальное значение Secret могло бы попасть в находку. Это обеспечено
+структурно, а не просто соглашением: `TestSecretTargetingPoliciesNeverUseMessageExpression` в
+`internal/engine/secret_policy_safety_test.go` проваливает сборку, если любая поставляемая проверка,
+нацеленная на Secret, когда-либо использует `messageExpression` (единственный механизм CEL, который мог бы
+встроить живое содержимое объекта в сообщение).
 
-**The native analyzer** (category 3): builds findings directly in Go, so there's no language feature
-to structurally forbid a leak the way `messageExpression` can be. Instead,
-`internal/secrets/analyze_test.go`'s `TestFindingsNeverEmbedSecretValues` runs every check in the
-package against fixtures containing several distinct real secret values, then asserts none of those
-values — or their base64 form — appears anywhere in any finding's Title/Message/Remediation. The
-reuse-detection check's message names the *other Secret objects* sharing a value (safe: it's an
-object reference, not the value itself), never the value.
+**Нативный анализатор** (категория 3): формирует находки напрямую в Go, поэтому там нет языковой
+возможности структурно запретить утечку так, как это делает `messageExpression`. Вместо этого
+`TestFindingsNeverEmbedSecretValues` в `internal/secrets/analyze_test.go` прогоняет каждую проверку в
+пакете на фикстурах, содержащих несколько конкретных реальных значений секретов, а затем проверяет, что
+ни одно из этих значений — ни в исходном, ни в base64-виде — не появляется нигде в Title/Message/
+Remediation ни одной находки. Сообщение проверки обнаружения повторного использования называет *другие
+объекты Secret*, разделяющие значение (безопасно: это ссылка на объект, а не само значение), но никогда
+само значение.
 
-## Why CEL checks compare against base64, not decoded plaintext
+## Почему проверки CEL сравнивают с base64, а не с расшифрованным открытым текстом
 
-Real Kubernetes `ValidatingAdmissionPolicy` CEL has no way to base64-decode a value either — the
-Kubernetes CEL extension library
+У реального CEL для `ValidatingAdmissionPolicy` в Kubernetes тоже нет способа декодировать значение из
+base64 — библиотека расширений CEL для Kubernetes
 ([`k8s.io/apiserver/pkg/cel/library`](https://github.com/kubernetes/kubernetes/tree/master/staging/src/k8s.io/apiserver/pkg/cel/library))
-has no base64 decode function, only a format *validator* that checks a string merely looks like
-base64. So this engine doesn't decode Secret `.data` either for its CEL checks — a secret-targeting
-policy's expression compares directly against the base64-encoded form of the known/weak value, e.g.:
+не имеет функции декодирования base64, только валидатор формата, который проверяет, что строка просто
+*похожа* на base64. Поэтому этот движок тоже не декодирует `.data` Secret-а для своих проверок CEL —
+выражение политики, нацеленной на секрет, сравнивает напрямую с base64-закодированной формой известного/
+слабого значения, например:
 
 ```yaml
 expression: |-
@@ -106,63 +104,73 @@ expression: |-
   object.data['adminPassword'] != 'YWRtaW4=' # base64("admin")
 ```
 
-This keeps every CEL check in this repo — including secret-targeting ones — genuinely portable: the
-same YAML file that audits also `kubectl apply -f`'s as a real enforcing `ValidatingAdmissionPolicy`,
-which this repo's whole design is built around (see `policies/`'s package doc). The native Go analyzer
-(category 3) is a deliberate, explicit exception to that portability property — entropy computation
-and cross-object comparison need real decoded bytes and can't be expressed as a real VAP at all, the
-same tradeoff `internal/rbac` already made for RBAC least-privilege analysis.
+Это сохраняет полную переносимость каждой проверки CEL в этом репозитории — включая нацеленные на
+секреты: тот же самый YAML-файл, который используется для аудита, также применяется через
+`kubectl apply -f` как реальная принудительно исполняемая `ValidatingAdmissionPolicy`, вокруг чего
+построен весь дизайн этого репозитория (см. doc-комментарий пакета `policies/`). Нативный Go-анализатор
+(категория 3) — это намеренное, явное исключение из этого свойства переносимости: вычисление энтропии и
+сравнение между объектами требуют реальных декодированных байтов и вообще не могут быть выражены как
+настоящая VAP — тот же компромисс, на который уже пошёл `internal/rbac` для анализа минимальных
+привилегий RBAC.
 
-`stringData` (the write-time-only plaintext convenience field Kubernetes accepts on `Secret` create
-but never returns from a `List`/`Get`) is checked by the generic `secrets.known-weak-placeholder-value`
-check and the native analyzer (category 3) — both matter for `-f` static-manifest scanning, this
-tool's other primary mode, where `stringData` is a common, human-friendly authoring pattern (no manual
-base64 step) and a live cluster fetch's "never populated" fact doesn't apply. This was a real gap in
-the first version of both, found by an adversarial stress-test pass and fixed. The **product-specific**
-known-default checks (category 1, e.g. `superset.secret-key-default-value`) still only check `.data`
-— every official chart this tool has verified renders its own default-credential Secret via `.data`,
-not `stringData`, so the practical risk is low, but a hand-authored manifest using `stringData` for one
-of these specific keys would still be missed; a known, narrower gap than the one already fixed.
+`stringData` (удобное поле только для записи с открытым текстом, которое Kubernetes принимает при
+создании `Secret`, но никогда не возвращает из `List`/`Get`) проверяется универсальной проверкой
+`secrets.known-weak-placeholder-value` и нативным анализатором (категория 3) — оба важны для
+сканирования статических манифестов (`-f`), другого основного режима этого инструмента, где `stringData`
+— распространённый, удобный для человека паттерн авторства (без ручного шага base64), а факт «никогда не
+заполняется» при получении из живого кластера неприменим. Это было реальным пробелом в первой версии
+обоих, обнаруженным в ходе состязательного стресс-тестирования и с тех пор исправленным. **Проверки
+известных значений по умолчанию для конкретных продуктов** (категория 1, например
+`superset.secret-key-default-value`) по-прежнему проверяют только `.data` — каждый официальный chart,
+который этот инструмент проверил, рендерит свой собственный Secret с учётными данными по умолчанию через
+`.data`, а не через `stringData`, поэтому практический риск низок, но вручную написанный манифест,
+использующий `stringData` для одного из этих конкретных ключей, всё равно будет пропущен — известный,
+более узкий пробел по сравнению с уже исправленным.
 
-## What this does NOT do
+## Чего это НЕ делает
 
-Being direct about scope here matters more than for most features on this site, because the failure
-mode of overclaiming secret-scanning coverage is a false sense of security, not just a missing
-finding:
+Прямота в отношении границ применимости здесь важнее, чем для большинства других функций на этом сайте,
+потому что опасность завышения заявленного покрытия сканирования секретов — это ложное чувство
+защищённости, а не просто пропущенная находка:
 
-- **Not a general secret-strength scanner.** The entropy/length heuristic only looks at keys whose
-  *name* looks credential-shaped. A credential stored under an unconventional key name (verified gaps:
-  bare `pass` — only `password`/`passwd`/`pwd` are recognized — and any URL/DSN-shaped key like
-  `DATABASE_URL`/`connection-string` that embeds a credential inline) is invisible to it.
-- **The entropy heuristic is specifically blind to dictionary-word-plus-suffix values**
-  (`changeme123`, `Password1!`, `qwerty123456`) — appending digits/punctuation to a weak word raises
-  character-class diversity enough to clear the Shannon-entropy threshold even though the value is
-  trivially guessable. This is a known, structural property of character-frequency entropy (vs. a
-  dictionary/pattern-aware estimator like zxcvbn), confirmed by direct measurement, not a bug to fix
-  in this design. The two secrets-mode layers aren't purely redundant despite this, though: a
-  case-varied or whitespace-padded evasion of the *exact-match* CEL check (`ChangeMe`, `changeme `)
-  is still caught by the entropy heuristic as a fallback — verified directly.
-- **The entropy heuristic has a real, measured false-positive rate on short, genuinely strong hex
-  secrets** — an 8-byte (`openssl rand -hex 8`) value was flagged "weak" in ~12% of random trials,
-  purely from entropy variance at short lengths (hex's 16-symbol alphabet has less headroom above the
-  3.0 bits/char threshold than base64/alphanumeric). Effectively zero by 16 bytes. The finding message
-  already says "not a proof of weakness" — treat this check's High severity as a prompt to look, not a
-  certainty.
-- **`secrets.known-weak-placeholder-value` (the exact-match list) and `secrets-analyzer.weak-credential-value`
-  (the entropy heuristic) can both fire on the same key** (e.g. a value that's literally `"password"`)
-  — this is intentional, not duplicate noise: they're two independent signals that happen to agree.
-- **No pattern/format detection.** No regex library for "this looks like an AWS access key" / "this
-  looks like a private key PEM block embedded where it shouldn't be" / "this looks like a JWT." Those
-  are real, well-established secret-scanner techniques (gitleaks/truffleHog both ship large pattern
-  libraries) that nothing here implements yet.
-- **The known-weak/placeholder list is short and will stay short on purpose** — it only contains
-  literals that are self-evidently never going to be a real secret. It is not, and isn't trying to be,
-  a comprehensive breached-password corpus.
-- **Cross-namespace/cross-cluster reuse detection only sees what one scan loaded.** Running the same
-  scan twice against two different clusters won't catch a credential reused *between* them — reuse
-  detection only correlates Secrets present in one invocation's resource set.
-- **No detection of secrets embedded in the wrong place** (a credential accidentally placed in a
-  ConfigMap, a Pod env var literal, container args, or an annotation) beyond what
-  `secrets.configmap-no-embedded-credentials` and `secrets.no-secrets-via-env` already cover
-  independently of secrets mode — those two don't need `--read-secret-values` at all, since they never
-  read an actual Secret's value, only ConfigMap/Pod-spec content.
+- **Не универсальный сканер стойкости секретов.** Эвристика энтропии/длины смотрит только на ключи, чьё
+  *имя* похоже на учётные данные. Учётное данное, сохранённое под нетипичным именем ключа (подтверждённые
+  пробелы: голое `pass` — распознаются только `password`/`passwd`/`pwd` — и любой ключ в форме URL/DSN,
+  такой как `DATABASE_URL`/`connection-string`, который встраивает учётное данное внутри строки),
+  невидимо для неё.
+- **Эвристика энтропии конкретно слепа к значениям вида «словарное слово плюс суффикс»**
+  (`changeme123`, `Password1!`, `qwerty123456`) — добавление цифр/пунктуации к слабому слову повышает
+  разнообразие классов символов достаточно, чтобы преодолеть порог энтропии Шеннона, даже если значение
+  тривиально угадывается. Это известное, структурное свойство энтропии на основе частоты символов (в
+  противовес оценщику, учитывающему словари/паттерны, вроде zxcvbn), подтверждённое прямыми измерениями,
+  а не баг, который нужно исправлять в этом дизайне. Тем не менее, два слоя режима работы с секретами не
+  являются чисто избыточными, несмотря на это: обход точного совпадения проверки CEL через изменение
+  регистра или добавление пробелов (`ChangeMe`, `changeme `) всё равно перехватывается эвристикой
+  энтропии как запасным вариантом — проверено напрямую.
+- **У эвристики энтропии есть реальный, измеренный уровень ложных срабатываний на коротких, но
+  действительно стойких hex-секретах** — 8-байтовое значение (`openssl rand -hex 8`) было помечено как
+  «слабое» примерно в 12% случайных прогонов, исключительно из-за вариативности энтропии на коротких
+  длинах (у 16-символьного алфавита hex меньше запаса над порогом 3.0 бит/символ, чем у base64/
+  алфавитно-цифровых значений). Практически сходит на нет к 16 байтам. Сообщение находки уже говорит
+  «это не доказательство слабости» — воспринимайте High-серьёзность этой проверки как повод присмотреться,
+  а не как уверенность.
+- **`secrets.known-weak-placeholder-value` (список точных совпадений) и
+  `secrets-analyzer.weak-credential-value` (эвристика энтропии) могут срабатывать на одном и том же ключе
+  одновременно** (например, значение буквально равно `"password"`) — это осознанно, а не дублирующийся
+  шум: это два независимых сигнала, которые просто совпали.
+- **Нет обнаружения паттернов/форматов.** Нет библиотеки регулярных выражений для «это похоже на ключ
+  доступа AWS» / «это похоже на блок приватного ключа PEM, встроенный не туда» / «это похоже на JWT». Это
+  реальные, хорошо устоявшиеся техники сканеров секретов (у gitleaks/truffleHog обеих есть большие
+  библиотеки паттернов), которые здесь пока ничем не реализованы.
+- **Список известных слабых/заглушечных значений короткий и намеренно останется коротким** — он содержит
+  только литералы, которые самоочевидно никогда не окажутся реальным секретом. Это не всеобъемлющий корпус
+  скомпрометированных паролей и не пытается им быть.
+- **Обнаружение повторного использования между неймспейсами/кластерами видит только то, что загружено
+  одним сканированием.** Запуск одного и того же сканирования дважды против двух разных кластеров не
+  перехватит учётное данное, повторно используемое *между* ними — обнаружение повторного использования
+  сопоставляет только Secret-ы, присутствующие в наборе ресурсов одного запуска.
+- **Нет обнаружения секретов, встроенных не туда** (учётное данное, случайно помещённое в ConfigMap,
+  литерал переменной окружения Pod-а, аргументы контейнера или аннотацию) сверх того, что уже независимо
+  покрывают `secrets.configmap-no-embedded-credentials` и `secrets.no-secrets-via-env` — эти две проверки
+  вообще не требуют `--read-secret-values`, поскольку никогда не читают реальное значение Secret-а, только
+  содержимое ConfigMap/спецификации Pod-а.

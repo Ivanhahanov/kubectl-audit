@@ -1,105 +1,103 @@
----
-layout: default
-title: "Server & Automation"
-permalink: /server/
----
+# kubectl-audit-server: мультикластерная агрегация, триаж и автоматизация
 
-# kubectl-audit-server: multi-cluster aggregation, triage, and automation
+Всё на этой странице опционально. `kubectl audit scan` и `kubectl triage` работают в точности так,
+как описано в [Начале работы](./getting-started.md) и [Триаже](./triage.md), без какого-либо
+участия сервера — findings.json и локальный triage-state.yaml по-прежнему остаются вариантом по
+умолчанию, навсегда. `kubectl-audit-server` — это отдельный опциональный бинарник для случаев,
+когда вы аудируете более одного кластера и хотите централизовать находки, решения триажа, записи
+базы знаний и правила исключений вместо того, чтобы дублировать их по кластерам — а также
+несколько вещей, которые один локальный вызов CLI в принципе не может делать: корреляцию между
+источниками, правила автоматизации и запуск сканирований по требованию.
 
-Everything on this page is optional. `kubectl audit scan` and `kubectl triage` work exactly
-as documented in [Getting Started]({{ '/getting-started/' | relative_url }}) and
-[Triage]({{ '/triage/' | relative_url }}) with zero server involvement — findings.json and a local
-triage-state.yaml are still the default, permanently. `kubectl-audit-server` is a separate,
-optional binary for when you're auditing more than one cluster and want findings, triage
-decisions, knowledge base entries, and exclusion rules centralized instead of duplicated per
-cluster — plus a few things a single local CLI invocation can't do at all: cross-source
-correlation, automation rules, and triggering scans on demand.
+Эта страница — пошаговый разбор каждой возможности сервера, в том порядке, в котором вы бы к ним
+реально обращались. Каждый раздел можно копировать и выполнять как есть.
 
-This page is a hands-on walkthrough of every server feature, in the order you'd actually reach for
-them. Each section is copy-pasteable.
+## Содержание
 
-## Contents
+- [Быстрый старт (без Kubernetes)](#быстрый-старт-без-kubernetes)
+- [Документация API (Swagger/OpenAPI)](#документация-api-swaggeropenapi)
+- [Регистрация кластера и отправка результатов сканирования](#регистрация-кластера-и-отправка-результатов-сканирования)
+- [Триаж через сервер](#триаж-через-сервер)
+- [Приём находок от других инструментов (OpenReports)](#приём-находок-от-других-инструментов-openreports)
+- [Централизованная база знаний](#централизованная-база-знаний)
+- [Централизованные правила исключений](#централизованные-правила-исключений)
+- [Правила автоматизации](#правила-автоматизации)
+- [`inspect`: узкоспециализированный CLI для диагностики в режиме только чтения](#inspect-узкоспециализированный-cli-для-диагностики-в-режиме-только-чтения)
+- [MCP-адаптер (интеграция с AI-агентами)](#mcp-адаптер-интеграция-с-ai-агентами)
+- [Развёртывание в реальном кластере (Helm-чарт)](#развёртывание-в-реальном-кластере-helm-чарт)
 
-- [Quick start (no Kubernetes needed)](#quick-start-no-kubernetes-needed)
-- [API documentation (Swagger/OpenAPI)](#api-documentation-swaggeropenapi)
-- [Registering a cluster and pushing a scan](#registering-a-cluster-and-pushing-a-scan)
-- [Triage against the server](#triage-against-the-server)
-- [Ingesting findings from other tools (OpenReports)](#ingesting-findings-from-other-tools-openreports)
-- [Centralized knowledge base](#centralized-knowledge-base)
-- [Centralized exclusion rules](#centralized-exclusion-rules)
-- [Automation rules](#automation-rules)
-- [`inspect`: a narrow, read-only diagnostic CLI](#inspect-a-narrow-read-only-diagnostic-cli)
-- [The MCP adapter (AI agent integration)](#the-mcp-adapter-ai-agent-integration)
-- [Deploying to a real cluster (Helm chart)](#deploying-to-a-real-cluster-helm-chart)
+## Быстрый старт (без Kubernetes)
 
-## Quick start (no Kubernetes needed)
-
-The server is just a Go binary plus Postgres — nothing about it requires a cluster to *run*
-(only to *audit*). The fastest way to try every non-Kubernetes-specific feature below (ingestion,
-triage, knowledge base, exclusion rules, automation rule matching) is `docker-compose.yml` at the
-repo root:
+Сервер — это просто Go-бинарник плюс Postgres: для самого *запуска* кластер не нужен (только для
+*аудита*). Быстрее всего опробовать все не привязанные к Kubernetes возможности ниже (приём
+находок, триаж, базу знаний, правила исключений, сопоставление правил автоматизации) через
+`docker-compose.yml` в корне репозитория:
 
 ```sh
 docker build --target server -t kubectl-audit-server:demo .
 docker compose up
 ```
 
-This starts Postgres and the server (`ADMIN_TOKEN=demo-admin-token`, listening on `:8080`,
-migrations applied automatically on startup). Everything from here on assumes the server is
-reachable at `http://localhost:8080` — adjust if you deployed it elsewhere.
+Это запускает Postgres и сервер (`ADMIN_TOKEN=demo-admin-token`, слушает `:8080`, миграции
+применяются автоматически при старте). Далее везде предполагается, что сервер доступен по адресу
+`http://localhost:8080` — скорректируйте, если развернули его иначе.
 
-## API documentation (Swagger/OpenAPI)
+## Документация API (Swagger/OpenAPI)
 
-Every endpoint below is annotated with [swaggo](https://github.com/swaggo/swag) comments and
-served as an interactive Swagger UI, no separate tool required:
+Каждый эндпоинт ниже аннотирован комментариями [swaggo](https://github.com/swaggo/swag) и
+обслуживается как интерактивный Swagger UI, без какого-либо отдельного инструмента:
 
 ```
 http://localhost:8080/swagger/index.html
 ```
 
-The raw OpenAPI 2.0 spec backing that UI is at `http://localhost:8080/swagger/doc.json` (also
-committed as `cmd/kubectl-audit-server/docs/swagger.json`/`.yaml`, handy for importing into
-Postman/Insomnia or generating a client). Click "Authorize" in the UI and paste
-`Bearer <admin-token>` or `Bearer <cluster-token>` to try requests directly from the browser — the
-same admin-vs-cluster token split described below applies.
+Исходная спецификация OpenAPI 2.0, на которой строится этот UI, находится по адресу
+`http://localhost:8080/swagger/doc.json` (также закоммичена как
+`cmd/kubectl-audit-server/docs/swagger.json`/`.yaml` — удобно для импорта в Postman/Insomnia или
+генерации клиента). Нажмите «Authorize» в UI и вставьте `Bearer <admin-token>` или
+`Bearer <cluster-token>`, чтобы отправлять запросы прямо из браузера — действует то же разделение
+на admin- и cluster-токены, что описано ниже.
 
-If you change a handler's request/response shape or add a new endpoint, regenerate the spec:
+Если вы меняете форму запроса/ответа у обработчика или добавляете новый эндпоинт, перегенерируйте
+спецификацию:
 
 ```sh
 go run github.com/swaggo/swag/cmd/swag@latest init \
   -g cmd/kubectl-audit-server/main.go -o cmd/kubectl-audit-server/docs --parseInternal --pd
 ```
 
-## Registering a cluster and pushing a scan
+## Регистрация кластера и отправка результатов сканирования
 
-Every cluster (or, more precisely, every distinct thing that pushes scans) gets its own bearer
-token, issued once by an admin call and never stored server-side in plaintext afterward:
+Каждый кластер (точнее, каждая отдельная сущность, отправляющая результаты сканирования) получает
+собственный bearer-токен, выпускаемый один раз admin-вызовом и впоследствии никогда не хранимый на
+сервере в открытом виде:
 
 ```sh
 curl -X POST http://localhost:8080/api/v1/clusters \
   -H "Authorization: Bearer demo-admin-token" -H "Content-Type: application/json" \
   -d '{"name":"prod-eu-west-1","owner":"platform-team"}'
-# -> {"id":"...", "name":"prod-eu-west-1", "token":"..."}  — save the token, it's shown once
+# -> {"id":"...", "name":"prod-eu-west-1", "token":"..."}  — сохраните токен, он показывается один раз
 ```
 
-Push a real scan with the new CLI command:
+Отправьте реальное сканирование новой командой CLI:
 
 ```sh
 kubectl audit scan -A --output json=findings.json
 kubectl-audit push --server http://localhost:8080 --token <cluster token> --findings findings.json
-# or: export KUBECTL_AUDIT_SERVER_URL / KUBECTL_AUDIT_SERVER_TOKEN and drop the flags
+# либо: задайте KUBECTL_AUDIT_SERVER_URL / KUBECTL_AUDIT_SERVER_TOKEN и опустите флаги
 ```
 
-Findings are deduplicated by `(cluster, source, fingerprint)` — pushing the same scan again never
-creates duplicates, only updates `last_seen`; a finding that stops appearing gets its triage entry
-(if any) marked `resolved` automatically. See the architecture notes in the repo's commit history
-for the exact fingerprinting rules if you're curious.
+Находки дедуплицируются по `(cluster, source, fingerprint)` — повторная отправка того же
+сканирования никогда не создаёт дубликатов, только обновляет `last_seen`; находка, переставшая
+появляться, автоматически получает запись триажа (если она есть) со статусом `resolved`. Точные
+правила формирования fingerprint см. в заметках об архитектуре в истории коммитов репозитория,
+если интересно.
 
-## Triage against the server
+## Триаж через сервер
 
-`kubectl triage` (the same interactive TUI, `export`, and `jira-sync` you already know) can
-persist decisions centrally instead of to a local `triage-state.yaml`, with **no other behavior
-change** — add four things:
+`kubectl triage` (тот же интерактивный TUI, `export` и `jira-sync`, что вы уже знаете) может
+сохранять решения централизованно вместо локального `triage-state.yaml`, **без каких-либо других
+изменений в поведении** — достаточно добавить четыре вещи:
 
 ```sh
 kubectl triage \
@@ -109,33 +107,36 @@ kubectl triage \
   --findings findings.json
 ```
 
-Triage read/write is an **admin-gated "expert" action**, deliberately separate from a cluster's own
-push token: that token is ingest-only (`POST /api/v1/ingest/*`) and grants no access to
-`/api/v1/triage/*` — a leaked push token can inject fake findings but can't read anyone's triage
-notes or Jira links. So `--triage-server-token` here is the server's admin token, not the cluster
-token from registration, and `--triage-server-cluster-id` says explicitly which cluster's findings
-you're triaging (the `id` field from that cluster's registration response, not its token).
+Чтение/запись триажа — это **действие уровня admin («эксперта»)**, намеренно отделённое от
+собственного push-токена кластера: этот токен предназначен только для приёма данных
+(`POST /api/v1/ingest/*`) и не даёт доступа к `/api/v1/triage/*` — утёкший push-токен может
+подсунуть поддельные находки, но не может прочитать чужие заметки триажа или ссылки на Jira.
+Поэтому `--triage-server-token` здесь — это admin-токен сервера, а не токен кластера, полученный
+при регистрации, а `--triage-server-cluster-id` явно указывает, находки какого кластера вы
+проверяете (поле `id` из ответа при регистрации этого кластера, а не его токен).
 
-(`--triage-server-source` defaults to `kubectl-audit`; set it explicitly if you're triaging an
-OpenReports-ingested source instead — see below.) The token can also come from
-`$KUBECTL_AUDIT_TRIAGE_SERVER_TOKEN`, and `--triage-server`/`--triage-server-source`/
-`--triage-server-cluster-id` all have `audit.yaml` equivalents
-(`triage.server.baseUrl`/`triage.server.source`/`triage.server.clusterId`) so you don't have to
-repeat the flags every run — `clusterId` isn't a credential (on its own it grants nothing), so it's
-fine to commit alongside `baseUrl`/`source`.
+(`--triage-server-source` по умолчанию равен `kubectl-audit`; задавайте его явно, если проверяете
+источник, полученный через OpenReports — см. ниже.) Токен также можно взять из
+`$KUBECTL_AUDIT_TRIAGE_SERVER_TOKEN`, а у `--triage-server`/`--triage-server-source`/
+`--triage-server-cluster-id` есть эквиваленты в `audit.yaml`
+(`triage.server.baseUrl`/`triage.server.source`/`triage.server.clusterId`), так что не нужно
+повторять флаги на каждом запуске — `clusterId` не является учётными данными (сам по себе он
+ничего не даёт), поэтому его можно спокойно коммитить рядом с `baseUrl`/`source`.
 
-Everything — marking confirmed/false-positive/won't-fix, notes, bulk actions, even `'j'` filing a
-Jira ticket — works exactly the same; only *where* the decision is saved changes.
+Всё остальное — отметка confirmed/false-positive/won't-fix, заметки, массовые действия и даже
+`'j'` для создания тикета в Jira — работает точно так же; меняется только то, *куда* сохраняется
+решение.
 
-**`--triage-server` always means findings come from the server too**, not just where decisions are
-saved — `--findings`/`triage.output.json` are ignored entirely in this mode, no local scan required.
-This is what makes reviewing findings pushed by a cluster you never personally scanned possible (the
-multi-cluster case — a hub aggregating scans from elsewhere). It's one mode or the other on purpose:
-an earlier version of this made that choice implicitly (server findings only if no local
-findings.json happened to exist on disk), which was surprising — whether you saw server-side or
-stale local data depended on nothing more than a stray file sitting around.
+**`--triage-server` всегда означает, что находки тоже приходят с сервера**, а не только то, что
+туда сохраняются решения — `--findings`/`triage.output.json` в этом режиме полностью игнорируются,
+локальное сканирование не требуется. Именно это делает возможным просмотр находок, отправленных
+кластером, который вы лично никогда не сканировали (мультикластерный сценарий — хаб, агрегирующий
+сканирования из разных источников). Это намеренно один режим или другой: более ранняя версия делала
+этот выбор неявно (находки с сервера брались только если на диске случайно не оказывалось локального
+findings.json), что было неожиданным поведением — то, увидите ли вы серверные или устаревшие
+локальные данные, зависело от случайно оставшегося файла, и ни от чего больше.
 
-You can confirm a decision round-tripped with a plain curl call too:
+Можно подтвердить, что решение действительно сохранилось, и обычным вызовом curl:
 
 ```sh
 curl -X PATCH "http://localhost:8080/api/v1/triage/kubectl-audit/<finding id>?cluster_id=<cluster id>" \
@@ -146,12 +147,12 @@ curl "http://localhost:8080/api/v1/triage?cluster_id=<cluster id>&source=kubectl
   -H "Authorization: Bearer <admin token>"
 ```
 
-## Ingesting findings from other tools (OpenReports)
+## Приём находок от других инструментов (OpenReports)
 
-The server also accepts [openreports.io](https://openreports.io) `Report`/`ClusterReport`
-documents (the format Kyverno's Policy Reporter, Trivy-operator, and others already emit) —
-useful if you want one triage workflow across kubectl-audit and whatever else is already scanning
-your clusters:
+Сервер также принимает документы [openreports.io](https://openreports.io) `Report`/`ClusterReport`
+(формат, который уже используют Policy Reporter от Kyverno, Trivy-operator и другие) — полезно,
+если вы хотите единый процесс триажа для kubectl-audit и всего остального, что уже сканирует ваши
+кластеры:
 
 ```sh
 curl -X POST http://localhost:8080/api/v1/ingest/openreports \
@@ -159,24 +160,26 @@ curl -X POST http://localhost:8080/api/v1/ingest/openreports \
   --data-binary @my-kyverno-policyreport.json
 ```
 
-Only `fail`/`warn` results become findings (`pass`/`skip` aren't problems; `error` means the
-*policy engine* failed to evaluate, not a finding about your cluster). Each result's `source`
-field becomes its own `openreports:<tool>` source — e.g. `openreports:kyverno` — kept completely
-separate from `kubectl-audit`'s own findings; nothing is ever merged across sources. A single
-document can even mix results from different tools (the spec allows per-result `source`
-overrides) — the server correctly splits that into separate scans per source rather than
-mislabeling everything under one.
+Находками становятся только результаты `fail`/`warn` (`pass`/`skip` не являются проблемами;
+`error` означает, что *сам движок политик* не смог выполнить оценку, а не то, что найдена проблема
+в кластере). Поле `source` каждого результата становится собственным источником вида
+`openreports:<tool>` — например, `openreports:kyverno` — полностью отдельным от находок
+`kubectl-audit`; между источниками ничего никогда не объединяется. Один документ может даже
+смешивать результаты от разных инструментов (спецификация допускает переопределение `source` для
+каждого результата отдельно) — сервер корректно разбивает это на отдельные сканирования по
+источникам, а не помечает всё одним общим ярлыком.
 
-OpenReports-sourced findings don't have Remediation/CIS/VerificationSteps (that source has no
-equivalent data) — triage still works identically; the Jira template just renders those sections
-as empty. Triage them from the CLI with `--triage-server-source openreports:kyverno`, or directly
-via the API the same way as above, just with a different `source` in the URL/query string.
+У находок, полученных из OpenReports, нет Remediation/CIS/VerificationSteps (у этого источника
+просто нет соответствующих данных) — триаж по-прежнему работает так же; шаблон Jira просто
+отображает эти разделы пустыми. Проверяйте их из CLI с `--triage-server-source
+openreports:kyverno`, либо напрямую через API так же, как выше, просто с другим `source` в
+URL/строке запроса.
 
-## Centralized knowledge base
+## Централизованная база знаний
 
-Today's local `triage.knowledgeBaseFile` (per-check title/description/remediation overrides) has a
-server-side equivalent, keyed by policy ID, gated by the **admin** token (this is organization-wide
-configuration, not per-cluster data):
+У сегодняшнего локального `knowledgeBaseFile` (переопределения title/description/remediation по
+каждой проверке) есть серверный аналог, с ключом по ID политики, защищённый **admin**-токеном (это
+общеорганизационная конфигурация, а не данные одного кластера):
 
 ```sh
 curl -X PUT http://localhost:8080/api/v1/knowledge-base/workload.no-latest-tag \
@@ -192,28 +195,28 @@ curl http://localhost:8080/api/v1/knowledge-base/workload.no-latest-tag \
   -H "Authorization: Bearer demo-admin-token"
 ```
 
-(There's no CLI wiring to *consume* this from the server yet — the endpoints exist so a future
-client, or your own tooling, can centralize this instead of hand-syncing a YAML file across
-clusters.)
+(Пока нет CLI-обвязки, которая бы *потребляла* это с сервера — эндпоинты существуют, чтобы будущий
+клиент или ваша собственная система могли централизовать это вместо ручной синхронизации YAML-файла
+между кластерами.)
 
-## Centralized exclusion rules
+## Централизованные правила исключений
 
-Same idea for `audit.yaml`'s `exclusionRules` — `ClusterID` unset applies a rule to every
-registered cluster; set it to scope a rule (e.g. a known false positive specific to one cluster's
-setup) to just that one:
+Та же идея для `exclusionRules` из `audit.yaml` — если `ClusterID` не задан, правило применяется ко
+всем зарегистрированным кластерам; задайте его, чтобы ограничить правило (например, известный
+ложноположительный результат, специфичный для конфигурации одного кластера) только этим кластером:
 
 ```sh
-# Global — applies everywhere
+# Глобальное — применяется везде
 curl -X POST http://localhost:8080/api/v1/exclusion-rules \
   -H "Authorization: Bearer demo-admin-token" -H "Content-Type: application/json" \
   -d '{"policyIds":["workload.no-latest-tag"],"match":{"kind":"Deployment","namespace":"kube-system"},"reason":"known false positive on system components"}'
 
-# Scoped to one cluster
+# Ограничено одним кластером
 curl -X POST http://localhost:8080/api/v1/exclusion-rules \
   -H "Authorization: Bearer demo-admin-token" -H "Content-Type: application/json" \
   -d '{"clusterId":"<cluster id>","reason":"legacy workloads pending decommission","match":{"name":"legacy-*"}}'
 
-# List everything that applies to one cluster (global + its own scoped rules)
+# Список всего, что применяется к одному кластеру (глобальные + собственные правила этого кластера)
 curl "http://localhost:8080/api/v1/exclusion-rules?cluster_id=<cluster id>" \
   -H "Authorization: Bearer demo-admin-token"
 
@@ -221,14 +224,15 @@ curl -X DELETE http://localhost:8080/api/v1/exclusion-rules/<rule id> \
   -H "Authorization: Bearer demo-admin-token"
 ```
 
-## Automation rules
+## Правила автоматизации
 
-An automation rule matches findings by severity/status/source/"no Jira link for N hours" and
-records what action *would* fire — filing a Jira ticket, or (reserved for a future AI-agent
-integration) an `agent_triage` action. **Action execution isn't wired up yet** — both would need
-new credential/agent infrastructure this phase deliberately didn't build (see the rule's own
-`detail` field, which says exactly that) — but the matching engine itself is real: create a rule,
-confirm a matching finding, and it's identified correctly every time.
+Правило автоматизации сопоставляет находки по серьёзности/статусу/источнику/«нет ссылки на Jira
+уже N часов» и фиксирует, какое действие *сработало бы* — создание тикета в Jira, либо (зарезервировано
+для будущей интеграции с AI-агентом) действие `agent_triage`. **Выполнение действия пока не
+подключено** — для этого на данном этапе намеренно не стали строить новую инфраструктуру учётных
+данных/агентов (см. собственное поле `detail` правила, которое прямо об этом сообщает) — но сам
+движок сопоставления реальный: создайте правило, подтвердите подходящую находку, и она будет
+каждый раз корректно опознана.
 
 ```sh
 curl -X POST http://localhost:8080/api/v1/automation-rules \
@@ -240,21 +244,22 @@ curl -X POST http://localhost:8080/api/v1/automation-rules \
     "action": {"type": "file_jira"}
   }'
 
-# Run one evaluation pass immediately (kubectl-audit-worker also runs this
-# automatically every AUTOMATION_INTERVAL_SECONDS, 300s by default)
+# Запустить один проход оценки немедленно (kubectl-audit-worker также
+# делает это автоматически каждые AUTOMATION_INTERVAL_SECONDS, по умолчанию 300с)
 curl -X POST http://localhost:8080/api/v1/automation-rules/evaluate \
   -H "Authorization: Bearer demo-admin-token"
 ```
 
-A confirmed CRITICAL finding older than 24h with no Jira link shows up in the response with
-`"attempted": false` and a `detail` explaining why — that's the expected, honest state today.
+Подтверждённая находка CRITICAL старше 24 часов без ссылки на Jira появится в ответе с
+`"attempted": false` и полем `detail`, объясняющим почему — это ожидаемое, честное состояние на
+сегодняшний день.
 
-## `inspect`: a narrow, read-only diagnostic CLI
+## `inspect`: узкоспециализированный CLI для диагностики в режиме только чтения
 
-Separate from the server, but built for the same reason automation rules mention an `agent_triage`
-action: a way to answer one targeted question against a live cluster without a whole-cluster scan
-— and, deliberately, without ever handing over real cluster credentials to anything that doesn't
-already have them (see the MCP section next).
+Отдельно от сервера, но созданный по той же причине, по которой правила автоматизации упоминают
+действие `agent_triage`: способ ответить на один конкретный вопрос о живом кластере без полного
+сканирования — и, намеренно, без передачи реальных учётных данных кластера чему-либо, у чего их ещё
+нет (см. раздел про MCP ниже).
 
 ```sh
 kubectl-audit inspect resource Deployment/web -n default
@@ -262,38 +267,41 @@ kubectl-audit inspect rbac-chain --subject ServiceAccount/deploy-bot -n ci
 kubectl-audit inspect rbac-chain --subject Group/system:masters
 ```
 
-`inspect resource` can never fetch a `Secret`, under any flag — this is a hard, unconditional rule
-(stricter than the `--read-secret-values` scan flag), since inspect output can end up in an LLM's
-context or logs.
+`inspect resource` никогда не может получить `Secret`, ни при каком флаге — это жёсткое,
+безусловное правило (строже, чем флаг сканирования `--read-secret-values`), поскольку вывод
+inspect может попасть в контекст LLM или в логи.
 
-## The MCP adapter (AI agent integration)
+## MCP-адаптер (интеграция с AI-агентами)
 
-`cmd/kubectl-audit-mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server
-exposing `inspect_resource` and `inspect_rbac_chain` as tools an AI agent can call — implemented as
-a thin wrapper that `exec`s the `inspect` CLI above and returns its JSON output; it contains no
-cluster-fetching logic of its own. This is the whole point: **an AI agent using this adapter never
-gets direct cluster access** — no kubeconfig, no live API credentials reach the agent itself, only
-this process's stdout.
+`cmd/kubectl-audit-mcp` — это сервер [Model Context Protocol](https://modelcontextprotocol.io),
+предоставляющий `inspect_resource` и `inspect_rbac_chain` как инструменты, которые может вызывать
+AI-агент — реализован как тонкая обёртка, которая выполняет (`exec`) описанный выше CLI `inspect` и
+возвращает его JSON-вывод; собственной логики получения данных из кластера в нём нет. В этом и суть:
+**AI-агент, использующий этот адаптер, никогда не получает прямого доступа к кластеру** — ни
+kubeconfig, ни реальные учётные данные API до самого агента не доходят, только stdout этого
+процесса.
 
 ```sh
 export KUBECONFIG=~/.kube/config
-export KUBE_CONTEXT=my-context   # optional
+export KUBE_CONTEXT=my-context   # опционально
 kubectl-audit-mcp
 ```
 
-It speaks newline-delimited JSON-RPC 2.0 over stdio — point any MCP-compatible client (Claude
-Desktop, an MCP inspector, your own agent harness) at this binary directly. The intended production
-placement is *ephemeral*: spun up alongside whatever process runs a scan (reusing that process's
-already-legitimate, already-scoped kubeconfig for its lifetime only), never a standing sidecar with
-its own credentials — not yet wired into anything automatic, since there's no in-cluster scan
-orchestrator today (see "Registering a cluster and pushing a scan" above: scanning is just running
-`kubectl-audit scan`/`push` wherever fits, not something the server triggers itself).
+Он общается через newline-delimited JSON-RPC 2.0 поверх stdio — направьте любой MCP-совместимый
+клиент (Claude Desktop, MCP inspector, вашу собственную инфраструктуру агентов) прямо на этот
+бинарник. Предполагаемое использование в production — *эфемерное*: запускается рядом с тем
+процессом, который выполняет сканирование (переиспользуя уже легитимный, уже ограниченный по
+правам kubeconfig этого процесса только на время его работы), а не как постоянный sidecar с
+собственными учётными данными — пока никуда автоматически не подключён, поскольку сегодня нет
+оркестратора сканирований внутри кластера (см. «Регистрация кластера и отправка результатов
+сканирования» выше: сканирование — это просто запуск `kubectl-audit scan`/`push` там, где удобно,
+а не то, что инициирует сам сервер).
 
-## Deploying to a real cluster (Helm chart)
+## Развёртывание в реальном кластере (Helm-чарт)
 
-`charts/kubectl-audit-server` deploys Postgres (via the
-[CloudNativePG operator](https://cloudnative-pg.io), by default) plus the server and
-kubectl-audit-worker (the automation-rule evaluation loop, its own Deployment):
+`charts/kubectl-audit-server` разворачивает Postgres (по умолчанию через оператор
+[CloudNativePG](https://cloudnative-pg.io)), а также сам сервер и kubectl-audit-worker (цикл
+оценки правил автоматизации, отдельный Deployment):
 
 ```sh
 helm install audit charts/kubectl-audit-server \
@@ -301,8 +309,8 @@ helm install audit charts/kubectl-audit-server \
   --set image.repository=<your-registry>/kubectl-audit-server --set image.tag=<tag>
 
 kubectl -n kubectl-audit-system get secret audit-admin-token \
-  -o jsonpath='{.data.token}' | base64 -d   # the auto-generated admin token
+  -o jsonpath='{.data.token}' | base64 -d   # автоматически сгенерированный admin-токен
 ```
 
-See `charts/kubectl-audit-server/README.md` for the Postgres escape hatches (pointing at an
-existing Postgres instead of CNPG) — every value is documented in `values.yaml`.
+Варианты подключения существующего Postgres вместо CNPG см. в
+`charts/kubectl-audit-server/README.md` — каждое значение описано в `values.yaml`.

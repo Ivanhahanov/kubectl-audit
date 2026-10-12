@@ -1,15 +1,9 @@
----
-layout: default
-title: "Writing Policies"
-permalink: /writing-policies/
----
+# Написание пользовательских политик
 
-# Writing custom policies
-
-Policies are plain `ValidatingAdmissionPolicy` YAML. Audit-specific metadata (severity, category,
-remediation text, CIS control references) lives entirely in `metadata.annotations` under the
-`audit.k8s-auditor.io/` prefix, so the file stays 100% valid to `kubectl apply -f` as a real
-in-cluster enforcement policy:
+Политики — это обычный YAML `ValidatingAdmissionPolicy`. Метаданные, специфичные для аудита
+(серьёзность, категория, текст рекомендации, ссылки на контроли CIS), целиком находятся в
+`metadata.annotations` под префиксом `audit.k8s-auditor.io/`, поэтому файл остаётся на 100% валидным
+для `kubectl apply -f` как реальная принудительно исполняемая политика в кластере:
 
 ```yaml
 apiVersion: admissionregistration.k8s.io/v1
@@ -32,40 +26,40 @@ spec:
       message: "Workload is missing a 'team' label."
 ```
 
-Recognized annotations:
+Распознаваемые аннотации:
 
-| Annotation | Purpose |
+| Аннотация | Назначение |
 |---|---|
-| `audit.k8s-auditor.io/title` | Human-readable finding title (defaults to `metadata.name`). |
-| `audit.k8s-auditor.io/severity` | `critical\|high\|medium\|low\|info` (defaults to `medium`). |
-| `audit.k8s-auditor.io/category` | Free-form grouping label (defaults to `general`). |
-| `audit.k8s-auditor.io/remediation` | Shown in the finding and the report. How to fix a confirmed issue. |
-| `audit.k8s-auditor.io/verification-steps` | Shown in the finding, the report, and read by `kubectl triage`. Concrete, numbered steps for a human to confirm this finding is a true positive in their specific environment before acting on it (e.g. "check whether this Service is actually internet-reachable") — distinct from `remediation`, which assumes the finding is already confirmed. Every bundled policy sets this; see [Triage](./triage/) for the full rationale and how it's used. |
-| `audit.k8s-auditor.io/cis` | Comma-separated CIS control IDs this policy maps to. |
-| `audit.k8s-auditor.io/kb-title`, `.../kb-description`, `.../kb-remediation`, `.../kb-verification-steps` | Optional: your organization's own ticket-facing title/vulnerability description/remediation/verification-steps for this check — internal standards, house style, or just clearer wording than the default — written in the same policy file instead of also maintaining a separate `triage.knowledgeBaseFile` entry. Not a translation mechanism: `message`/the CEL `message:` is never overridden this way. Applied when filing a Jira ticket and shown identically in the triage TUI's detail view (`enter`) — see [Triage: Knowledge base](./triage/#knowledge-base-your-organizations-own-ticket-content). Any left unset simply use the tool's own default for that field. |
+| `audit.k8s-auditor.io/title` | Человекочитаемый заголовок находки (по умолчанию `metadata.name`). |
+| `audit.k8s-auditor.io/severity` | `critical\|high\|medium\|low\|info` (по умолчанию `medium`). |
+| `audit.k8s-auditor.io/category` | Произвольная метка группировки (по умолчанию `general`). |
+| `audit.k8s-auditor.io/remediation` | Отображается в находке и отчёте. Как исправить подтверждённую проблему. |
+| `audit.k8s-auditor.io/verification-steps` | Отображается в находке, отчёте и считывается `kubectl triage`. Конкретные, пронумерованные шаги, позволяющие человеку подтвердить, что эта находка — истинное срабатывание в его конкретном окружении, прежде чем действовать на её основании (например, «проверьте, действительно ли этот Service доступен из интернета») — отличается от `remediation`, которая предполагает, что находка уже подтверждена. Эта аннотация задана у каждой поставляемой политики; полное обоснование и способ использования см. в [Triage](./triage.md). |
+| `audit.k8s-auditor.io/cis` | Список ID контролей CIS через запятую, с которыми сопоставлена эта политика. |
+| `audit.k8s-auditor.io/kb-title`, `.../kb-description`, `.../kb-remediation`, `.../kb-verification-steps` | Опционально: собственные заголовок/описание уязвимости/рекомендация/шаги проверки вашей организации для этой проверки, предназначенные для тикета — внутренние стандарты, корпоративный стиль или просто более понятная формулировка, чем значение по умолчанию — написанные в том же файле политики вместо того, чтобы дополнительно вести отдельную запись `knowledgeBaseFile`. Это не механизм перевода: `message`/CEL-поле `message:` таким способом никогда не переопределяется. Применяется при создании тикета Jira и отображается идентично в детальном представлении TUI triage (`enter`) — см. [Triage: База знаний](./triage.md). Всё, что оставлено неустановленным, просто использует собственное значение инструмента по умолчанию для этого поля. |
 
-Load it with `kubectl audit scan --policy-dir ./my-policies`, or add the directory under
-`policies.dirs` in `audit.yaml`. See
-[`examples/custom-policy-example.yaml`](https://github.com/{{ site.repository }}/blob/main/examples/custom-policy-example.yaml).
+Загрузите её с помощью `kubectl audit scan --policy-dir ./my-policies` или добавьте директорию под
+`policies.dirs` в `audit.yaml`. См.
+[`examples/custom-policy-example.yaml`](../examples/custom-policy-example.yaml).
 
-## Validate before you rely on it
+## Проверяйте перед тем, как полагаться на это
 
 ```sh
 kubectl audit policy validate ./my-policies
 kubectl audit policy list
 ```
 
-`policy validate` CEL-compiles every policy in the given directories and reports every error
-found (not just the first one), with the offending file/policy name.
+`policy validate` компилирует CEL для каждой политики в указанных директориях и сообщает обо всех
+найденных ошибках (а не только о первой), с именем проблемного файла/политики.
 
-## Handling different workload shapes
+## Работа с разными формами workload-ов
 
-Container specs live at different paths depending on the object: `spec.containers` for a bare
-`Pod`, `spec.template.spec.containers` for a Deployment/StatefulSet/DaemonSet/ReplicaSet, and
-`spec.jobTemplate.spec.template.spec.containers` for a CronJob. A policy that should apply to all
-of them needs to branch on shape, since CEL's `has()` macro only tests the presence of the *last*
-selector in a chain — every intermediate level needs its own `has()` guard, or the expression
-errors instead of just returning false:
+Спецификации контейнеров находятся по разным путям в зависимости от объекта: `spec.containers` для
+голого `Pod`, `spec.template.spec.containers` для Deployment/StatefulSet/DaemonSet/ReplicaSet и
+`spec.jobTemplate.spec.template.spec.containers` для CronJob. Политика, которая должна применяться ко
+всем ним, должна ветвиться по форме объекта, поскольку макрос `has()` в CEL проверяет наличие только
+*последнего* селектора в цепочке — каждый промежуточный уровень нуждается в собственной защите
+`has()`, иначе выражение завершится ошибкой вместо того, чтобы просто вернуть false:
 
 ```
 (has(object.spec.containers) ? object.spec.containers
@@ -74,31 +68,31 @@ errors instead of just returning false:
   : []).all(c, /* your condition on c */)
 ```
 
-The bundled policies in
-[`policies/workload`](https://github.com/{{ site.repository }}/tree/main/policies/workload) and
-[`policies/network`](https://github.com/{{ site.repository }}/tree/main/policies/network) all use
-this pattern — copy from whichever is closest to what you need.
+Поставляемые политики в
+[`policies/workload`](../policies/workload) и
+[`policies/network`](../policies/network) все
+используют этот паттерн — скопируйте тот, что ближе всего к вашей задаче.
 
-## Engine limitations to be aware of
+## Ограничения движка, о которых стоит знать
 
-- **`spec.variables` is not supported.** Policies that declare it fail to compile with a clear
-  message; inline the expression instead of factoring it into a named variable.
-- **The `authorizer` CEL variable is not declared.** This engine audits standing cluster/manifest
-  state, not live admission requests, so there's no SubjectAccessReview to back it. Policies using
-  `authorizer.*` fail to compile — use the [RBAC analyzer]({{ '/rbac/' | relative_url }}) instead
-  for RBAC-aware checks.
-- **`operations` in `matchConstraints.resourceRules` isn't filtered on.** Every loaded resource is
-  evaluated regardless of the rule's declared operations (CREATE/UPDATE/DELETE), since the tool
-  audits existing objects rather than simulating one specific admission request.
-- **`ValidatingAdmissionPolicyBinding` objects aren't consumed.** Every loaded policy's
-  `matchConstraints` is applied directly to every resource — there's no cluster-wiring
-  indirection to model.
+- **`spec.variables` не поддерживается.** Политики, объявляющие его, не компилируются с понятным
+  сообщением об ошибке; вместо вынесения выражения в именованную переменную встройте его inline.
+- **CEL-переменная `authorizer` не объявлена.** Этот движок проверяет устойчивое состояние
+  кластера/манифеста, а не живые запросы на допуск, поэтому у него нет SubjectAccessReview, на
+  который можно опереться. Политики, использующие `authorizer.*`, не компилируются — для проверок,
+  зависящих от RBAC, используйте вместо этого [анализатор RBAC](./rbac.md).
+- **`operations` в `matchConstraints.resourceRules` не фильтруется.** Каждый загруженный ресурс
+  оценивается независимо от объявленных в правиле операций (CREATE/UPDATE/DELETE), поскольку
+  инструмент проверяет существующие объекты, а не симулирует один конкретный запрос на допуск.
+- **Объекты `ValidatingAdmissionPolicyBinding` не используются.** `matchConstraints` каждой
+  загруженной политики применяется напрямую к каждому ресурсу — здесь нет уровня косвенности,
+  связанного с проводкой в кластере, который нужно было бы моделировать.
 
-## RBAC and NetworkPolicy checks aren't VAP policies
+## Проверки RBAC и NetworkPolicy — это не политики VAP
 
-Some checks genuinely can't be expressed as a single-object CEL policy — answering "does this
-subject have overly broad effective permissions" or "does this workload have any applicable
-NetworkPolicy" requires correlating multiple objects (Role + Binding + Subject, or Workload +
-every NetworkPolicy in its namespace). Those live as native Go analyzers instead: see
-[RBAC Analysis]({{ '/rbac/' | relative_url }}) and
-[NetworkPolicy Coverage]({{ '/network-policy/' | relative_url }}).
+Некоторые проверки действительно невозможно выразить одной политикой CEL для одного объекта —
+ответ на вопрос «есть ли у этого субъекта чрезмерно широкие эффективные права» или «есть ли у этого
+workload-а какой-либо применимый NetworkPolicy» требует сопоставления нескольких объектов (Role +
+Binding + субъект, или Workload + каждый NetworkPolicy в его неймспейсе). Вместо этого они
+существуют как нативные Go-анализаторы: см. [Анализ RBAC](./rbac.md) и
+[Покрытие NetworkPolicy](./network-policy.md).
