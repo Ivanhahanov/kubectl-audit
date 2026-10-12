@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ivanhahanov/kubectl-audit/internal/config"
 	"github.com/ivanhahanov/kubectl-audit/internal/thirdparty"
@@ -34,7 +35,7 @@ func TestDefault_NamespaceGroupThresholdIsOnByDefault(t *testing.T) {
 	}
 }
 
-// TestDefault_TriageStateFileHasADefault guards that `kubectl audit triage`
+// TestDefault_TriageStateFileHasADefault guards that `kubectl triage`
 // works out of the box without requiring a --state flag or audit.yaml
 // entry first.
 func TestDefault_TriageStateFileHasADefault(t *testing.T) {
@@ -126,9 +127,9 @@ func TestLoad_ExpandsHomeTildeInTriagePaths(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	path := writeConfig(t, `
+knowledgeBaseFile: ~/.kubectl-audit/knowledge-base.yaml
 triage:
   stateFile: ~/.kubectl-audit/triage-state.yaml
-  knowledgeBaseFile: ~/.kubectl-audit/knowledge-base.yaml
   jira:
     summaryTemplate: ~/.kubectl-audit/summary.tpl
     descriptionTemplate: ~/.kubectl-audit/description.tpl
@@ -141,8 +142,8 @@ triage:
 	if cfg.Triage.StateFile != want(".kubectl-audit/triage-state.yaml") {
 		t.Errorf("StateFile: got %q", cfg.Triage.StateFile)
 	}
-	if cfg.Triage.KnowledgeBaseFile != want(".kubectl-audit/knowledge-base.yaml") {
-		t.Errorf("KnowledgeBaseFile: got %q", cfg.Triage.KnowledgeBaseFile)
+	if cfg.KnowledgeBaseFile != want(".kubectl-audit/knowledge-base.yaml") {
+		t.Errorf("KnowledgeBaseFile: got %q", cfg.KnowledgeBaseFile)
 	}
 	if cfg.Triage.Jira.SummaryTemplate != want(".kubectl-audit/summary.tpl") {
 		t.Errorf("Jira.SummaryTemplate: got %q", cfg.Triage.Jira.SummaryTemplate)
@@ -157,15 +158,14 @@ triage:
 // completely unaffected by the "~/" expansion.
 func TestLoad_LeavesNonTildePathsUnchanged(t *testing.T) {
 	path := writeConfig(t, `
-triage:
-  knowledgeBaseFile: knowledge-base.yaml
+knowledgeBaseFile: knowledge-base.yaml
 `)
 	cfg, err := config.Load(path)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.Triage.KnowledgeBaseFile != "knowledge-base.yaml" {
-		t.Errorf("expected a plain relative path to be left untouched, got %q", cfg.Triage.KnowledgeBaseFile)
+	if cfg.KnowledgeBaseFile != "knowledge-base.yaml" {
+		t.Errorf("expected a plain relative path to be left untouched, got %q", cfg.KnowledgeBaseFile)
 	}
 }
 
@@ -279,5 +279,48 @@ components:
 	}
 	if got := cfg.Components.Extra[0].Category; got != thirdparty.CategorySystem {
 		t.Errorf("expected explicit Category to be preserved, got %q", got)
+	}
+}
+
+func TestRequestTimeoutDuration_EmptyUsesDefault(t *testing.T) {
+	cfg := config.Default()
+	got, err := cfg.RequestTimeoutDuration()
+	if err != nil {
+		t.Fatalf("RequestTimeoutDuration: %v", err)
+	}
+	if got != config.RequestTimeoutDefault {
+		t.Errorf("expected the default %v, got %v", config.RequestTimeoutDefault, got)
+	}
+}
+
+func TestRequestTimeoutDuration_ZeroDisablesIt(t *testing.T) {
+	cfg := config.Default()
+	cfg.Target.RequestTimeout = "0"
+	got, err := cfg.RequestTimeoutDuration()
+	if err != nil {
+		t.Fatalf("RequestTimeoutDuration: %v", err)
+	}
+	if got != 0 {
+		t.Errorf("expected \"0\" to parse to a zero duration (disabled), got %v", got)
+	}
+}
+
+func TestRequestTimeoutDuration_ParsesExplicitValue(t *testing.T) {
+	cfg := config.Default()
+	cfg.Target.RequestTimeout = "45s"
+	got, err := cfg.RequestTimeoutDuration()
+	if err != nil {
+		t.Fatalf("RequestTimeoutDuration: %v", err)
+	}
+	if got != 45*time.Second {
+		t.Errorf("expected 45s, got %v", got)
+	}
+}
+
+func TestRequestTimeoutDuration_InvalidValueErrors(t *testing.T) {
+	cfg := config.Default()
+	cfg.Target.RequestTimeout = "not-a-duration"
+	if _, err := cfg.RequestTimeoutDuration(); err == nil {
+		t.Error("expected an error for an invalid duration string, got nil")
 	}
 }

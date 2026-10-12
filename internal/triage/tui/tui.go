@@ -1,4 +1,4 @@
-// Package tui is the interactive `kubectl audit triage` screen: a k9s-style
+// Package tui is the interactive `kubectl triage` screen: a k9s-style
 // table of findings joined with their triage state (see internal/triage),
 // with hotkeys to mark a decision, add notes, bulk-apply a decision to
 // every finding that looks like the same repeated per-tenant/per-namespace
@@ -118,7 +118,7 @@ type Config struct {
 	// triage.Store's doc comment.
 	Store triage.Store
 	Jira  JiraConfig // may be zero-value; the 'j' action reports a clear error if so
-	// KnowledgeBase (triage.knowledgeBaseFile, already loaded) overrides a
+	// KnowledgeBase (knowledgeBaseFile, already loaded) overrides a
 	// finding's Title/Description/Remediation with an organization's own
 	// ticket wording — see triage.Resolve. Used both for Jira issue
 	// content and the detail view (enter), so it's independent of Jira

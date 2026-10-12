@@ -1,35 +1,31 @@
----
-layout: default
-title: "Custom Checks & Private Frameworks"
-permalink: /custom-checks/
----
+# Пользовательские проверки и частные фреймворки
 
-# Custom checks & private frameworks
+kubectl-audit поставляется с встроенными политиками и маппингами соответствия (CIS/FSTEC/NSA),
+основанными на публичных стандартах — у каждого правила есть источник, на который можно сослаться.
+Специфичные для организации соглашения (нижний порог UID, одобренный внутренний реестр, allowlist
+возможностей, который не исходит ни из какого опубликованного стандарта) не должны находиться в этих
+встроенных файлах, и внутренние реестры требований в общем случае тоже не должны. Эта страница — механизм
+для того, чтобы держать всё это полностью вне данного репозитория, но при этом оценивать через
+точно такой же конвейер, что и встроенные фреймворки.
 
-kubectl-audit ships bundled policies and compliance mappings (CIS/FSTEC/NSA) grounded in public
-standards — every rule has a citable source. Org-specific conventions (a UID floor, an approved
-internal registry, a capability allowlist that doesn't come from any published standard) don't
-belong in those bundled files, and internal requirement registries generally shouldn't be either.
-This page is the mechanism for keeping all of that entirely outside this repository while still
-scoring it through the exact same pipeline as the bundled frameworks.
+Объединяются две независимые части: ваши собственные [политики VAP](./writing-policies.md)
+(`--policy-dir`) и ваш собственный маппинг соответствия (`--frameworks /path/to/it.yaml`).
 
-Two independent pieces combine: your own [VAP policies]({{ '/writing-policies/' | relative_url }})
-(`--policy-dir`) and your own compliance mapping (`--frameworks /path/to/it.yaml`).
+## 1. Напишите собственные политики
 
-## 1. Write your own policies
+Здесь нет ничего нового — см. [Написание политик](./writing-policies.md). Разместите их в директории
+вне этого репозитория, например `~/security-standards/policies/`.
 
-Nothing new here — see [Writing Policies]({{ '/writing-policies/' | relative_url }}). Put them in
-a directory outside this repo, e.g. `~/security-standards/policies/`.
+## 2. Напишите собственный маппинг соответствия
 
-## 2. Write your own compliance mapping
-
-Same schema as [`compliance-mappings/*.yaml`](https://github.com/{{ site.repository }}/tree/main/compliance-mappings)
-(`id`, `title`, `version`, `controls: [...]`), pointing at your own policy IDs and using your own
-control IDs (mirror your internal requirement registry's IDs directly if you have one — that's
-exactly what `crossRefs` and `note` are for). Nothing needs to be embedded into the binary: any
-`--frameworks` value containing `/` or `\`, or ending in `.yaml`/`.yml`, is read from disk instead
-of looked up among the bundled `cis`/`fstec`/`nsa` frameworks — mix and match freely, e.g.
-`--frameworks cis,fstec,~/security-standards/internal.yaml`.
+Та же схема, что и у
+[`compliance-mappings/*.yaml`](../compliance-mappings)
+(`id`, `title`, `version`, `controls: [...]`), указывающая на ваши собственные policy ID и
+использующая ваши собственные ID контролей (напрямую отражайте ID вашего внутреннего реестра
+требований, если он у вас есть — именно для этого и существуют `crossRefs` и `note`). Ничего не нужно
+встраивать в бинарник: любое значение `--frameworks`, содержащее `/` или `\`, либо заканчивающееся на
+`.yaml`/`.yml`, читается с диска вместо поиска среди встроенных фреймворков `cis`/`fstec`/`nsa` —
+свободно комбинируйте их, например `--frameworks cis,fstec,~/security-standards/internal.yaml`.
 
 ```yaml
 id: internal
@@ -46,7 +42,7 @@ controls:
     note: "Internal convention, not backed by a public standard."
 ```
 
-Run it:
+Запустите это:
 
 ```sh
 kubectl-audit scan \
@@ -54,38 +50,71 @@ kubectl-audit scan \
   --frameworks cis,~/security-standards/internal.yaml
 ```
 
-Your control shows up in the report exactly like a CIS/FSTEC/NSA row — its own table, its own
-entry in the consolidated summary, `crossRefs` rendered as a **Related controls** column pointing
-back at CIS if you set one.
+Ваш контроль появится в отчёте точно так же, как строка CIS/FSTEC/NSA — со своей собственной
+таблицей, своей записью в консолидированной сводке, `crossRefs` отрендерится как столбец
+**Related controls**, указывающий обратно на CIS, если вы его задали.
 
-A full worked example (two custom policies + one custom mapping) lives in
-[`examples/custom-framework/`](https://github.com/{{ site.repository }}/tree/main/examples/custom-framework) —
-copy that directory out of the checkout as your starting point.
+Полноценный рабочий пример (две пользовательские политики + один пользовательский маппинг)
+находится в
+[`examples/custom-framework/`](../examples/custom-framework)
+— скопируйте эту директорию из checkout-а как отправную точку.
 
-## Catching typos
+## Отлов опечаток
 
-A `policyId` that doesn't match any loaded policy doesn't error — `BuildScorecard` just never
-finds a matching finding, and the control silently shows `PASS`. To catch this before it produces
-a false sense of coverage, kubectl-audit warns on stderr for every `policyId` referenced in a
-compliance mapping that isn't among the currently loaded policies (bundled + `--policy-dir`):
+`policyId`, не совпадающий ни с одной загруженной политикой, не вызывает ошибку — `BuildScorecard`
+просто никогда не находит подходящую находку, и контроль молча показывает `PASS`. Чтобы перехватить
+это до того, как это создаст ложное ощущение покрытия, kubectl-audit выводит в stderr предупреждение
+для каждого `policyId`, упомянутого в маппинге соответствия, который не входит в число текущих
+загруженных политик (встроенных + `--policy-dir`):
 
 ```
 warning: compliance mapping "internal", control "ORG-01": policyId "org.runasuser-above-flor"
 does not match any loaded policy (typo, or missing --policy-dir?) — this control will always show PASS
 ```
 
-There's no equivalent check for `nativeCheckIds` — those come from Go-native analyzers
-(`internal/rbac`, `internal/netpol`, `internal/controlplane`), which have no runtime registry to
-validate against. If you need a check that requires cross-object reasoning (not just one object's
-own fields — see [Writing Policies]({{ '/writing-policies/' | relative_url }})'s "RBAC and
-NetworkPolicy checks aren't VAP policies" section), it isn't something you can add without writing
-Go, and isn't what this mechanism is for.
+Эквивалентной проверки для `nativeCheckIds` нет — они приходят из нативных Go-анализаторов
+(`internal/rbac`, `internal/netpol`, `internal/controlplane`), у которых нет runtime-реестра, по
+которому можно было бы проверять. Если вам нужна проверка, требующая рассуждения между объектами (а
+не только собственных полей одного объекта — см. раздел «Проверки RBAC и NetworkPolicy — это не
+политики VAP» в [Написании политик](./writing-policies.md)), это то, что нельзя добавить без
+написания Go-кода, и не то, для чего предназначен этот механизм.
 
-## What this is (and isn't) for
+## Сборка с частным стандартом внутри бинарника
 
-Use this for anything that's a genuine org decision rather than a security-standard requirement:
-a specific numeric threshold, an internal registry allowlist, a capability allowlist your org has
-signed off on. If you find yourself grounding a custom check in a real external standard (a CIS
-control, NIST SP 800-190, a FSTEC order) instead of "we decided this internally," consider opening
-an issue or PR — that kind of check likely belongs in the bundled policies where every other
-kubectl-audit user benefits from it too.
+Способ выше (`--policy-dir` + `--frameworks /path/to.yaml`) требует распространять эти файлы рядом
+с бинарником при каждом запуске. Если вместо этого вы ведёте внутренний форк этого репозитория в
+корпоративном git и хотите, чтобы частный стандарт был всегда доступен в собранном бинарнике — без
+пути к файлу, выбирается по голому ID так же, как `cis`/`fstec`/`nsa` — используйте каталог
+`internal-standards/`:
+
+1. В вашем внутреннем форке уберите `/internal-standards` из `.gitignore` и закоммитьте туда
+   реальные `internal-standards/policies/*.yaml` и `internal-standards/compliance/*.yaml` (та же
+   схема, что и у `--policy-dir`/пользовательского маппинга выше).
+2. Соберите с флагом `INTERNAL_STANDARDS=1`:
+
+   ```sh
+   make build INTERNAL_STANDARDS=1
+   # или make install INTERNAL_STANDARDS=1
+   ```
+
+   Это добавляет `-tags internalstandards` к `go build`, включая `//go:embed` в
+   `internal-standards/embed.go`, которое вкомпилирует содержимое обеих директорий прямо в бинарник.
+3. После такой сборки `kubectl audit policy list` покажет ваши частные политики вместе со
+   встроенными, а `--frameworks <id-вашего-маппинга>` (ID — это поле `id` вашего YAML-маппинга,
+   как и у `cis`/`fstec`/`nsa`) будет работать без `--policy-dir`/пути к файлу.
+
+Обычная (без тега) сборка не видит каталог `internal-standards/` вообще — `go:embed` требует, чтобы
+паттерн совпадал хотя бы с одним файлом при компиляции, поэтому `internal-standards/policies/` и
+`internal-standards/compliance/` в публичном чекауте гитигноренные и пустые, а встраивание
+становится опциональным именно через build tag, а не через always-on `go:embed`. Публичному
+репозиторию этот флаг никогда не нужен.
+
+## Для чего это предназначено (и для чего нет)
+
+Используйте это для всего, что является настоящим решением организации, а не требованием
+стандарта безопасности: конкретный числовой порог, allowlist внутреннего реестра, allowlist
+возможностей, который одобрила ваша организация. Если вы ловите себя на том, что обосновываете
+пользовательскую проверку реальным внешним стандартом (контролем CIS, NIST SP 800-190, приказом
+ФСТЭК), а не формулировкой «мы так решили внутри компании», рассмотрите возможность открыть issue
+или PR — такая проверка, вероятно, должна находиться среди встроенных политик, где от неё выиграет
+и каждый другой пользователь kubectl-audit.

@@ -33,7 +33,7 @@ const (
 	// The kb-* annotations below let a policy author write their
 	// organization's own ticket-facing wording directly alongside the
 	// English check definition, in the same policy file, instead of also
-	// maintaining a separate triage.knowledgeBaseFile entry for every
+	// maintaining a separate knowledgeBaseFile entry for every
 	// custom policy — see docs/writing-policies.md and docs/triage.md's
 	// knowledge-base section. Deliberately not a translation mechanism:
 	// there's no kb-message, since Finding.Message (the tool's own,

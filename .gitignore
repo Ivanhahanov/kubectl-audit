@@ -16,6 +16,7 @@
 /audit.yaml
 /knowledge-base*.yaml
 /reports
+/reports*
 /internal-standards
 /security-requirements.csv
 /security-requirements.txt

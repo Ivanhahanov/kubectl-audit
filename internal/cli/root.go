@@ -19,12 +19,11 @@ var (
 	flagCheckUpdates               bool
 	flagReadSecretValues           bool
 	flagPolicyDirs                 []string
-	flagOutputJSON                 string
-	flagOutputMD                   string
-	flagOutputCSV                  string
-	flagOutputConfluence           string
+	flagOutputs                    []string
 	flagFailOn                     string
+	flagMinSeverity                string
 	flagFrameworks                 []string
+	flagFrameworksOnly             bool
 	flagReportTemplate             string
 	flagConfluenceTemplate         string
 	flagReportLang                 string
@@ -32,8 +31,10 @@ var (
 	flagReportView                 string
 	flagNamespaceGroupThreshold    int
 	flagGroupByNamePattern         bool
+	flagShowRemediation            bool
 	flagNoBuiltinExceptions        bool
 	flagDisableBuiltinExceptionIDs []string
+	flagRequestTimeout             string
 	flagVerbose                    bool
 )
 
@@ -66,10 +67,9 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newPolicyCmd())
 	root.AddCommand(newRBACCmd())
 	root.AddCommand(newTemplateCmd())
-	root.AddCommand(newTriageCmd())
 	root.AddCommand(newInspectCmd())
 	root.AddCommand(newPushCmd())
-	root.AddCommand(newVersionCmd())
+	root.AddCommand(newVersionCmd("kubectl-audit"))
 	return root
 }
 
@@ -89,19 +89,19 @@ func addTargetFlags(cmd *cobra.Command) {
 	f.BoolVar(&flagIncludeSystemRBAC, "include-system-rbac", false, "include Role/ClusterRole/*Binding objects with the reserved \"system:\" prefix (Kubernetes built-ins), excluded by default")
 	f.BoolVar(&flagNoBuiltinExceptions, "no-builtin-exceptions", false, "disable this tool's built-in exclusion rules for well-known, legitimately privileged infrastructure DaemonSets (Cilium's agent, prometheus-node-exporter, ...) — on by default; set this for a stricter scan showing literally everything, see docs")
 	f.StringArrayVar(&flagDisableBuiltinExceptionIDs, "disable-builtin-exception-id", nil, "disable one built-in exclusion rule by its id (repeatable; see internal/suppress/builtin-exclusions.yaml for ids), leaving the rest active — finer-grained than --no-builtin-exceptions")
+	f.StringVar(&flagRequestTimeout, "request-timeout", "", "per-request timeout for every call to the apiserver, as a Go duration (e.g. \"60s\", \"5m\") — bounds a hung (not just unreachable) apiserver from blocking the scan forever; \"0\" disables it entirely (default: from config, \"120s\")")
 }
 
 // addOutputFlags registers flags for where/how results get written. Shared
 // by every command that calls writeOutputs (scan, rbac analyze).
 func addOutputFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
-	f.StringVar(&flagOutputJSON, "output-json", "", "path to write findings JSON (default: from config, or \"findings.json\"/\"rbac-findings.json\" depending on the command)")
-	f.StringVar(&flagOutputMD, "output-md", "", "path to write the Markdown report (default: from config, or \"report.md\"/\"rbac-report.md\" depending on the command)")
-	f.StringVar(&flagOutputCSV, "output-csv", "", "path to write findings as CSV, one row per finding — for spreadsheet sort/filter/pivot (default: not written)")
-	f.StringVar(&flagOutputConfluence, "output-confluence", "", "path to write the report as Confluence Server/Data Center wiki markup, ready to paste into a page (default: not written)")
+	f.StringArrayVar(&flagOutputs, "output", nil, "where to write a report format, as format=path (repeatable): json=findings.json, md=report.md, csv=findings.csv, confluence=report.conf, console=- (per-finding detail grouped by check with remediation — see --remediation — followed by aggregate-statistics tables: severity breakdown, per-check counts, compliance scorecard) — \"-\" means stdout, e.g. for a CI job log; csv/confluence/console default to not written; json/md default to \"findings.json\"/\"report.md\" (or \"rbac-findings.json\"/\"rbac-report.md\" for rbac analyze) unless overridden here or in config")
+	f.BoolVar(&flagShowRemediation, "remediation", true, "include each check's remediation guidance in --output console=... (resolved through the same knowledge base report.md's Remediation column uses — Russian by default). On by default; set false to omit")
 	f.StringVar(&flagFailOn, "fail-on", "", "minimum severity that causes a non-zero exit: none|low|medium|high|critical (default: from config, \"high\")")
+	f.StringVar(&flagMinSeverity, "min-severity", "", "minimum severity rendered into findings.json/report.md/CSV/Confluence/console — a display filter only, doesn't affect --fail-on or compliance scorecards (which always see every finding): none|low|medium|high|critical (default: from config, \"none\" — render everything)")
 	f.StringVar(&flagReportTemplate, "report-template", "", "path to a custom report.md.tpl (Go text/template); default uses the built-in template (see 'kubectl-audit template dump')")
-	f.StringVar(&flagConfluenceTemplate, "confluence-template", "", "path to a custom confluence.tpl (Go text/template) for --output-confluence; default uses the built-in Confluence wiki-markup template")
+	f.StringVar(&flagConfluenceTemplate, "confluence-template", "", "path to a custom confluence.tpl (Go text/template) for --output confluence=...; default uses the built-in Confluence wiki-markup template")
 	f.StringVar(&flagReportLang, "report-lang", "", "language for the built-in Markdown report template: en|ru (default: from config, \"en\"). Ignored when --report-template is set.")
 	f.StringVar(&flagOwner, "owner", "", "who's responsible for this report — shown in the report header; if it's a Jira username, triage also assigns every created issue to it (default: not shown, no auto-assignment)")
 	f.StringVar(&flagReportView, "report-view", "", "how the Markdown report's Findings section is structured: check|namespace|both (default: from config, \"check\"). \"both\" lists every finding twice (once per view) — use \"check\" or \"namespace\" alone on large reports to avoid that duplication.")
@@ -121,6 +121,7 @@ func addPolicyDirFlag(cmd *cobra.Command) {
 // silently do nothing.
 func addFrameworksFlag(cmd *cobra.Command) {
 	cmd.Flags().StringArrayVar(&flagFrameworks, "frameworks", nil, "compliance framework(s) to score against: cis|fstec|nsa|capsule, or a path to a custom mapping YAML (repeatable or comma-separated; default: from config, \"cis\")")
+	cmd.Flags().BoolVar(&flagFrameworksOnly, "frameworks-only", false, "drop every finding whose check isn't referenced (policyIds/nativeCheckIds) by at least one control in --frameworks, before scorecards/--fail-on/any output — scopes the audit strictly to the selected standard(s). Defaults to true whenever --frameworks is explicitly given (choosing a standard implies auditing against just that standard), false when it's left at its implicit \"cis\" default (full, unrestricted check set) — pass this explicitly (true or false) to override either direction")
 }
 
 // addCheckUpdatesFlag registers --check-updates on scan only: it's read by

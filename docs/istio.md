@@ -1,135 +1,175 @@
----
-layout: default
-title: "Istio (alpha)"
-permalink: /istio/
----
+# Проверки Istio (альфа)
 
-# Istio checks (alpha)
+**Альфа**: новее и менее проверено в бою, чем остальные проверки этого инструмента. Заголовок каждой
+находки `istio.*` начинается с `[ALPHA]`, и любое сканирование, загружающее объект PeerAuthentication,
+AuthorizationPolicy, DestinationRule или Gateway, получает отдельную оговорку в разделе **Scope**
+отчёта (не смешивается с «Not covered by this scan» — эти проверки действительно выполняются, просто с
+предупреждением о пониженной уверенности, которое стоит прочитать, прежде чем доверять результату).
+Относитесь к находкам `istio.*` как к отправной точке для ручной проверки, а не как к окончательному
+вердикту.
 
-**Alpha**: newer and less battle-tested than the rest of this tool's checks. Every `istio.*`
-finding's title starts with `[ALPHA]`, and any scan that loads a PeerAuthentication,
-AuthorizationPolicy, DestinationRule, or Gateway object gets a dedicated caveat in the report's
-**Scope** section (not mixed into "Not covered by this scan" — these checks *do* run, just with a
-lower-confidence warning worth reading before trusting the result). Treat `istio.*` findings as a
-starting point for manual review, not a final verdict.
+Девять из них — проверки `ValidatingAdmissionPolicy` для одного объекта
+([`policies/thirdparty/istio`](../policies/thirdparty/istio))
+— без вычисления эффективной политики между объектами (это делает `istioctl x authz check` на основе
+конфигурации Envoy живого сайдкара, что этот статический/основанный на API инструмент структурно не
+может воспроизвести). Отдельно от них есть ещё один, десятый, Istio-специфичный нативный Go-анализатор
+(`istio-analyzer.no-authorization-policy-coverage`) — он как раз выполняет то самое межобъектное
+сопоставление, которое VAP-политикам недоступно; см. [ниже](#istio-analyzerno-authorization-policy-coverage-нативный-анализатор).
 
-All six are single-object `ValidatingAdmissionPolicy` checks
-([`policies/thirdparty/istio`](https://github.com/{{ site.repository }}/tree/main/policies/thirdparty/istio)) — no
-cross-object effective-policy computation (that's what `istioctl x authz check` does from a live
-sidecar's Envoy config, which this static/API-based tool structurally can't replicate).
-
-In cluster mode, objects are fetched by resolving `security.istio.io`'s and `networking.istio.io`'s
-actual served/preferred version via the cluster's own API discovery — not a version hardcoded into
-this tool — so it works whether the cluster serves `v1` or the older `v1beta1`, and a cluster
-without Istio installed at all is skipped silently rather than erroring. Each bundled policy's
-`matchConstraints.apiVersions` is `["*"]` for the same reason: it matches the object regardless of
-which version the cluster actually returned.
+В режиме кластера объекты получаются путём разрешения реально обслуживаемой/предпочитаемой версии
+`security.istio.io` и `networking.istio.io` через собственный механизм обнаружения API кластера — а не
+через версию, захардкоженную в этом инструменте, — поэтому это работает независимо от того, отдаёт ли
+кластер `v1` или более старую `v1beta1`, а кластер вообще без установленного Istio молча пропускается,
+а не выдаёт ошибку. `matchConstraints.apiVersions` у каждой поставляемой политики равен `["*"]` по той
+же причине: она сопоставляется с объектом независимо от того, какую версию реально вернул кластер.
 
 ## `istio.peer-authentication-permissive-mtls`
 
-Flags a `PeerAuthentication` whose `spec.mtls.mode` is `DISABLE` or `PERMISSIVE` (severity High).
-PeerAuthentication precedence is specificity-based — a workload-level object overrides
-namespace-level, which overrides the mesh-level `default` object in the root namespace — and this
-check evaluates each object independently, not the cluster-wide effective mode. A `PERMISSIVE`
-namespace default might be safely overridden by a `STRICT` workload-level object elsewhere, or vice
-versa; verify precedence manually before acting on this finding alone.
+Помечает `PeerAuthentication`, у которого `spec.mtls.mode` равен `DISABLE` или `PERMISSIVE`
+(серьёзность High). Приоритет PeerAuthentication основан на специфичности — объект уровня workload-а
+переопределяет объект уровня неймспейса, который переопределяет объект уровня mesh `default` в
+корневом неймспейсе — и эта проверка оценивает каждый объект независимо, а не эффективный режим для
+всего кластера. Значение по умолчанию `PERMISSIVE` на уровне неймспейса может быть безопасно
+переопределено объектом уровня workload-а со значением `STRICT` в другом месте, или наоборот; перед
+тем как действовать только на основании этой находки, проверьте приоритет вручную.
 
 ## `istio.authorization-policy-no-source-restriction`
 
-Flags an `AuthorizationPolicy` (`action: ALLOW`, explicit or default) with a rule whose `from` is
-absent or empty — per the API, that matches requests from **any** source, restricted only by `to`/
-`when` if present (severity High). `DENY`/`AUDIT`/`CUSTOM`-action policies are never flagged: an
-unrestricted `from` on those isn't the same kind of gap.
+Помечает `AuthorizationPolicy` (`action: ALLOW`, явно указанный или по умолчанию) с правилом, у
+которого `from` отсутствует или пусто — согласно API, это соответствует запросам из **любого**
+источника, ограниченного только `to`/`when`, если они указаны (серьёзность High). Политики с
+действием `DENY`/`AUDIT`/`CUSTOM` никогда не помечаются: неограниченный `from` у них не является тем
+же видом пробела.
 
 ## `istio.authorization-policy-wildcard-path`
 
-Flags an `AuthorizationPolicy` ALLOW rule whose `to[].operation.paths` includes `"*"` or `"/*"` —
-granting every HTTP path on the selected workload(s) instead of specific endpoints (severity
-Medium). Independent of the source-restriction check above: a rule can have `from` correctly scoped
-to one caller and still hand that caller access to every path.
+Помечает правило ALLOW в `AuthorizationPolicy`, у которого `to[].operation.paths` включает `"*"` или
+`"/*"` — предоставляя доступ ко всем HTTP-путям на выбранных workload-ах вместо конкретных эндпоинтов
+(серьёзность Medium). Не зависит от проверки ограничения источника выше: у правила может быть корректно
+ограниченный `from` для одного вызывающего и при этом он получает доступ ко всем путям.
 
 ## `istio.destination-rule-tls-disabled`
 
-Flags a `DestinationRule` whose `spec.trafficPolicy.tls.mode` is `DISABLE` (severity High). Istio's
-own API reference (`networking/v1alpha3/destination_rule.proto`, `TLSmode` enum): "DISABLE - Do not
-setup a TLS connection to the upstream endpoint." Only the top-level default is checked —
-`trafficPolicy.portLevelSettings[].tls.mode` and `subsets[].trafficPolicy(.portLevelSettings[])?.tls.mode`
-can override it per-port/per-subset, same "evaluated independently" caveat as every other check
-here.
+Помечает `DestinationRule`, у которого `spec.trafficPolicy.tls.mode` равен `DISABLE` (серьёзность
+High). Собственная справка API Istio (`networking/v1alpha3/destination_rule.proto`, перечисление
+`TLSmode`): «DISABLE - Do not setup a TLS connection to the upstream endpoint» («не устанавливать
+TLS-соединение с восходящим эндпоинтом»). Проверяется только значение по умолчанию верхнего уровня —
+`trafficPolicy.portLevelSettings[].tls.mode` и
+`subsets[].trafficPolicy(.portLevelSettings[])?.tls.mode` могут переопределять его для каждого
+порта/подмножества, та же оговорка «оценивается независимо», что и у всех остальных проверок здесь.
 
 ## `istio.gateway-weak-tls-version`
 
-Flags a `Gateway` with a server whose `tls.minProtocolVersion` is `TLSV1_0` or `TLSV1_1` (severity
-Medium). Both are real, still-accepted values in Istio's own API (`networking/v1alpha3/gateway.proto`,
-`TLSProtocol` enum), but formally deprecated by IETF RFC 8996 ("Deprecating TLS 1.0 and TLS 1.1") —
-this is the one `istio.*` check backed by an external protocol standard rather than Istio's own
-docs independently flagging the value as insecure, the same sourcing pattern this tool uses
-elsewhere when no vendor-specific guidance exists (e.g. NIST SP 800-190 for the
-ConfigMap-credentials check).
+Помечает `Gateway` с сервером, у которого `tls.minProtocolVersion` равен `TLSV1_0` или `TLSV1_1`
+(серьёзность Medium). Оба значения реальны и всё ещё принимаются собственным API Istio
+(`networking/v1alpha3/gateway.proto`, перечисление `TLSProtocol`), но формально признаны устаревшими
+IETF RFC 8996 («Deprecating TLS 1.0 and TLS 1.1») — это единственная проверка `istio.*`, опирающаяся на
+внешний протокольный стандарт, а не на собственную документацию Istio, независимо помечающую значение
+как небезопасное, тот же паттерн обоснования, который этот инструмент использует в других местах при
+отсутствии рекомендаций конкретного вендора (например, NIST SP 800-190 для проверки учётных данных в
+ConfigMap).
 
 ## `istio.mesh-config-outbound-traffic-policy-allow-any`
 
-Flags the `istio` ConfigMap's `mesh` config (a YAML text blob, not a separate typed field — Istio's
-own well-known, name-stable runtime object, not a CRD) when `outboundTrafficPolicy.mode` isn't
-explicitly `REGISTRY_ONLY` (severity Medium). Istio's own
-[API reference](https://istio.io/latest/docs/reference/config/istio.mesh.v1alpha1/): "The default is
-`ALLOW_ANY`, which permits traffic to unknown destinations" — "any traffic to unknown destinations
-will be allowed" — vs. `REGISTRY_ONLY`, where "unknown outbound traffic will be dropped. Traffic
-destinations must be explicitly declared into the service registry through ServiceEntry
-configurations." Both the field being absent (the default) and explicit `ALLOW_ANY`/
-`ALLOW_ANY_DYNAMIC_DNS` are flagged — only an explicit `REGISTRY_ONLY` passes. Checks the
-component's own runtime config object, the same pattern as the ArgoCD `argocd-cmd-params-cm`/
-`argocd-rbac-cm` checks, rather than a CRD.
+Помечает конфигурацию `mesh` в ConfigMap `istio` (текстовый блок YAML, а не отдельное типизированное
+поле — собственный, хорошо известный, стабильный по имени runtime-объект Istio, а не CRD), когда
+`outboundTrafficPolicy.mode` явно не равен `REGISTRY_ONLY` (серьёзность Medium). Собственная
+[справка API](https://istio.io/latest/docs/reference/config/istio.mesh.v1alpha1/) Istio: «The default
+is `ALLOW_ANY`, which permits traffic to unknown destinations» («по умолчанию используется `ALLOW_ANY`,
+что разрешает трафик к неизвестным адресатам») — «any traffic to unknown destinations will be allowed»
+— в противовес `REGISTRY_ONLY`, где «unknown outbound traffic will be dropped. Traffic destinations
+must be explicitly declared into the service registry through ServiceEntry configurations»
+(«неизвестный исходящий трафик будет отброшен; адресаты трафика должны быть явно объявлены в реестре
+сервисов через конфигурации ServiceEntry»). Помечается как отсутствие поля (значение по умолчанию), так
+и явные `ALLOW_ANY`/`ALLOW_ANY_DYNAMIC_DNS` — проходит проверку только явный `REGISTRY_ONLY`.
+Проверяет собственный runtime-объект конфигурации компонента, тот же паттерн, что и у проверок ArgoCD
+`argocd-cmd-params-cm`/`argocd-rbac-cm`, а не у CRD.
 
 ## `istio.destination-rule-tls-insecure-skip-verify`
 
-Flags a `DestinationRule` whose `spec.trafficPolicy.tls.insecureSkipVerify` is `true` (severity
-High). Istio's own API reference (`networking/v1alpha3/destination_rule.proto`,
-`ClientTLSSettings.insecure_skip_verify`): "specifies whether the proxy should skip verifying the CA
+Помечает `DestinationRule`, у которого `spec.trafficPolicy.tls.insecureSkipVerify` равен `true`
+(серьёзность High). Собственная справка API Istio (`networking/v1alpha3/destination_rule.proto`,
+`ClientTLSSettings.insecure_skip_verify`): «specifies whether the proxy should skip verifying the CA
 signature and SAN for the server certificate corresponding to the host. The default value of this
-field is false." A distinct, more subtle downgrade than `istio.destination-rule-tls-disabled`: TLS is
-still negotiated, but the peer's identity is never checked, so the connection is trivially
-MITM-able. Same top-level-only scope caveat as `istio.destination-rule-tls-disabled`.
+field is false» («указывает, должен ли прокси пропускать проверку подписи CA и SAN сертификата
+сервера, соответствующего хосту; значение по умолчанию для этого поля — false»). Отдельное, более
+тонкое понижение защиты по сравнению с `istio.destination-rule-tls-disabled`: TLS всё ещё
+согласовывается, но личность пира никогда не проверяется, поэтому соединение тривиально уязвимо для
+MITM. Та же оговорка про область действия только верхнего уровня, что и у
+`istio.destination-rule-tls-disabled`.
 
 ## `istio.sidecar-outbound-traffic-policy-allow-any`
 
-Flags a `Sidecar` resource whose `spec.outboundTrafficPolicy.mode` is explicitly `ALLOW_ANY`
-(severity Medium). Same API shape and rationale as `istio.mesh-config-outbound-traffic-policy-allow-any`,
-but per-workload rather than mesh-wide: an unset value inherits the mesh default (already covered by
-that check), so this only fires when a `Sidecar` resource *explicitly* overrides to `ALLOW_ANY` —
-notably including the case where it overrides a `REGISTRY_ONLY` mesh-wide default back open for one
-workload.
+Помечает ресурс `Sidecar`, у которого `spec.outboundTrafficPolicy.mode` явно равен `ALLOW_ANY`
+(серьёзность Medium). Та же форма API и обоснование, что и у
+`istio.mesh-config-outbound-traffic-policy-allow-any`, но на уровне workload-а, а не всего mesh:
+неустановленное значение наследует настройку mesh по умолчанию (уже покрыто той проверкой), поэтому
+эта срабатывает только когда ресурс `Sidecar` *явно* переопределяет значение на `ALLOW_ANY` — включая,
+в частности, случай, когда он переопределяет значение по умолчанию `REGISTRY_ONLY` для всего mesh,
+снова открывая доступ для одного workload-а.
 
-## Sidecarless (ambient mode)
+## `istio.request-authentication-fromheaders-no-bearer-prefix`
 
-Istio's ambient mode moves L4 mTLS enforcement to a node-level `ztunnel` and makes L7 enforcement
-(`to.operation.methods`/`paths`/`hosts`) opt-in via a **waypoint proxy** deployed per
-workload/namespace. An `AuthorizationPolicy` with L7 rules but no waypoint deployed for its target
-isn't enforced at all — the object exists, looks correct, and does nothing. This tool has no way to
-check waypoint deployment from the objects alone, so it can't distinguish "L7 rule is enforced" from
-"L7 rule is silently ignored" in ambient mode. If you're on ambient mode, verify waypoint deployment
-for any namespace/workload an `istio.authorization-policy-wildcard-path` or
-`istio.authorization-policy-no-source-restriction` finding names.
+Помечает `RequestAuthentication`, у которой задан пользовательский `jwtRules[].fromHeaders`, но хотя
+бы одна запись не устанавливает `prefix` (или устанавливает его пустым) (серьёзность Medium).
+Применяется только когда `fromHeaders` вообще задан — поведение Istio по умолчанию (без
+`fromHeaders`) уже ищет `Authorization: Bearer <token>` и не требует явного префикса. Без `prefix`
+Istio трактует всё значение заголовка как сырой JWT — заголовок перестаёт следовать стандартному
+соглашению `Authorization: Bearer <token>`, из-за чего токен легко спутать с (или переиспользовать
+из) другими схемами авторизации/заголовками, не рассчитанными на значения в форме JWT. Перед тем как
+считать это реальным пробелом, подтвердите, что пользовательский заголовок действительно должен
+нести сырой токен (некоторые исключительно внутренние gateway делают это намеренно) — если да, это
+осознанное архитектурное решение, а не недосмотр.
 
-## Investigated and declined
+## `istio-analyzer.no-authorization-policy-coverage` (нативный анализатор)
 
-- `VirtualService.spec.hosts` containing a bare `"*"` — the VirtualService API reference documents
-  wildcard-*prefix* hosts (`"*.example.com"`) as a supported pattern, but doesn't independently call
-  out a bare `"*"` as risky the way this tool's other checks are sourced. Doesn't meet the "traced to
-  a specific, quoted line of the project's own guidance" bar as-is.
-- "Every Namespace must have at least one `AuthorizationPolicy`" — requires a live cross-object
-  query (all AuthorizationPolicies vs. all Namespaces), which this tool's single-object CEL engine
-  structurally can't do.
-- A separate check for `PeerAuthentication.spec.mtls.mode: DISABLE` — not needed:
-  `istio.peer-authentication-permissive-mtls` already flags both `DISABLE` and `PERMISSIVE`.
-- `EnvoyFilter` existence/usage — Istio's own docs do caution it "must be used with care" and can
-  "destabilize the entire mesh," but that's a stability warning about the mechanism itself, not a
-  specific bad *value* to check for (EnvoyFilter's entire purpose is arbitrary low-level Envoy
-  config). Flagging mere existence would be noise for any serious Istio deployment. No existing
-  mitigation; known gap.
-- `RequestAuthentication` configured without a corresponding enforcing `AuthorizationPolicy` (a real,
-  commonly-documented Istio gotcha: JWT validation configured but never actually required) — requires
-  correlating two separate CRDs, the same cross-object limitation as the AuthorizationPolicy-per-namespace
-  item above.
-- `ServiceEntry.spec.resolution: NONE` — a legitimate, common pattern for TLS origination/opaque TCP
-  passthrough, not a documented insecure value. Declined on sourcing grounds, not safety grounds.
+В отличие от девяти VAP-проверок выше, эта реализована как нативный Go-анализатор
+([`internal/istio/authzcoverage.go`](../internal/istio/authzcoverage.go)), а не как политика VAP CEL
+для одного объекта — отвечает на вопрос «есть ли вообще хоть какое-то покрытие ALLOW
+`AuthorizationPolicy` для этого workload'а», требующий сопоставления меток workload'а со всеми
+`AuthorizationPolicy` в его неймспейсе — то же межобъектное рассуждение, которое `internal/netpol`
+делает для покрытия NetworkPolicy. Помечает (серьёзность High) каждый workload в неймспейсе с
+включённым sidecar injection (`istio-injection=enabled` либо `istio.io/rev`), для которого не
+находится ни одной `AuthorizationPolicy` с `action: ALLOW` (либо не заданным `action`, что по
+умолчанию тоже означает ALLOW) — поведение Istio по умолчанию при отсутствии таких политик
+разрешает всё, и только появление ALLOW-политики переключает его на deny-by-default. Политика
+только с `DENY`/`AUDIT` **не** засчитывается как покрытие по той же причине. Намеренно узкая
+детекция: учитывается только `spec.selector.matchLabels` (или его отсутствие — namespace-wide);
+более новый способ выбора через `targetRefs`/`targetRef` (в стиле Gateway API) не симулируется, так
+что workload, реально покрытый только через `targetRefs`, даст ложное срабатывание здесь — см.
+собственные `VerificationSteps` находки.
+
+## Без сайдкаров (ambient-режим)
+
+Ambient-режим Istio переносит принудительное применение mTLS уровня L4 на `ztunnel` уровня узла и
+делает принудительное применение L7 (`to.operation.methods`/`paths`/`hosts`) опциональным через
+**waypoint-прокси**, разворачиваемый для каждого workload-а/неймспейса. `AuthorizationPolicy` с
+правилами L7, но без развёрнутого waypoint-а для своей цели, вообще не применяется принудительно —
+объект существует, выглядит корректно и ничего не делает. У этого инструмента нет способа проверить
+развёртывание waypoint-а только по объектам, поэтому он не может отличить «правило L7 применяется» от
+«правило L7 молча игнорируется» в ambient-режиме. Если вы используете ambient-режим, проверьте
+развёртывание waypoint-а для любого неймспейса/workload-а, упомянутого в находке
+`istio.authorization-policy-wildcard-path` или `istio.authorization-policy-no-source-restriction`.
+
+## Рассмотрено и отклонено
+
+- `VirtualService.spec.hosts`, содержащий голый `"*"` — справка API VirtualService документирует хосты
+  с wildcard-*префиксом* (`"*.example.com"`) как поддерживаемый паттерн, но не выделяет отдельно голый
+  `"*"` как рискованный так же, как источники для других проверок этого инструмента. В текущем виде не
+  соответствует планке «прослеживается до конкретной, процитированной строки собственной документации
+  проекта».
+- Отдельная проверка для `PeerAuthentication.spec.mtls.mode: DISABLE` — не нужна:
+  `istio.peer-authentication-permissive-mtls` уже помечает и `DISABLE`, и `PERMISSIVE`.
+- Существование/использование `EnvoyFilter` — собственная документация Istio действительно
+  предупреждает, что его «нужно использовать с осторожностью» и он может «дестабилизировать весь mesh»,
+  но это предупреждение о стабильности самого механизма, а не конкретное плохое *значение* для проверки
+  (всё назначение EnvoyFilter — произвольная низкоуровневая конфигурация Envoy). Пометка самого факта
+  существования была бы шумом для любого серьёзного развёртывания Istio. Существующей меры снижения
+  риска нет; известный пробел.
+- `RequestAuthentication`, настроенная без соответствующей принудительно применяющей
+  `AuthorizationPolicy` (реальная, часто документируемая ловушка Istio: проверка JWT настроена, но
+  фактически никогда не требуется) — требует сопоставления двух отдельных CRD, то же ограничение
+  межобъектного сопоставления, что и у пункта про AuthorizationPolicy-на-каждый-неймспейс выше.
+- `ServiceEntry.spec.resolution: NONE` — легитимный, распространённый паттерн для инициации TLS/
+  прозрачного TCP-прохождения, а не задокументированное небезопасное значение. Отклонено по причинам
+  источника, а не безопасности.

@@ -104,7 +104,7 @@ type Result struct {
 	GroupByNamePattern bool
 	// KnowledgeBase is an organization's own Title/Category/Remediation
 	// overrides per PolicyID (see findings.KnowledgeBaseEntry) — the same
-	// content triage.knowledgeBaseFile already provides for the triage TUI
+	// content knowledgeBaseFile already provides for the triage TUI
 	// and Jira ticket rendering, now also applied to the report so a
 	// customized check reads the same everywhere. Nil (the zero value)
 	// means no overrides — every check renders its own default content,

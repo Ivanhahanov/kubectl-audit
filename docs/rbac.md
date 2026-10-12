@@ -1,61 +1,60 @@
----
-layout: default
-title: "RBAC Analysis"
-permalink: /rbac/
----
+# Анализ RBAC на принцип наименьших привилегий
 
-# RBAC least-privilege analysis
+Политики VAP CEL оценивают по одному объекту за раз, поэтому часть проверок RBAC — тем, которым
+нужны Role + Binding + Subject вместе, или агрегация по нескольким биндингам — реализована как
+нативный Go-анализатор ([`internal/rbac`](../internal/rbac)),
+а не как файл политики. Проверки RBAC для одного объекта (wildcard-правила, биндинги
+cluster-admin/anonymous) *являются* поставляемыми VAP-политиками — см.
+[`policies/rbac`](../policies/rbac) — поэтому
+их тоже можно применять прямо в кластере через `kubectl apply -f`.
 
-VAP CEL policies evaluate one object at a time, so a handful of RBAC checks — the ones that need
-Role + Binding + Subject together, or aggregation across several bindings — live as a native Go
-analyzer ([`internal/rbac`](https://github.com/{{ site.repository }}/tree/main/internal/rbac))
-instead of a policy file. Single-object RBAC checks (wildcard rules, cluster-admin/anonymous
-bindings) *are* bundled VAP policies — see
-[`policies/rbac`](https://github.com/{{ site.repository }}/tree/main/policies/rbac) — so those can
-also be enforced in-cluster with `kubectl apply -f`.
+Запустите его отдельно командой `kubectl audit rbac analyze` либо как часть `kubectl audit scan`.
 
-Run it standalone with `kubectl audit rbac analyze`, or as part of `kubectl audit scan`.
+## Что он строит
 
-## What it builds
+1. **Граф** — каждый Role, ClusterRole, RoleBinding, ClusterRoleBinding и ServiceAccount в
+   просканированном наборе ресурсов.
+2. **Эффективные права доступа** — для каждого субъекта (User/Group/ServiceAccount) — каждое
+   правило, выданное ему через любой биндинг, с неймспейсом, в котором оно действует (`""` —
+   на весь кластер), и происхождением (каким биндингом и какой ролью оно выдано).
+3. **Модель ролей** — сжатая, дедуплицированная сводка по каждому субъекту, отображаемая в
+   `report.md` и `findings.json`.
 
-1. **Graph** — every Role, ClusterRole, RoleBinding, ClusterRoleBinding, and ServiceAccount in the
-   scanned resource set.
-2. **Effective permissions** — for every subject (User/Group/ServiceAccount), every rule granted
-   to it through any binding, with the namespace it applies in (`""` = cluster-wide) and
-   provenance (which binding + role granted it).
-3. **Role model** — a condensed, deduplicated summary per subject, rendered in `report.md` and
-   `findings.json`.
+## Проверки
 
-## Checks
-
-| Check ID | Severity | What it flags |
+| ID проверки | Серьёзность | Что обнаруживает |
 |---|---|---|
-| `rbac-analyzer.escalation-verb` | Critical | Subject can use `escalate`, `bind`, or `impersonate` — direct privilege-escalation primitives. |
-| `rbac-analyzer.pod-exec-access` | High | Subject can `create`/`get` on `pods/exec`, `pods/attach`, or `pods/portforward` — equivalent to shell access on matching pods. |
-| `rbac-analyzer.broad-secrets-access` | High/Medium | Subject can read Secrets cluster-wide (High) or across multiple namespaces (Medium). |
-| `rbac-analyzer.rbac-self-modification` | High | Subject can create/update/patch/delete Roles, ClusterRoles, or \*Bindings — can grant itself more access. |
-| `rbac-analyzer.default-serviceaccount-bound` | Medium | The `default` ServiceAccount in a namespace has roles bound to it; every pod without an explicit `serviceAccountName` inherits that access. |
-| `rbac-analyzer.automount-with-sensitive-access` | Medium | A ServiceAccount with sensitive permissions (Secrets, write access, or RBAC objects) doesn't set `automountServiceAccountToken: false`. |
+| `rbac-analyzer.escalation-verb` | Critical | Субъект может использовать глаголы `escalate`, `bind` или `impersonate` — прямые примитивы эскалации привилегий. |
+| `rbac-analyzer.pod-exec-access` | High | Субъект может выполнять `create`/`get` на `pods/exec`, `pods/attach` или `pods/portforward` — эквивалентно доступу к shell на соответствующих подах. |
+| `rbac-analyzer.broad-secrets-access` | High/Medium | Субъект может читать Secrets в рамках всего кластера (High) или в нескольких неймспейсах (Medium). |
+| `rbac-analyzer.rbac-self-modification` | High | Субъект может создавать/обновлять/патчить/удалять Roles, ClusterRoles или \*Bindings — то есть выдать себе больше прав. |
+| `rbac-analyzer.default-serviceaccount-bound` | Medium | На ServiceAccount `default` в неймспейсе привязаны роли; каждый под без явно заданного `serviceAccountName` наследует этот доступ. |
+| `rbac-analyzer.automount-with-sensitive-access` | Medium | ServiceAccount с чувствительными правами (Secrets, права на запись или объекты RBAC) не устанавливает `automountServiceAccountToken: false`. |
+| `rbac-analyzer.system-masters-usage` | Low | Встроенная группа `system:masters` привязана к роли. `system:masters` полностью обходит RBAC на уровне авторизации (это не право, которое можно сузить) — одна привязка на этапе bootstrap кластера ожидаема на self-hosted кластерах, но любая привязка сверх неё должна быть расследована. В отличие от остальных проверок этого анализатора, намеренно не подавляется для встроенных системных субъектов — весь смысл в том, чтобы увидеть каждую привязку `system:masters`. |
 
-## Handling real-world RBAC quirks
+## Обработка особенностей реального RBAC
 
-- **Aggregated ClusterRoles.** Roles like the built-in `admin`/`edit`/`view`, or any custom role
-  using `aggregationRule`, get their `.rules` computed by a controller at runtime — a live cluster
-  always returns them already materialized, but a *static manifest* is the raw source YAML, where
-  `.rules` is empty. The analyzer resolves `aggregationRule.clusterRoleSelectors` against the other
-  ClusterRoles loaded in the same scan (iterating to a fixed point, since aggregation can chain),
-  but only when `.rules` is empty — a live cluster's already-correct data is never overwritten.
-- **`cluster-admin` isn't user-defined.** It's a built-in ClusterRole every real cluster creates
-  automatically, so it's never present in a static manifest repo. If it's missing from the loaded
-  resource set, the analyzer injects the well-known definition
-  (`apiGroups: ["*"], resources: ["*"], verbs: ["*"]`) so a binding to `cluster-admin` in static
-  mode still resolves to its real (maximal) permissions instead of silently looking empty.
+- **Агрегированные ClusterRole.** У ролей вроде встроенных `admin`/`edit`/`view`, или любой
+  пользовательской роли с `aggregationRule`, поле `.rules` вычисляется контроллером во время
+  работы — живой кластер всегда возвращает его уже материализованным, но в *статическом
+  манифесте* это исходный YAML, где `.rules` пусто. Анализатор разрешает
+  `aggregationRule.clusterRoleSelectors` относительно остальных ClusterRole, загруженных в том же
+  сканировании (с итерацией до неподвижной точки, поскольку агрегация может образовывать цепочки),
+  но только когда `.rules` пусто — уже корректные данные живого кластера никогда не
+  перезаписываются.
+- **`cluster-admin` не задаётся пользователем.** Это встроенный ClusterRole, который автоматически
+  создаёт любой реальный кластер, поэтому в репозитории со статическими манифестами его никогда
+  нет. Если его нет в загруженном наборе ресурсов, анализатор подставляет общеизвестное
+  определение (`apiGroups: ["*"], resources: ["*"], verbs: ["*"]`), чтобы биндинг на
+  `cluster-admin` в статическом режиме по-прежнему разрешался в свои реальные (максимальные) права,
+  а не выглядел пустым.
 
-## What's intentionally out of scope
+## Что намеренно вне рамок
 
-Full authorization simulation (`SubjectAccessReview`-equivalent, e.g. "can user X actually GET
-pod Y") is not implemented — the analyzer works in terms of granted rules and coarse-grained
-risk patterns, not a full policy-decision engine. CEL policies can't do this either: the
-`authorizer` CEL variable used by real admission-time VAP policies is intentionally not declared
-in this engine's CEL environment, since there's no live request to back it with (see
-[Writing Policies]({{ '/writing-policies/' | relative_url }}#engine-limitations-to-be-aware-of)).
+Полная симуляция авторизации (эквивалент `SubjectAccessReview`, например «может ли пользователь X
+реально сделать GET на под Y») не реализована — анализатор работает в терминах выданных правил и
+грубых паттернов риска, а не как полноценный движок принятия решений о политике доступа. CEL-политики
+тоже не могут этого делать: переменная CEL `authorizer`, используемая реальными VAP-политиками во
+время admission, намеренно не объявлена в CEL-окружении этого движка, поскольку здесь нет живого
+запроса, на основе которого её можно было бы вычислить (см. [Написание
+политик](./writing-policies.md)).

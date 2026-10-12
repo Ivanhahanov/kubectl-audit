@@ -206,7 +206,7 @@ type TriageRepo interface {
 
 // KnowledgeBaseEntry is one organization's own ticket-facing content for a
 // check, centralizing what today lives in a local
-// triage.knowledgeBaseFile — see findings.KnowledgeBaseEntry, whose fields
+// knowledgeBaseFile — see findings.KnowledgeBaseEntry, whose fields
 // this mirrors exactly, so a server-rendered Jira ticket (once automation
 // exists — see the architecture plan's phase 6) matches whatever a local
 // TUI user configured the same way would see.

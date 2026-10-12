@@ -1,169 +1,171 @@
----
-layout: default
-title: "Triage"
-permalink: /triage/
----
+# Триаж: от находок к тому, что действительно нужно исправить
 
-# Triage: from findings to what actually needs fixing
+`scan` реального кластера — особенно крупного, мультитенантного — обычно выдаёт сотни или тысячи
+находок. `kubectl triage` — это отдельный, интерактивный шаг для эксперта-человека, чтобы вручную
+пройтись по этому списку: пометить каждую находку как confirmed / false positive / won't fix /
+duplicate / needs more info, добавить заметки и в итоге получить отфильтрованный список «что
+действительно нужно исправить» — его можно экспортировать или отправить в Jira в виде тикетов.
 
-A `scan` against a real cluster — especially a large, multi-tenant one — commonly produces
-hundreds or thousands of findings. `kubectl audit triage` is a separate, interactive step for a
-human expert to work through that list by hand: mark each finding confirmed / false positive /
-won't fix / duplicate / needs more info, attach notes, and end up with a filtered
-"what actually needs fixing" list — one that can be exported or pushed into Jira as tickets.
+**`findings.json`/CSV остаются никак не затронутыми тем, что делает триаж.** Состояние триажа — это
+отдельный файл (по умолчанию `triage-state.yaml`), который *объединяется* с находками последнего
+сканирования при открытии инструмента — он никогда не редактирует и не фильтрует сам `findings.json`.
+Гейтинг `--fail-on` и любые другие инструменты, читающие `findings.json` напрямую, всегда видят
+каждую находку в неизменном виде.
 
-**`findings.json`/CSV stay unaffected by anything triage does.** Triage state is a separate file
-(`triage-state.yaml` by default) that's *joined* with the latest scan's findings when you open the
-tool — it never edits or filters `findings.json` itself. `--fail-on` gating and any other tooling
-that reads `findings.json` directly always sees every finding, untouched.
+## Шаги проверки
 
-{% raw %}
-## Verification steps
+Каждая поставляемая проверка — каждый YAML-файл политики и каждый нативный Go-анализатор — несёт
+поле `audit.k8s-auditor.io/verification-steps` (см. [Написание политик](./writing-policies.md)):
+конкретные, пронумерованные инструкции для подтверждения того, что находка — это истинное
+срабатывание именно в вашем окружении, в отличие от `remediation` (которая предполагает, что
+находка уже подтверждена). Это и есть вся причина, по которой `triage` существует как отдельный от
+`scan` шаг: инструмент статического анализа может пометить «у этого Ingress нет `spec.tls`», но
+только человек, знающий, действительно ли этот Ingress доступен из интернета, может решить,
+насколько это на самом деле срочно. Записывается в `findings.json` (поле `verificationSteps`) для
+использования другими инструментами и отображается как в детальном просмотре TUI триажа, так и в
+поданных тикетах, рядом с Title/Description/Remediation (см. [База
+знаний](#база-знаний-собственное-содержимое-тикетов-вашей-организации) — организация может
+переопределить и это, например добавить внутренний канал эскалации или ссылку на wiki, о которых
+обобщённая проверка знать не может).
 
-Every bundled check — every policy YAML and every native Go analyzer — carries a
-`audit.k8s-auditor.io/verification-steps` field (see [Writing Policies](/writing-policies/)):
-concrete, numbered instructions for confirming a finding is a true positive in your specific
-environment, distinct from `remediation` (which assumes it's already confirmed). This is the whole
-reason `triage` exists as a separate step from `scan`: a static-analysis tool can flag "this
-Ingress has no `spec.tls`," but only a human who knows whether that Ingress is actually
-internet-reachable can decide how urgent that really is. Recorded in `findings.json`
-(`verificationSteps`) for other tooling to use, and shown in both the triage TUI's detail view and
-filed tickets, right alongside Title/Description/Remediation (see [Knowledge
-base](#knowledge-base-your-organizations-own-ticket-content) — an organization can override it too,
-e.g. to add an internal escalation channel or wiki link a generic check can't know about).
-
-## Getting started
+## Начало работы
 
 ```sh
-kubectl audit scan --output-json findings.json
-kubectl audit triage
+kubectl audit scan --output json=findings.json
+kubectl triage
 ```
 
-`triage` opens an interactive TUI over `findings.json`, using (and creating, if it doesn't exist
-yet) `triage-state.yaml` next to it. Both paths are configurable — see [Configuration](#configuration)
-below.
+`triage` открывает интерактивный TUI поверх `findings.json`, используя (и создавая, если его ещё
+нет) `triage-state.yaml` рядом с ним. Оба пути настраиваются — см. [Конфигурацию](#конфигурация)
+ниже.
 
-## The TUI
+## TUI
 
-A k9s-style table: one row per finding by default, columns for severity, status, policy ID, kind,
-namespace/name, a COUNT column, and a JIRA column (the filed ticket's key, or `-` if none yet). On a
-collapsed row (see [Noise reduction](#noise-reduction-collapsing-repeated-findings) below), Jira
-filing state is per-finding and has no reason to be uniform across the group — the JIRA column
-shows a `filed/total` count instead of one member's key, so e.g. `2/5` (in the same attention color
-as a marked row) means only some of the group has been ticketed yet; press `g` to drill in and see
-which. Press `enter` on a row for the full detail view (title, description, CIS refs, and remediation —
-exactly what filing a Jira ticket for this finding would contain, knowledge-base override included;
-see [Knowledge base](#knowledge-base-your-organizations-own-ticket-content)).
+Таблица в стиле k9s: по умолчанию одна строка на находку, столбцы для серьёзности, статуса, ID
+политики, kind, неймспейса/имени, столбец COUNT и столбец JIRA (ключ поданного тикета, или `-`,
+если тикета ещё нет). На свёрнутой строке (см. [Снижение
+шума](#снижение-шума-схлопывание-повторяющихся-находок) ниже) состояние подачи в Jira у каждой
+находки своё и не обязано быть одинаковым по всей группе, поэтому столбец JIRA вместо ключа одного
+из элементов показывает счётчик `подано/всего` — например, `2/5` (тем же цветом привлечения
+внимания, что и у отмеченной строки) означает, что тикет пока заведён только на часть группы;
+нажмите `g`, чтобы развернуть и увидеть, на какие именно. Нажмите `enter` на строке, чтобы открыть
+полный детальный просмотр (заголовок, описание, ссылки на CIS и рекомендация по устранению — именно
+то, что оказалось бы в тикете Jira при подаче этой находки, включая переопределения из базы знаний;
+см. [База знаний](#база-знаний-собственное-содержимое-тикетов-вашей-организации)).
 
-| Key | Action |
+| Клавиша | Действие |
 |---|---|
-| ↑/↓, pgup/pgdn (or arrows) | move |
-| `enter` | open finding detail — `y` copies it to the clipboard, `v` toggles a Jira ticket preview (project/issue type/summary/description/labels/custom fields, exactly what `j` would send — a real check for a custom summaryTemplate/descriptionTemplate); `c`/`x`/`w`/`d`/`i`/`n`/`j`/`J`/`space`/`0` (below) all work from there too, no need to close back to the table first |
-| `/` | live-filter (substring match over title/policy ID/resource/message) |
-| `r` | toggle collapsing repeated findings on/off (**off** by default — see below) |
-| `g` | on a collapsed row: expand it to review each individual finding; press again to re-collapse |
-| `s` | isolate the table to every finding in this row's namespace, across every check and kind — for reviewing one tenant/system end-to-end |
-| `p` | policy stats: every check with severity/count/new/confirmed, sorted by count by default (`1`-`6` to sort by another column, again to reverse); enter on one to filter the table to just that policy |
-| `space` | mark/unmark the current row (its whole collapsed group, if collapsed) |
-| `a` | mark every row currently visible |
-| `1`-`7` | sort by that column (press again to reverse direction) |
-| `c` / `x` / `w` / `d` / `i` | confirmed / false positive / won't fix / duplicate / needs more info — applied to every marked row, or the selection if nothing's marked (and every finding a collapsed row stands for) |
-| `0` | reset back to `new` — undo a previous `c`/`x`/`w`/`d`/`i` (same bulk-apply rule) |
-| `n` | edit note (same bulk-apply rule) |
-| `j` | create a Jira ticket for every marked/selected CONFIRMED finding without one yet |
-| `J` | unlink the Jira ticket (doesn't delete anything in Jira — `j` files a fresh one next time). This tool never re-checks whether a tracked ticket still exists in Jira; this is the recovery path if one was deleted or closed there, short of hand-editing the state file |
-| `u` | show/hide suppressed findings (hidden by default) |
-| `q` | save and quit |
-| `?` | help |
-| `esc` | clear filter/marks, then group-expand, then system-isolate, in that order |
+| ↑/↓, pgup/pgdn (или стрелки) | перемещение |
+| `enter` | открыть детальный просмотр находки — `y` копирует его в буфер обмена, `v` переключает предпросмотр тикета Jira (project/issue type/summary/description/labels/пользовательские поля — именно то, что отправит `j`; настоящая проверка для пользовательских summaryTemplate/descriptionTemplate перед реальной отправкой); `c`/`x`/`w`/`d`/`i`/`n`/`j`/`J`/`space`/`0` (ниже) работают и отсюда, не нужно сначала возвращаться к таблице |
+| `/` | живой фильтр (поиск подстроки по заголовку/ID политики/ресурсу/сообщению) |
+| `r` | включить/выключить схлопывание повторяющихся находок (по умолчанию **выключено** — см. ниже) |
+| `g` | на свёрнутой строке: развернуть и просмотреть каждую находку по отдельности; нажмите снова, чтобы свернуть обратно |
+| `s` | изолировать таблицу до всех находок в неймспейсе этой строки, по всем проверкам и видам ресурсов — полезно для сквозного просмотра одного тенанта/системы |
+| `p` | статистика по проверкам: каждая проверка с серьёзностью/счётчиком/new/confirmed, по умолчанию отсортировано по счётчику (`1`-`6` — сортировка по другому столбцу, повторное нажатие — обратный порядок); enter на проверке фильтрует таблицу только по ней |
+| `space` | отметить/снять отметку с текущей строки (со всей её свёрнутой группой, если строка свёрнута) |
+| `a` | отметить все видимые на данный момент строки |
+| `1`-`7` | сортировка по этому столбцу (повторное нажатие меняет направление) |
+| `c` / `x` / `w` / `d` / `i` | confirmed / false positive / won't fix / duplicate / needs more info — применяется ко всем отмеченным строкам, либо к выбранной, если ничего не отмечено (и к каждой находке, которую представляет свёрнутая строка) |
+| `0` | сбросить обратно в `new` — отменяет предыдущее `c`/`x`/`w`/`d`/`i` (то же правило массового применения) |
+| `n` | редактировать заметку (то же правило массового применения) |
+| `j` | создать тикет Jira для каждой отмеченной/выбранной находки со статусом CONFIRMED, у которой его ещё нет |
+| `J` | отвязать тикет Jira (ничего не удаляет в самой Jira — `j` в следующий раз заведёт новый). Этот инструмент никогда повторно не проверяет, существует ли ещё отслеживаемый тикет в Jira; это способ восстановления, если тикет был там удалён или закрыт, без ручного редактирования файла состояния |
+| `u` | показать/скрыть подавленные находки (по умолчанию скрыты) |
+| `q` | сохранить и выйти |
+| `?` | справка |
+| `esc` | по очереди, в этом порядке: сбрасывает отметки, затем сбрасывает фильтр по статистике проверок (`p`), затем сворачивает развёрнутую группу, затем снимает изоляцию системы |
 
-State autosaves after every action — a crash loses at most the one edit in progress, not prior
-decisions. Anything that would touch more than one finding at once (a triage decision, a note
-edit, filing Jira tickets — whether from marking several rows or from one collapsed row) asks
-"Yes / Cancel" first, with the affected count shown, before it happens — nothing bulk-applies
-silently.
+Состояние автосохраняется после каждого действия — сбой теряет максимум одно текущее
+редактирование, а не предыдущие решения. Любое действие, затрагивающее больше одной находки сразу
+(решение триажа, редактирование заметки, подача тикетов в Jira — будь то из-за отметки нескольких
+строк или из одной свёрнутой строки) сначала спрашивает подтверждение («Cancel» / «Yes, apply to
+all») с указанием затрагиваемого количества — ничего не применяется массово без подтверждения.
 
-### Noise reduction: collapsing repeated findings
+### Снижение шума: схлопывание повторяющихся находок
 
-The same check commonly fires many times — on every tenant's copy of a Deployment, on every
-Namespace missing a label, on every ServiceAccount with the same broad RBAC grant. Pressing `r`
-collapses those into a single row with a `×N` COUNT whenever a check's message is **identical**
-for every one of its findings — proof the message has no per-resource detail baked in, so
-collapsing is lossless (e.g. `workload.run-as-non-root` firing on 19 differently-named Deployments
-with the exact same message). A check whose message embeds resource-specific detail (RBAC/PSS/
-network-policy analyzers that describe exactly what's wrong per resource — different
-ServiceAccount, different namespace, different rule) never collapses, no matter how many times it
-fires — collapsing it would hide that detail. Collapsing only groups within one check; it never
-merges findings from different checks together, even on the same resource.
+Одна и та же проверка обычно срабатывает много раз — на копии Deployment у каждого тенанта, на
+каждом Namespace без метки, на каждом ServiceAccount с одним и тем же широким правом RBAC. Нажатие
+`r` схлопывает их в одну строку со счётчиком `×N` в столбце COUNT всякий раз, когда сообщение
+проверки **идентично** для всех её находок — это доказательство, что в сообщении нет детализации по
+конкретному ресурсу, поэтому схлопывание ничего не теряет (например, `workload.run-as-non-root`
+срабатывает на 19 по-разному названных Deployment с абсолютно одинаковым сообщением). Проверка, чьё
+сообщение содержит специфичную для ресурса детализацию (анализаторы RBAC/PSS/network-policy,
+описывающие именно то, что не так в конкретном ресурсе — другой ServiceAccount, другой неймспейс,
+другое правило), никогда не схлопывается, сколько бы раз она ни сработала — схлопывание скрыло бы
+эту детализацию. Схлопывание группирует только в рамках одной проверки; оно никогда не объединяет
+находки от разных проверок, даже на одном и том же ресурсе.
 
-This is **off by default** and stays session-only (never persisted) — you always start seeing
-every finding as its own row, and opt into collapsing explicitly once you trust it for a given
-review session. Acting on a collapsed row — marking it, applying a triage decision, editing its
-note, filing a Jira ticket — transparently applies to every finding it stands for, not just
-the one shown, and (per the confirmation rule above) always asks first when more than one finding
-is affected. Press `g` on a collapsed row to drill into its individual members instead, if you
-want to review each one by hand.
+Это **выключено по умолчанию** и действует только в рамках текущей сессии (никогда не
+сохраняется) — вы всегда начинаете с того, что видите каждую находку отдельной строкой, и включаете
+схлопывание осознанно, когда начинаете доверять ему для конкретной сессии просмотра. Действие над
+свёрнутой строкой — отметка, применение решения триажа, редактирование заметки, подача тикета в
+Jira — прозрачно применяется ко всем находкам, которые она представляет, а не только к показанной,
+и (согласно правилу подтверждения выше) всегда сначала спрашивает подтверждение, если затрагивается
+больше одной находки. Нажмите `g` на свёрнутой строке, чтобы развернуть её отдельные элементы, если
+хотите просмотреть каждый вручную.
 
-The collapse threshold is `output.namespaceGroupThreshold` — the same config value (default 3)
-[`scan`'s Markdown report already uses](/configuration/) for the identical purpose, so both mean
-the same thing.
+Порог схлопывания — `output.namespaceGroupThreshold`, то же значение конфигурации (по умолчанию 3),
+которое [уже использует Markdown-отчёт `scan`](./configuration.md) для той же самой цели, так что
+оба места имеют в виду одно и то же.
 
-### Investigating one system
+### Исследование одной системы
 
-Press `s` on any row to isolate the table to every finding in that row's namespace, across every
-check and resource kind — useful for reviewing one tenant/application end-to-end rather than one
-check at a time. This bypasses collapsing (deliberately exhaustive), and is independent of it —
-press `s` again (or `esc`) to return to the normal view.
+Нажмите `s` на любой строке, чтобы изолировать таблицу до всех находок в неймспейсе этой строки, по
+всем проверкам и видам ресурсов — полезно для сквозного просмотра одного тенанта/приложения, а не
+одной проверки за раз. Это игнорирует схлопывание (намеренно исчерпывающий просмотр) и не зависит
+от него — нажмите `s` ещё раз (или `esc`), чтобы вернуться к обычному виду.
 
-### Resolved findings
+### Устранённые находки
 
-If a finding you previously triaged no longer appears in the latest scan, it shows up with status
-`resolved` instead of silently disappearing — the underlying issue was presumably fixed (or the
-resource deleted). This is computed automatically every time `triage`/`export` loads state
-against a fresh `findings.json`.
+Если находка, которую вы ранее протриажили, больше не встречается в последнем сканировании, она
+отображается со статусом `resolved`, а не просто бесследно исчезает — предполагается, что исходная
+проблема была устранена (либо ресурс удалён). Это вычисляется автоматически каждый раз, когда
+`triage`/`export` загружает состояние против свежего `findings.json`.
 
-## Non-interactive export
+## Неинтерактивный экспорт
 
 ```sh
-kubectl audit triage export --status confirmed > confirmed.json
+kubectl triage export --status confirmed > confirmed.json
 ```
 
-Dumps triage-joined findings (optionally filtered by `--status`) as JSON — useful for handing a
-reviewed list to another tool or process without needing Jira at all.
+Выгружает объединённые с триажем находки (опционально отфильтрованные по `--status`) в виде JSON —
+полезно для передачи проверенного списка другому инструменту или процессу вообще без Jira.
 
-## Jira sync
+## Синхронизация с Jira
 
 ```sh
-kubectl audit triage jira-sync \
+kubectl triage jira-sync \
   --jira-url https://jira.example.com --project SEC --issue-type Bug \
   --jira-token "$KUBECTL_AUDIT_JIRA_TOKEN"
 ```
 
-Reads triage state for every `confirmed` finding that doesn't have a Jira issue yet, and — by
-default — **previews** what it would create (`--dry-run` defaults to `true`; pass
-`--dry-run=false` to actually create issues). Each created issue's key and URL are written back
-into `triage-state.yaml`, so re-running `jira-sync` never double-creates: a finding with a
-recorded `jiraIssueKey` is simply skipped.
+Читает состояние триажа по каждой находке со статусом `confirmed`, у которой ещё нет задачи Jira,
+и — по умолчанию — **показывает предпросмотр** того, что было бы создано (`--dry-run` по умолчанию
+`true`; передайте `--dry-run=false`, чтобы реально создать задачи). Ключ и URL каждой созданной
+задачи записываются обратно в `triage-state.yaml`, так что повторный запуск `jira-sync` никогда не
+создаёт дубликаты: находка с уже записанным `jiraIssueKey` просто пропускается.
 
-This targets **Jira Server/Data Center** (`/rest/api/2/issue`, Bearer Personal Access Token
-auth) — not Jira Cloud, which uses a different auth scheme and API version.
+Это нацелено на **Jira Server/Data Center** (`/rest/api/2/issue`, аутентификация по Bearer Personal
+Access Token) — а не на Jira Cloud, которая использует другую схему аутентификации и версию API.
 
-Issue content by default: summary from the finding's title/severity/resource; description includes
-the message, remediation, CIS refs, your triage note, and a back-link (`kubectl-audit finding:
-<id>`) for traceability; labels from severity, category, and this check's own knowledge-base
-labels (see [Knowledge base](#knowledge-base-your-organizations-own-ticket-content)). Every piece of this is
-customizable from `audit.yaml` alone — see below — no rebuild ever needed. Verification steps are
-deliberately **not** part of the ticket — they're guidance for the analyst deciding whether to
-confirm a finding in the first place (see [Verification steps](#verification-steps)), not something
-the person who receives the ticket needs.
+Содержимое задачи по умолчанию: summary формируется из заголовка/серьёзности/ресурса находки;
+description включает сообщение, рекомендацию по устранению, ссылки на CIS, вашу заметку триажа и
+обратную ссылку (`kubectl-audit finding: <id>`) для трассируемости; labels формируются из
+серьёзности, категории и собственных меток этой проверки из базы знаний (см. [База
+знаний](#база-знаний-собственное-содержимое-тикетов-вашей-организации)). Каждая из этих частей
+настраивается только через `audit.yaml` — см. ниже — пересборка никогда не требуется. Шаги проверки
+намеренно **не** попадают в тикет — это ориентир для аналитика, решающего, подтверждать ли находку
+в принципе (см. [Шаги проверки](#шаги-проверки)), а не то, что нужно человеку, получившему тикет.
 
-**The Jira token never belongs in `audit.yaml`** — it's a git-committable file, same as everything
-else this tool reads config from. Pass `--jira-token`, or set `KUBECTL_AUDIT_JIRA_TOKEN`.
+**Токену Jira не место в `audit.yaml`** — это файл, который коммитится в git, как и всё остальное,
+откуда этот инструмент читает конфигурацию. Передавайте `--jira-token` либо задайте
+`KUBECTL_AUDIT_JIRA_TOKEN`.
 
-### Custom fields, extra labels, and a fully custom template
+### Пользовательские поля, дополнительные метки и полностью произвольный шаблон
 
-Your Jira project may need its own required fields, its own labels, or a differently structured
-ticket — all `triage.jira` config, read fresh on every run:
+Вашему проекту Jira могут понадобиться собственные обязательные поля, собственные метки или
+по-другому структурированный тикет — всё это конфигурация `triage.jira`, читаемая заново при каждом
+запуске:
 
 ```yaml
 triage:
@@ -171,82 +173,88 @@ triage:
     baseUrl: https://jira.example.com
     projectKey: SEC
     issueType: Bug
-    # Static labels added to every created issue, beyond the auto-derived
-    # ones (see autoLabels below) and each check's own knowledge-base
-    # labels.
+    # Статические метки, добавляемые к каждой созданной задаче, в дополнение
+    # к автоматически выводимым (см. autoLabels ниже) и собственным меткам
+    # каждой проверки из базы знаний.
     extraLabels:
       - platform-team
-    # Which of this tool's own automatic labels ("kubectl-audit", the
-    # finding's severity, its category) get added — each on by default,
-    # independently. E.g. drop just severity if your Jira project already
-    # tracks it in a dedicated field; extraLabels/knowledge-base labels
-    # always apply regardless of this setting.
+    # Какие из собственных автоматических меток инструмента ("kubectl-audit",
+    # серьёзность находки, её категория) добавляются — каждая включена по
+    # умолчанию, независимо друг от друга. Например, отключите только
+    # серьёзность, если в вашем проекте Jira она уже отслеживается в
+    # отдельном поле; extraLabels/метки из базы знаний применяются всегда,
+    # независимо от этой настройки.
     autoLabels:
       severity: false
-    # Merged into every created issue's Jira fields, keyed by Jira field ID.
-    # A string value is rendered as a Go template (same data as the
-    # summary/description templates below); any other value (a number,
-    # bool, or an object like {value: Prod} for a select-list field) is
-    # sent as-is.
+    # Объединяется с полями Jira каждой созданной задачи, по ключу — ID поля
+    # Jira. Строковое значение рендерится как Go-шаблон (те же данные, что
+    # и в шаблонах summary/description ниже); любое другое значение (число,
+    # bool или объект вроде {value: Prod} для поля типа select-list)
+    # отправляется как есть.
     customFields:
       customfield_10010: "severity={{.Finding.Severity}}"
       customfield_10020:
         value: Prod
-    # Paths to external Go text/template files that fully replace the
-    # built-in summary/description structure. Empty (the default) uses
-    # the built-in template.
+    # Пути к внешним файлам Go text/template, полностью заменяющим
+    # встроенную структуру summary/description. Пусто (по умолчанию) —
+    # используется встроенный шаблон.
     summaryTemplate: /path/to/summary.tpl
     descriptionTemplate: /path/to/description.tpl
 ```
 
-If `output.owner` is set (a Jira username — the same "who's responsible" field shown in the
-Markdown/Confluence report header, see [Configuration]({{ '/configuration/' | relative_url }})),
-every created issue is assigned to it automatically (`fields.assignee = {name: owner}`). Set
-`customFields.assignee` yourself to override this per-project — an explicit value there always
-wins over the owner-derived default.
+Если задан `output.owner` (имя пользователя Jira — то же поле «кто отвечает», которое показывается
+в заголовке отчёта Markdown/Confluence, см. [Конфигурацию](./configuration.md)), каждая созданная
+задача автоматически назначается на него (`fields.assignee = {name: owner}`). Задайте
+`customFields.assignee` самостоятельно, чтобы переопределить это для конкретного проекта — явное
+значение там всегда побеждает значение по умолчанию, выведенное из owner.
 
-Get a starting point to restructure with:
-
-```sh
-kubectl audit triage jira template dump --kind summary --out summary.tpl
-kubectl audit triage jira template dump --kind description --out description.tpl
-```
-
-Both templates render against `{{.Content}}` (`Title`/`Description`/`Remediation`/`Technical` —
-the *resolved* content, already reflecting any knowledge-base override below; prefer these over
-the raw `{{.Finding.*}}` fields so a custom template automatically stays in sync with a
-knowledge-base override the same way the default template does), `{{.Finding}}` (the full finding
-— `Severity`, `CIS`, `Resource`, `ID`, `PolicyID`, `Source`, ...), and `{{.Entry}}` (the triage
-record — `Note`, ...). Edit the dumped file however you like —
-`triage.jira.summaryTemplate`/`descriptionTemplate` just needs to point at it; the file is read
-fresh on every `jira-sync`/TUI `j` run, so no rebuild or reinstall is ever required.
-
-### Knowledge base: your organization's own ticket content
-
-**On by default, no configuration needed**: every built-in check ships with a Russian
-title/description/remediation, applied automatically to every Jira ticket and the triage TUI's
-detail view (`enter`) — `what you preview is exactly what gets filed`, there's no separate "ticket
-mode" to second-guess. Inspect the bundle with:
+Получите отправную точку для переработки командой:
 
 ```sh
-kubectl audit triage knowledge-base dump
+kubectl triage jira template dump --kind summary --out summary.tpl
+kubectl triage jira template dump --kind description --out description.tpl
 ```
 
-To correct one entry, or add your organization's own internal standard/house style for a check
-(built-in or your own), point `triage.knowledgeBaseFile` at a small file with just the entries you
-want to change — it's merged on top of the bundle, field by field, so you never repeat the rest:
+Оба шаблона рендерятся на основе `{{.Content}}` (`Title`/`Description`/`Remediation`/`Technical` —
+уже *разрешённое* содержимое, уже учитывающее любое переопределение из базы знаний ниже;
+предпочитайте их прямым полям `{{.Finding.*}}`, чтобы пользовательский шаблон автоматически
+оставался синхронизирован с переопределением из базы знаний так же, как это делает шаблон по
+умолчанию), `{{.Finding}}` (полная находка — `Severity`, `CIS`, `Resource`, `ID`, `PolicyID`,
+`Source`, ...) и `{{.Entry}}` (запись триажа — `Note`, ...). Редактируйте выгруженный файл как
+угодно — `triage.jira.summaryTemplate`/`descriptionTemplate` достаточно указать на него; файл
+читается заново при каждом запуске `jira-sync`/нажатии `j` в TUI, так что пересборка или
+переустановка никогда не нужны.
+
+### База знаний: собственное содержимое тикетов вашей организации
+
+**Включено по умолчанию, настройка не требуется**: каждая встроенная проверка поставляется с
+title/description/remediation на русском языке, которые автоматически применяются к каждому
+тикету Jira и к детальному просмотру TUI триажа (`enter`) — то, что вы видите в предпросмотре, это
+ровно то, что будет подано, никакого отдельного «режима тикета» для перепроверки нет.
+Посмотрите комплект командой:
+
+```sh
+kubectl triage knowledge-base dump
+```
+
+Чтобы исправить одну запись, либо добавить собственный внутренний стандарт/фирменный стиль вашей
+организации для какой-либо проверки (встроенной или собственной), укажите в `knowledgeBaseFile`
+небольшой файл только с теми записями, которые хотите изменить — он накладывается поверх
+встроенного комплекта, поле за полем, так что остальное повторять не нужно. Не вложено под
+`triage:`: собственный текст Remediation в консоли/report.md/Confluence у `kubectl audit scan`
+разрешается через тот же файл, независимо от того, настроены ли вообще триаж или Jira.
 
 ```yaml
-triage:
-  knowledgeBaseFile: knowledge-base.yaml
+knowledgeBaseFile: knowledge-base.yaml
 ```
 
 ```yaml
-# knowledge-base.yaml — keyed by PolicyID, any field you don't set keeps
-# the bundled/tool default for it. Each field is a Go template rendered
-# against {{.Finding}} (same data shape as triage.jira.customFields), so
-# it can reference the specific resource a finding fired on instead of
-# only generic, check-level text.
+# knowledge-base.yaml — с ключом по PolicyID, любое не заданное поле
+# сохраняет поставляемое/встроенное значение по умолчанию для него. Каждое
+# поле — это Go-шаблон, рендерящийся на основе {{.Finding}} (та же форма
+# данных, что и в triage.jira.customFields), так что оно может ссылаться на
+# конкретный ресурс, на котором сработала находка, а не только на общий
+# текст уровня проверки.
 rbac-analyzer.broad-secrets-access:
   title: "[Internal standard] Overly broad Secrets access"
   description: >-
@@ -262,72 +270,78 @@ rbac-analyzer.broad-secrets-access:
     - sec-042
 ```
 
-`verificationSteps` layers on top of the check's own instructions the same way `remediation` does — use it for
-organization-specific process a generic check can't know (an internal escalation channel, a link to an internal
-wiki page, a known-exception register), not to re-derive detail the check already knows about the resource
-itself.
+`verificationSteps` дополняет собственные инструкции проверки так же, как это делает
+`remediation` — используйте это поле для процесса, специфичного для организации, о котором
+обобщённая проверка знать не может (внутренний канал эскалации, ссылка на внутреннюю страницу wiki,
+реестр известных исключений), а не для того, чтобы заново выводить детали, которые проверка уже
+знает о самом ресурсе.
 
-A field with no `{{ }}` in it round-trips unchanged — templating is opt-in per field, not
-required. A malformed template in one field is reported (in the TUI detail view, and as a
-render error for `jira-sync`) without blocking the other fields from still resolving.
+Поле без `{{ }}` проходит насквозь без изменений — шаблонизация опциональна для каждого поля
+отдельно, а не обязательна. Некорректный шаблон в одном поле сообщается (в детальном просмотре TUI,
+и как ошибка рендеринга для `jira-sync`), не блокируя разрешение остальных полей.
 
-**`title`/`description`/`remediation` render as Jira Server/Data Center wiki markup, not
-Markdown** — this tool talks to the REST API v2 `description` field as plain text, and Jira itself
-renders that text using its own wiki syntax. A Markdown link like `[text](url)` renders as literal,
-unclickable text; the Jira equivalent is `[text|url]` (pipe, not parentheses). Quick reference:
+**`title`/`description`/`remediation` рендерятся как вики-разметка Jira Server/Data Center, а не
+Markdown** — этот инструмент передаёт в поле `description` REST API v2 обычный текст, а сама Jira
+рендерит этот текст своим собственным вики-синтаксисом. Markdown-ссылка вида `[text](url)`
+отрендерится как буквальный, некликабельный текст; эквивалент в Jira — `[text|url]` (вертикальная
+черта, а не круглые скобки). Краткая справка:
 
-| Want | Jira wiki markup | Not Markdown |
+| Нужно | Вики-разметка Jira | Не Markdown |
 |---|---|---|
-| Bold | `*bold*` | ~~`**bold**`~~ |
-| Italic | `_italic_` | ~~`*italic*`~~ |
-| Link | `[text\|https://example.com]` | ~~`[text](https://example.com)`~~ |
-| Heading | `h2. Heading` (start of line) | ~~`## Heading`~~ |
-| Inline code | `{{code}}` | ~~`` `code` ``~~ |
-| Code block | `` {code:yaml}...{code} `` (or `{code}`/`{noformat}` with no language) | ~~` ```yaml...``` `~~ |
-| Bullet list | `* item` | same as Markdown |
+| Жирный | `*bold*` | ~~`**bold**`~~ |
+| Курсив | `_italic_` | ~~`*italic*`~~ |
+| Ссылка | `[text\|https://example.com]` | ~~`[text](https://example.com)`~~ |
+| Заголовок | `h2. Heading` (в начале строки) | ~~`## Heading`~~ |
+| Инлайн-код | `{{code}}` | ~~`` `code` ``~~ |
+| Блок кода | `` {code:yaml}...{code} `` (или `{code}`/`{noformat}` без языка) | ~~` ```yaml...``` `~~ |
+| Маркированный список | `* item` | так же, как в Markdown |
 
-The built-in templates (`summary.tpl`/`description.tpl`) already use this syntax — `*Remediation:*`
-is Jira bold, not a stray typo.
+Встроенные шаблоны (`summary.tpl`/`description.tpl`) уже используют этот синтаксис — `*Remediation:*`
+— это жирный текст Jira, а не случайная опечатка.
 
-`labels` are this check's own Jira labels — merged with the auto-derived severity/category labels
-and `triage.jira.extraLabels`, sanitized the same way. Org-defined and the same for every finding
-this check produces — an internal compliance requirement id, for example — not templated (unlike
-the text fields above; a Jira label is a short fixed slug).
+`labels` — это собственные метки Jira данной проверки, объединяемые с автоматически выведенными
+метками серьёзности/категории и `triage.jira.extraLabels`, санитизируемые так же. Они заданы
+организацией и одинаковы для каждой находки этой проверки — например, идентификатор внутреннего
+требования соответствия — и не шаблонизируются (в отличие от текстовых полей выше; метка Jira —
+это короткий фиксированный слаг).
 
-This is deliberately **not a translation mechanism** — `Message` (the tool's own, sometimes
-per-resource, technical text — e.g. exactly which ServiceAccount and binding are involved) is
-never overridden. When a knowledge-base entry sets `description`, the original `Message` still
-shows in the ticket as a separate "Technical detail" section, so the org's own explanation never
-hides the specific detail needed to actually act on the finding. `message` can be — and for
-built-in checks, is — in any language you like; only the surrounding scaffolding
-("Remediation:", "Technical detail:") comes from the template, in whatever language you wrote it.
+Это намеренно **не механизм перевода** — `Message` (собственный, иногда специфичный для ресурса,
+технический текст инструмента — например, какой именно ServiceAccount и биндинг задействованы)
+никогда не переопределяется. Когда запись базы знаний задаёт `description`, исходное `Message`
+по-прежнему показывается в тикете отдельным разделом «Technical detail», так что собственное
+объяснение организации никогда не скрывает конкретную деталь, необходимую, чтобы реально
+действовать по находке. `message` может быть — и для встроенных проверок является — на любом
+языке; только обрамляющий текст («Remediation:», «Technical detail:») берётся из шаблона, на том
+языке, на котором вы его написали.
 
-**Writing your own policy?** Skip the external file and write your knowledge base directly in the
-policy — `audit.k8s-auditor.io/kb-title`, `.../kb-description`, `.../kb-remediation`,
-`.../kb-verification-steps` alongside the existing English annotations (see [Writing
-Policies](./writing-policies/)). One file, no separate
-entry needed. If a policy sets these *and* `knowledgeBaseFile` also has an entry for the same
-PolicyID, the file wins, field by field — the one case these two mechanisms overlap; day to day
-you'll only ever use one or the other for a given check.
+**Пишете собственную политику?** Пропустите внешний файл и опишите базу знаний прямо в политике —
+`audit.k8s-auditor.io/kb-title`, `.../kb-description`, `.../kb-remediation`,
+`.../kb-verification-steps` рядом с уже существующими английскими аннотациями (см. [Написание
+политик](./writing-policies.md)). Один файл, отдельная запись не нужна. Если политика задаёт эти
+поля *и* в `knowledgeBaseFile` тоже есть запись для того же PolicyID, побеждает файл, поле за
+полем — это единственный случай, когда эти два механизма пересекаются; в повседневной практике для
+конкретной проверки вы будете использовать только один из них.
 
-## Configuration
+## Конфигурация
 
 ```yaml
+# Собственное содержимое тикетов вашей организации — см. «База знаний» выше.
+# Не вложено под triage: — используется также `kubectl audit scan`.
+knowledgeBaseFile: knowledge-base.yaml
+
 triage:
-  # Where triage decisions are persisted — a local, git-diffable YAML file.
+  # Где сохраняются решения триажа — локальный, git-diff-совместимый YAML-файл.
   stateFile: triage-state.yaml
-  # Your organization's own ticket content — see "Knowledge base" above.
-  knowledgeBaseFile: knowledge-base.yaml
   jira:
     baseUrl: https://jira.example.com
     projectKey: SEC
     issueType: Bug
-    # No token field here — see above.
-    # extraLabels/customFields/summaryTemplate/descriptionTemplate: see
-    # "Custom fields, extra labels, and a fully custom template" above.
+    # Поля для токена здесь нет — см. выше.
+    # extraLabels/customFields/summaryTemplate/descriptionTemplate: см.
+    # «Пользовательские поля, дополнительные метки и полностью произвольный
+    # шаблон» выше.
 ```
 
-`--findings`/`--state` (persistent flags on `triage`, `triage export`, and `triage jira-sync`)
-override `output.json`/`triage.stateFile` from `audit.yaml` for a single invocation, the same
-pattern every other path-related flag in this tool follows.
-{% endraw %}
+`--findings`/`--state` (постоянные флаги у `triage`, `triage export` и `triage jira-sync`)
+переопределяют `output.json`/`triage.stateFile` из `audit.yaml` для одного конкретного вызова — по
+тому же шаблону, которому следует любой другой связанный с путями флаг в этом инструменте.

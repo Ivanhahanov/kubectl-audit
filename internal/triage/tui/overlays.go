@@ -366,7 +366,7 @@ func stripDetailColorTags(s string) string {
 	return s
 }
 
-const helpText = `[yellow::b]kubectl audit triage — hotkeys[white::-]
+const helpText = `[yellow::b]kubectl triage — hotkeys[white::-]
 
   [yellow::b]Navigate[white::-]
   up/down, pgup/pgdn    move

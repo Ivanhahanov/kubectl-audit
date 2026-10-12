@@ -50,7 +50,7 @@ CLUSTER_TOKEN="<token from above>"
 # examples/rbac/clusterrole-readonly.yaml (bound to whatever identity you
 # scan with) first if you're not already using a sufficiently-privileged
 # kubeconfig.
-kubectl-audit scan -A --output-json findings.json --fail-on none
+kubectl-audit scan -A --output json=findings.json --fail-on none
 kubectl-audit push --findings findings.json \
   --server-url http://localhost:18080 --token "$CLUSTER_TOKEN"
 ```

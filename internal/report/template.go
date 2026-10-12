@@ -412,6 +412,60 @@ func buildControlIndex(frameworks []compliance.Scorecard) map[string][]complianc
 	return out
 }
 
+// primaryStandard resolves f's headline compliance reference (see
+// CheckGroup.PrimaryStandard's own doc comment) and every other control
+// beyond it, from controlIndex (built via buildControlIndex from
+// Result.Frameworks) — shared by groupByCheck and RenderConsole (both
+// the per-finding listing and the stats tables it appends) so every
+// output surfaces the same "which section does this rule belong to"
+// answer when --frameworks is in play.
+//
+// allowCISFallback, when true, falls back to the raw Finding.CIS
+// annotation (every bundled policy's own baked-in "audit.k8s-auditor.io/
+// cis" value, independent of whatever --frameworks was actually loaded)
+// when no loaded framework references this check at all — so a Markdown
+// report never silently loses a check's only compliance reference just
+// because it hasn't been added to a compliance mapping yet. The
+// console/table writers pass false: showing "CIS: 5.1.3" in a compact
+// CONTROLS column when the user explicitly loaded a *different*,
+// unrelated framework (e.g. --frameworks ./our-standard.yaml) reads as
+// "this matched CIS", which it didn't — an empty cell is the honest
+// answer there ("not mapped to anything in what you selected"). console
+// passes false for both its per-finding listing and its stats tables.
+func primaryStandard(f findings.Finding, controlIndex map[string][]compliance.ControlRef, allowCISFallback bool) (primary, related string) {
+	primary, related = compliance.SplitPrimary(controlIndex[f.PolicyID])
+	if primary == "" && allowCISFallback && len(f.CIS) > 0 {
+		primary = "CIS: " + strings.Join(f.CIS, ", ")
+	}
+	return primary, related
+}
+
+// controlIDs returns just the bare control ID(s) (e.g. "5.1.11", or
+// "5.1.11, 5.1.12" when more than one control in the loaded framework(s)
+// references this check) — no framework name, no control title. Used by
+// the per-check stats table's CONTROLS column (writeCheckTable in
+// table.go): the full "<Framework>: <ID> — <Title>"
+// citation primaryStandard/FormatControlRefs produce routinely runs well
+// past 100 characters (a framework's title plus a full English control
+// sentence), which a fixed-width table column can't carry without
+// starving every other column — the ID alone is what answers "which
+// section does this belong to", which is what --frameworks + a table
+// overview is for; the full citation is one line away in
+// --output console=-/md=.... Empty when controlIndex has nothing for
+// this PolicyID — never a CIS-fallback guess, same reasoning as
+// primaryStandard's own allowCISFallback=false callers.
+func controlIDs(f findings.Finding, controlIndex map[string][]compliance.ControlRef) string {
+	refs := controlIndex[f.PolicyID]
+	if len(refs) == 0 {
+		return ""
+	}
+	ids := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		ids = append(ids, ref.ID)
+	}
+	return strings.Join(ids, ", ")
+}
+
 func groupByCheck(sorted []findings.Finding, namespaceGroupThreshold int, byPattern bool, kb map[string]findings.KnowledgeBaseEntry, controlIndex map[string][]compliance.ControlRef) []CheckGroup {
 	var order []string
 	byPolicy := map[string][]findings.Finding{}
@@ -426,10 +480,7 @@ func groupByCheck(sorted []findings.Finding, namespaceGroupThreshold int, byPatt
 	for _, id := range order {
 		fs := byPolicy[id]
 		title, category, remediation := resolveCheckKB(fs[0], kb)
-		primary, related := compliance.SplitPrimary(controlIndex[id])
-		if primary == "" && len(fs[0].CIS) > 0 {
-			primary = "CIS: " + strings.Join(fs[0].CIS, ", ")
-		}
+		primary, related := primaryStandard(fs[0], controlIndex, true)
 		out = append(out, CheckGroup{
 			PolicyID:        id,
 			Title:           title,
@@ -449,7 +500,7 @@ func groupByCheck(sorted []findings.Finding, namespaceGroupThreshold int, byPatt
 // one check's hoisted Title/Category/Remediation — the same precedence
 // triage.Resolve uses (internal/triage/knowledgebase.go): f.KnowledgeBase
 // (inline, set via a VAP's kb-* annotations) first, then kb[f.PolicyID] (an
-// external triage.knowledgeBaseFile) layered on top, external always wins
+// external knowledgeBaseFile) layered on top, external always wins
 // field-by-field. Each field is rendered as a Go template against
 // {{.Finding}} (f — the same representative finding already hoisted for
 // Title/CIS/Remediation elsewhere in groupByCheck), same as

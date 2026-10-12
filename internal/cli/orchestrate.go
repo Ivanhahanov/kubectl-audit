@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/ivanhahanov/kubectl-audit/internal/apideprecations"
 	"github.com/ivanhahanov/kubectl-audit/internal/cni"
@@ -92,6 +93,16 @@ func loadEffectiveConfig(cmd *cobra.Command) (*config.AuditConfig, error) {
 	if len(flagDisableBuiltinExceptionIDs) > 0 {
 		cfg.DisableBuiltinExceptionIDs = append(cfg.DisableBuiltinExceptionIDs, flagDisableBuiltinExceptionIDs...)
 	}
+	if flagRequestTimeout != "" {
+		cfg.Target.RequestTimeout = flagRequestTimeout
+	}
+	// Validated here, not lazily where it's actually used (inside
+	// loadResources' cluster-mode branch): a typo should surface
+	// immediately, not only on whichever run happens to hit cluster mode
+	// (e.g. silently ignored on a static-only `-f` scan).
+	if _, err := cfg.RequestTimeoutDuration(); err != nil {
+		return nil, err
+	}
 
 	switch {
 	case flagMode != "":
@@ -103,20 +114,30 @@ func loadEffectiveConfig(cmd *cobra.Command) (*config.AuditConfig, error) {
 	if len(flagPolicyDirs) > 0 {
 		cfg.Policies.Dirs = append(cfg.Policies.Dirs, flagPolicyDirs...)
 	}
-	if flagOutputJSON != "" {
-		cfg.Output.JSON = flagOutputJSON
+	outputs, err := parseOutputFlags(flagOutputs)
+	if err != nil {
+		return nil, err
 	}
-	if flagOutputMD != "" {
-		cfg.Output.Markdown = flagOutputMD
+	if path, ok := outputs["json"]; ok {
+		cfg.Output.JSON = path
 	}
-	if flagOutputCSV != "" {
-		cfg.Output.CSV = flagOutputCSV
+	if path, ok := outputs["md"]; ok {
+		cfg.Output.Markdown = path
 	}
-	if flagOutputConfluence != "" {
-		cfg.Output.Confluence = flagOutputConfluence
+	if path, ok := outputs["csv"]; ok {
+		cfg.Output.CSV = path
+	}
+	if path, ok := outputs["confluence"]; ok {
+		cfg.Output.Confluence = path
+	}
+	if path, ok := outputs["console"]; ok {
+		cfg.Output.Console = path
 	}
 	if flagFailOn != "" {
 		cfg.Output.FailOn = flagFailOn
+	}
+	if flagMinSeverity != "" {
+		cfg.Output.MinSeverity = flagMinSeverity
 	}
 	if flagReportTemplate != "" {
 		cfg.Output.Template = flagReportTemplate
@@ -143,6 +164,9 @@ func loadEffectiveConfig(cmd *cobra.Command) (*config.AuditConfig, error) {
 	if cmd.Flags().Changed("group-by-name-pattern") {
 		cfg.Output.GroupByNamePattern = &flagGroupByNamePattern
 	}
+	if cmd.Flags().Changed("remediation") {
+		cfg.Output.ShowRemediation = &flagShowRemediation
+	}
 	if !config.ValidReportViews[cfg.Output.ReportView] {
 		return nil, fmt.Errorf("invalid --report-view %q: must be one of check, namespace, both", cfg.Output.ReportView)
 	}
@@ -151,6 +175,23 @@ func loadEffectiveConfig(cmd *cobra.Command) (*config.AuditConfig, error) {
 	}
 	if len(flagFrameworks) > 0 {
 		cfg.Compliance.Frameworks = splitCommaList(flagFrameworks)
+	}
+	// Explicit --frameworks-only always wins. Otherwise, resolve
+	// Compliance.FrameworksOnly's default now (while cmd.Flags() is still
+	// in scope) rather than leaving it to runScan — see
+	// AuditConfig.FrameworksOnlyEnabled's own doc comment for why
+	// "--frameworks was explicitly given" is the signal, not just
+	// cfg.Compliance.Frameworks being non-empty (which is true even for
+	// the implicit "cis" default from config.Default()). Skipped
+	// entirely when audit.yaml already set compliance.frameworksOnly
+	// explicitly (FrameworksOnly != nil after config.Load) — a config
+	// file's explicit choice stands unless the CLI flag overrides it.
+	if cmd.Flags().Changed("frameworks-only") {
+		v := flagFrameworksOnly
+		cfg.Compliance.FrameworksOnly = &v
+	} else if cfg.Compliance.FrameworksOnly == nil {
+		v := cmd.Flags().Changed("frameworks")
+		cfg.Compliance.FrameworksOnly = &v
 	}
 
 	return cfg, nil
@@ -252,7 +293,11 @@ func loadResources(ctx context.Context, cfg *config.AuditConfig) ([]loader.Resou
 	}
 
 	if wantCluster {
-		client, err := k8sclient.New(cfg.Target.Kubeconfig, cfg.Target.Context)
+		timeout, err := cfg.RequestTimeoutDuration()
+		if err != nil {
+			return nil, nil, "", "", "", err
+		}
+		client, err := k8sclient.New(cfg.Target.Kubeconfig, cfg.Target.Context, timeout)
 		if err != nil {
 			if cfg.Target.Mode == config.ModeCluster {
 				return nil, nil, "", "", "", fmt.Errorf("connecting to cluster: %w", err)
@@ -647,31 +692,12 @@ func runScan(ctx context.Context, cfg *config.AuditConfig) (report.Result, error
 	kept, suppressed := suppress.Apply(all, effectiveExclusions(cfg), suppress.BuildLabelIndex(unfiltered))
 	detected := thirdparty.Detect(unfiltered, effectiveComponents(cfg))
 
-	// Reuses triage.knowledgeBaseFile: an org's Title/Category/Remediation
-	// overrides should read the same whether triaging or reading the
-	// static report, not live in two separate places.
-	kb, err := triage.ResolveKnowledgeBase(cfg.Triage.KnowledgeBaseFile)
+	// Reuses the top-level knowledgeBaseFile: an org's Title/Category/
+	// Remediation overrides should read the same whether triaging or
+	// reading the static report, not live in two separate places.
+	kb, err := triage.ResolveKnowledgeBase(cfg.KnowledgeBaseFile)
 	if err != nil {
 		return report.Result{}, fmt.Errorf("loading knowledge base: %w", err)
-	}
-
-	result := report.Result{
-		GeneratedAt:             time.Now(),
-		Target:                  target,
-		ClusterVersion:          k8sVersion,
-		ClusterEndpoint:         apiServerHost,
-		Owner:                   cfg.Output.Owner,
-		Scope:                   buildScope(cfg, resources, k8sVersion, cpResult.Observed, detected),
-		PoliciesLoaded:          len(policies),
-		Findings:                kept,
-		Suppressed:              toReportSuppressed(suppressed),
-		DetectedComponents:      detected,
-		RBACModel:               rbacResult.Model,
-		ReportView:              cfg.Output.ReportView,
-		MultipleSources:         hasMultipleSources(resources),
-		NamespaceGroupThreshold: cfg.Output.NamespaceGroupThreshold,
-		GroupByNamePattern:      cfg.Output.GroupByNamePatternEnabled(),
-		KnowledgeBase:           kb,
 	}
 
 	validPolicyIDs := make(map[string]bool, len(policies))
@@ -699,6 +725,10 @@ func runScan(ctx context.Context, cfg *config.AuditConfig) (report.Result, error
 		}
 	}
 
+	// Loaded once, up front — reused both for --frameworks-only filtering
+	// below (if requested) and scorecard building further down, so a
+	// mapping is never parsed twice.
+	mappings := make([]*compliance.Mapping, 0, len(cfg.Compliance.Frameworks))
 	for _, id := range cfg.Compliance.Frameworks {
 		mapping, err := compliance.LoadMapping(id)
 		if err != nil {
@@ -711,9 +741,53 @@ func runScan(ctx context.Context, cfg *config.AuditConfig) (report.Result, error
 		mapping = compliance.OverrideUnobservedByPrefix(mapping, "rbac.", hasRBAC)
 		mapping = compliance.OverrideUnobservedByPrefix(mapping, "rbac-analyzer.", hasRBAC)
 		mapping = compliance.OverrideUnobservedByPrefix(mapping, "multitenancy.", hasCapsuleTenant)
-		// Uses result.Findings (post-suppression), not all: a suppressed
-		// finding is an accepted, documented risk, and shouldn't leave its
-		// compliance control showing FAIL.
+		mappings = append(mappings, mapping)
+	}
+
+	// --frameworks-only: a finding whose check isn't referenced by any
+	// control in any loaded framework is out of scope for a compliance
+	// audit scoped to those framework(s) specifically — dropped before it
+	// reaches Result.Findings at all, so every output (and --fail-on,
+	// applied to Result.Findings by the caller after runScan returns) sees
+	// only what the selected standard(s) actually asked about. Scorecards
+	// are unaffected either way: BuildScorecard already only ever looks at
+	// findings matching a control's own policyIds/nativeCheckIds, so a
+	// finding for an unmapped check was already invisible to scoring.
+	if cfg.Compliance.FrameworksOnly != nil && *cfg.Compliance.FrameworksOnly {
+		controlIndex := compliance.BuildControlIndex(mappings)
+		scoped := make([]findings.Finding, 0, len(kept))
+		for _, f := range kept {
+			if len(controlIndex[f.PolicyID]) > 0 {
+				scoped = append(scoped, f)
+			}
+		}
+		kept = scoped
+	}
+
+	result := report.Result{
+		GeneratedAt:             time.Now(),
+		Target:                  target,
+		ClusterVersion:          k8sVersion,
+		ClusterEndpoint:         apiServerHost,
+		Owner:                   cfg.Output.Owner,
+		Scope:                   buildScope(cfg, resources, k8sVersion, cpResult.Observed, detected),
+		PoliciesLoaded:          len(policies),
+		Findings:                kept,
+		Suppressed:              toReportSuppressed(suppressed),
+		DetectedComponents:      detected,
+		RBACModel:               rbacResult.Model,
+		ReportView:              cfg.Output.ReportView,
+		MultipleSources:         hasMultipleSources(resources),
+		NamespaceGroupThreshold: cfg.Output.NamespaceGroupThreshold,
+		GroupByNamePattern:      cfg.Output.GroupByNamePatternEnabled(),
+		KnowledgeBase:           kb,
+	}
+
+	for _, mapping := range mappings {
+		// Uses result.Findings (post-suppression, and post-
+		// --frameworks-only if set), not all: a suppressed finding is an
+		// accepted, documented risk, and shouldn't leave its compliance
+		// control showing FAIL.
 		result.Frameworks = append(result.Frameworks, compliance.BuildScorecard(mapping, result.Findings))
 	}
 
@@ -737,8 +811,63 @@ func warnUnknownPolicyIDs(mapping *compliance.Mapping, validPolicyIDs map[string
 	}
 }
 
+// validOutputFormats are the accepted format keys for --output format=path.
+var validOutputFormats = map[string]bool{"json": true, "md": true, "csv": true, "confluence": true, "console": true}
+
+// parseOutputFlags parses repeated --output format=path flags into a
+// format -> path map. Rejects an unknown format, a missing "=", an empty
+// path, and the same format given twice (ambiguous which path wins).
+func parseOutputFlags(specs []string) (map[string]string, error) {
+	out := make(map[string]string, len(specs))
+	for _, spec := range specs {
+		format, path, ok := strings.Cut(spec, "=")
+		if !ok || path == "" {
+			return nil, fmt.Errorf("--output %q: want format=path, e.g. --output json=findings.json", spec)
+		}
+		if !validOutputFormats[format] {
+			return nil, fmt.Errorf("--output %q: unknown format %q, want one of json, md, csv, confluence", spec, format)
+		}
+		if _, dup := out[format]; dup {
+			return nil, fmt.Errorf("--output: format %q given more than once", format)
+		}
+		out[format] = path
+	}
+	return out, nil
+}
+
+// outputFormatGiven reports whether --output explicitly set the given
+// format, as opposed to it only coming from audit.yaml/defaults — used
+// where a command needs to tell "the user asked for this path" apart from
+// "this is just the default path" (see rbac_cmd.go's own-report-filename
+// logic).
+func outputFormatGiven(specs []string, format string) bool {
+	for _, spec := range specs {
+		f, _, ok := strings.Cut(spec, "=")
+		if ok && f == format {
+			return true
+		}
+	}
+	return false
+}
+
 // writeOutputs writes findings.json and report.md per cfg.Output.
+//
+// result is a value parameter (not *report.Result), so narrowing
+// result.Findings to cfg.Output.MinSeverity below only rebinds this
+// function's own local copy — the caller's Result (and whatever already
+// used it for compliance scorecards and applyFailOnGate, both of which
+// must always see every finding regardless of this display-only filter)
+// is untouched.
 func writeOutputs(cfg *config.AuditConfig, result report.Result) error {
+	if threshold, ok := cfg.MinSeverityThreshold(); ok {
+		filtered := make([]findings.Finding, 0, len(result.Findings))
+		for _, f := range result.Findings {
+			if f.Severity.AtLeast(threshold) {
+				filtered = append(filtered, f)
+			}
+		}
+		result.Findings = filtered
+	}
 	if cfg.Output.JSON != "" {
 		if err := report.WriteJSON(cfg.Output.JSON, result); err != nil {
 			return fmt.Errorf("writing %s: %w", cfg.Output.JSON, err)
@@ -773,7 +902,31 @@ func writeOutputs(cfg *config.AuditConfig, result report.Result) error {
 			return fmt.Errorf("writing %s: %w", cfg.Output.Confluence, err)
 		}
 	}
+	if cfg.Output.Console != "" {
+		if err := report.WriteConsole(cfg.Output.Console, result, colorEnabled(cfg.Output.Console), cfg.Output.ShowRemediationEnabled()); err != nil {
+			return fmt.Errorf("writing %s: %w", cfg.Output.Console, err)
+		}
+	}
 	return nil
+}
+
+// colorEnabled decides whether --output console=... should wrap findings
+// in ANSI color codes: only for stdout (a saved file should stay plain —
+// ANSI escapes in a file meant to be grepped/diffed later are just noise),
+// and only when $NO_COLOR is unset and either stdout is a real terminal or
+// a CI env var is set (GitLab CI's job log isn't a TTY but does render
+// ANSI, same as GitHub Actions/most others — see docs/getting-started.md).
+func colorEnabled(path string) bool {
+	if path != "-" {
+		return false
+	}
+	if os.Getenv("NO_COLOR") != "" {
+		return false
+	}
+	if os.Getenv("CI") != "" || os.Getenv("GITLAB_CI") != "" {
+		return true
+	}
+	return term.IsTerminal(int(os.Stdout.Fd()))
 }
 
 // effectiveExclusions returns the exclusion rules to actually apply: this

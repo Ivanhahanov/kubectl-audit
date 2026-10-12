@@ -7,6 +7,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/ivanhahanov/kubectl-audit/internal/findings"
 	"github.com/ivanhahanov/kubectl-audit/internal/thirdparty"
@@ -74,6 +75,37 @@ type TargetConfig struct {
 	// value, never a dynamic messageExpression), and the separate,
 	// higher-privilege ClusterRole this requires (see rbac/clusterrole-with-secrets.yaml).
 	ReadSecretValues bool `json:"readSecretValues,omitempty"`
+	// RequestTimeout bounds every individual request the dynamic/discovery
+	// clients make to the apiserver (k8sclient.Client.Config.Timeout) — a
+	// Go duration string, e.g. "120s". Without this, a single hung
+	// apiserver request (not an outright connection refusal, which fails
+	// fast already — a request that's accepted but never answered, e.g.
+	// under heavy apiserver load) blocks the scan forever, which is
+	// exactly the failure mode you don't want in an unattended CI job.
+	// Empty uses RequestTimeoutDefault; "0" disables the timeout entirely
+	// (restores pre-timeout behavior, for the rare case a legitimately
+	// slow List call on a very large cluster needs more room than any
+	// fixed default would guess right).
+	RequestTimeout string `json:"requestTimeout,omitempty"`
+}
+
+// RequestTimeoutDefault is applied when Target.RequestTimeout is unset.
+// 120s: generous enough for a List call against a large namespace/cluster
+// (the scenario most likely to need real time), short enough that a
+// genuinely hung apiserver fails a CI job in minutes, not never.
+const RequestTimeoutDefault = 120 * time.Second
+
+// RequestTimeoutDuration parses Target.RequestTimeout, returning
+// RequestTimeoutDefault for "" and 0 (no timeout) for an explicit "0".
+func (c *AuditConfig) RequestTimeoutDuration() (time.Duration, error) {
+	if c.Target.RequestTimeout == "" {
+		return RequestTimeoutDefault, nil
+	}
+	d, err := time.ParseDuration(c.Target.RequestTimeout)
+	if err != nil {
+		return 0, fmt.Errorf("invalid target.requestTimeout/--request-timeout %q: %w", c.Target.RequestTimeout, err)
+	}
+	return d, nil
 }
 
 // PoliciesConfig controls which policies are loaded.
@@ -111,6 +143,16 @@ type OutputConfig struct {
 	// default filename, since most invocations don't want it.
 	CSV    string `json:"csv,omitempty"`
 	FailOn string `json:"failOn,omitempty"`
+	// MinSeverity drops findings below this severity from every rendered
+	// report (findings.json, report.md, CSV, Confluence, console) —
+	// unlike FailOn, this is purely a display filter: compliance
+	// scorecards and the FailOn gate itself still see every finding
+	// regardless, so a display filter can never silently stop --fail-on
+	// from catching something (see applyFailOnGate/writeOutputs, which
+	// apply this only to a copy made for the writers, never to the
+	// Result scoring/gating already ran on). Empty (the default, same as
+	// "none") renders every finding, same as before this field existed.
+	MinSeverity string `json:"minSeverity,omitempty"`
 	// Template is a path to a custom report.md.tpl (Go text/template). Empty
 	// uses the embedded default template.
 	Template string `json:"template,omitempty"`
@@ -124,13 +166,33 @@ type OutputConfig struct {
 	// text/template) for Confluence output. Empty uses the embedded
 	// default Confluence template — same convention as Template above.
 	ConfluenceTemplate string `json:"confluenceTemplate,omitempty"`
+	// Console is a path to write a colorized (when the destination supports
+	// it) per-finding listing followed by aggregate-statistics tables (a
+	// severity breakdown, a per-check breakdown, and, when --frameworks is
+	// active, a compliance scorecard) — "-" means stdout, meant for a CI
+	// job log or a local terminal rather than a saved artifact. See
+	// report.RenderConsole. This used to be two separate formats
+	// ("console" for per-finding detail, "table" for stats-only); they
+	// were merged into one so a CI run has a single stdout format to
+	// reach for instead of choosing between two differently-shaped ones.
+	// Empty (the default) skips this output entirely, same convention as
+	// CSV/Confluence above.
+	Console string `json:"console,omitempty"`
+	// ShowRemediation controls whether --output console=... includes each
+	// check's remediation guidance (resolved through the same knowledge
+	// base as report.md's own Remediation column — Russian by default,
+	// same as everywhere else this tool surfaces remediation text). A
+	// *bool (same convention as GroupByNamePattern above) so a config
+	// file can explicitly turn it off; nil (not set, the common case)
+	// means on.
+	ShowRemediation *bool `json:"showRemediation,omitempty"`
 	// ReportLang selects which built-in Markdown template renders the
 	// report's section labels/headings: "en" (default) or "ru" — a
 	// ready-made Russian translation of the report skeleton (headings,
 	// "Category"/"Remediation"/... labels), not a general i18n system. A
 	// finding's own Title/Message/Remediation only change language if a
-	// Russian knowledge base (triage.knowledgeBaseFile — the bundled
-	// default already is one) overrides them; ReportLang only picks the
+	// Russian knowledge base (knowledgeBaseFile — the bundled default
+	// already is one) overrides them; ReportLang only picks the
 	// surrounding template. Ignored when Template is set — a custom
 	// template always fully replaces the built-in one, same precedent as
 	// every other --report-template override.
@@ -201,6 +263,15 @@ func (o OutputConfig) GroupByNamePatternEnabled() bool {
 	return *o.GroupByNamePattern
 }
 
+// ShowRemediationEnabled reports the effective ShowRemediation value:
+// the configured pointer if set, true otherwise (on by default).
+func (o OutputConfig) ShowRemediationEnabled() bool {
+	if o.ShowRemediation == nil {
+		return true
+	}
+	return *o.ShowRemediation
+}
+
 // ValidReportViews are the accepted values for ReportView.
 var ValidReportViews = map[string]bool{"check": true, "namespace": true, "both": true}
 
@@ -211,6 +282,27 @@ var ValidReportLangs = map[string]bool{"en": true, "ru": true}
 // (e.g. "cis", "fstec", "nsa" — see compliance-mappings/).
 type ComplianceConfig struct {
 	Frameworks []string `json:"frameworks,omitempty"`
+	// FrameworksOnly restricts scan results to findings whose check is
+	// actually referenced (policyIds/nativeCheckIds) by at least one
+	// control in Frameworks — everything else is dropped before it ever
+	// reaches findings.json/report.md/CSV/console, compliance
+	// scorecards, or --fail-on, not just hidden from a display column.
+	// For a compliance audit scoped to one standard, a finding the
+	// standard never asked about isn't in scope for that audit at all —
+	// unlike Output.MinSeverity (a display-only filter that deliberately
+	// never affects --fail-on/scorecards), this is meant to change what
+	// the audit considers relevant in the first place.
+	//
+	// A *bool (same convention as GroupByNamePattern above) because the
+	// *default* itself is conditional, not a fixed true/false: nil means
+	// "follow whether --frameworks was explicitly given" (see
+	// FrameworksOnlyEnabled) — explicitly choosing a standard means you
+	// want the audit scoped to it; not choosing one (the implicit "cis"
+	// default) means you want this tool's full, unrestricted check set,
+	// same as before this field existed. An explicit --frameworks-only/
+	// --frameworks-only=false (or compliance.frameworksOnly in
+	// audit.yaml) always overrides that default either direction.
+	FrameworksOnly *bool `json:"frameworksOnly,omitempty"`
 }
 
 // ExclusionMatch selects which resources an ExclusionRule applies to. At
@@ -257,7 +349,7 @@ type ExclusionRule struct {
 	Reason string `json:"reason"`
 }
 
-// JiraConfig points `kubectl audit triage jira-sync` at a Jira Server/Data
+// JiraConfig points `kubectl triage jira-sync` at a Jira Server/Data
 // Center instance. Deliberately has no credential field: the Personal
 // Access Token comes from the --jira-token flag or the
 // KUBECTL_AUDIT_JIRA_TOKEN environment variable only — this file is the
@@ -324,26 +416,13 @@ func (a AutoLabelsConfig) ToolEnabled() bool     { return a.Tool == nil || *a.To
 func (a AutoLabelsConfig) SeverityEnabled() bool { return a.Severity == nil || *a.Severity }
 func (a AutoLabelsConfig) CategoryEnabled() bool { return a.Category == nil || *a.Category }
 
-// TriageConfig configures `kubectl audit triage` — see docs/triage.md.
+// TriageConfig configures `kubectl triage` — see docs/triage.md.
 type TriageConfig struct {
 	// StateFile is where triage decisions (status/notes/Jira links) are
 	// persisted — a local, git-diffable YAML file, not a database. See
 	// internal/triage.State.
 	StateFile string     `json:"stateFile,omitempty"`
 	Jira      JiraConfig `json:"jira,omitempty"`
-	// KnowledgeBaseFile is a path to a YAML file (PolicyID -> {title,
-	// description, remediation}) merged on top of the tool's bundled
-	// knowledge base (see internal/triage.ResolveKnowledgeBase — the
-	// bundle applies automatically, no config needed) — for correcting a
-	// bundled entry or adding your organization's own wording/standards
-	// for a check the bundle doesn't cover. Applied both when filing a
-	// Jira ticket and in the triage TUI's detail view (so what you
-	// preview is what gets filed — see internal/triage.Resolve). Not
-	// nested under Jira: the detail view uses it independent of Jira
-	// being configured at all. See `kubectl audit triage knowledge-base
-	// dump` to inspect the bundle. Read fresh from disk on every run, no
-	// rebuild.
-	KnowledgeBaseFile string `json:"knowledgeBaseFile,omitempty"`
 	// Server points triage at a kubectl-audit-server instance instead of
 	// StateFile — see TriageServerConfig.
 	Server TriageServerConfig `json:"server,omitempty"`
@@ -418,7 +497,20 @@ type AuditConfig struct {
 	// Components extends the built-in third-party component inventory —
 	// see ComponentsConfig.
 	Components ComponentsConfig `json:"components,omitempty"`
-	// Triage configures `kubectl audit triage` — see TriageConfig.
+	// KnowledgeBaseFile is a path to a YAML file (PolicyID -> {title,
+	// description, remediation}) merged on top of the tool's bundled
+	// knowledge base (see internal/triage.ResolveKnowledgeBase — the
+	// bundle applies automatically, no config needed) — for correcting a
+	// bundled entry or adding your organization's own wording/standards
+	// for a check the bundle doesn't cover. Not nested under Triage: both
+	// `kubectl audit scan` (console/report.md/Confluence Remediation text
+	// — see runScan's own ResolveKnowledgeBase call) and `kubectl triage`
+	// (Jira ticket filing, the TUI's detail view) resolve it the same
+	// way, independent of either Jira or triage being configured at all.
+	// See `kubectl triage knowledge-base dump` to inspect the bundle.
+	// Read fresh from disk on every run, no rebuild.
+	KnowledgeBaseFile string `json:"knowledgeBaseFile,omitempty"`
+	// Triage configures `kubectl triage` — see TriageConfig.
 	Triage TriageConfig `json:"triage,omitempty"`
 }
 
@@ -490,22 +582,23 @@ func Load(path string) (*AuditConfig, error) {
 		}
 	}
 	expandTriagePaths(&cfg.Triage)
+	cfg.KnowledgeBaseFile = expandHome(cfg.KnowledgeBaseFile)
 	return cfg, nil
 }
 
 // expandTriagePaths expands a leading "~/" in the triage config's own
-// file-path fields — StateFile, KnowledgeBaseFile, and the Jira summary/
-// description templates — the same convenience `~/.kube/config` users
-// expect from a path, but that Go's os.ReadFile doesn't do on its own (no
-// shell involved to expand it). Lets an audit.yaml living in
-// ~/.kubectl-audit/ (see resolveConfigPath in internal/cli) reference
-// sibling files there — "~/.kubectl-audit/knowledge-base.yaml" — without
-// spelling out the full absolute path. A path not starting with "~/" is
-// left untouched, so ordinary CWD-relative paths (e.g. a project's own
-// checked-in audit.yaml) behave exactly as before.
+// file-path fields — StateFile and the Jira summary/description
+// templates — the same convenience `~/.kube/config` users expect from a
+// path, but that Go's os.ReadFile doesn't do on its own (no shell
+// involved to expand it). Lets an audit.yaml living in ~/.kubectl-audit/
+// (see resolveConfigPath in internal/cli) reference sibling files there
+// without spelling out the full absolute path. A path not starting with
+// "~/" is left untouched, so ordinary CWD-relative paths (e.g. a
+// project's own checked-in audit.yaml) behave exactly as before.
+// KnowledgeBaseFile gets the same treatment directly in Load, since it's
+// no longer a Triage-only field.
 func expandTriagePaths(t *TriageConfig) {
 	t.StateFile = expandHome(t.StateFile)
-	t.KnowledgeBaseFile = expandHome(t.KnowledgeBaseFile)
 	t.Jira.SummaryTemplate = expandHome(t.Jira.SummaryTemplate)
 	t.Jira.DescriptionTemplate = expandHome(t.Jira.DescriptionTemplate)
 }
@@ -574,6 +667,31 @@ func (c *AuditConfig) FailOnSeverity() (findings.Severity, bool) {
 	default:
 		return findings.ParseSeverity(c.Output.FailOn), true
 	}
+}
+
+// MinSeverityThreshold mirrors FailOnSeverity for Output.MinSeverity: ok is
+// false for "" or "none" (render every finding), matching FailOnSeverity's
+// own empty/"none" convention.
+func (c *AuditConfig) MinSeverityThreshold() (findings.Severity, bool) {
+	switch normalize(c.Output.MinSeverity) {
+	case "", "none":
+		return "", false
+	default:
+		return findings.ParseSeverity(c.Output.MinSeverity), true
+	}
+}
+
+// FrameworksOnlyEnabled resolves Compliance.FrameworksOnly's effective
+// value: the explicit setting if one was made (by --frameworks-only, or
+// compliance.frameworksOnly in audit.yaml), otherwise frameworksExplicit
+// — true exactly when --frameworks was itself explicitly given (by flag
+// or config), so a chosen standard scopes the audit to itself by
+// default, while the implicit "cis" default keeps showing everything.
+func (c *AuditConfig) FrameworksOnlyEnabled(frameworksExplicit bool) bool {
+	if c.Compliance.FrameworksOnly != nil {
+		return *c.Compliance.FrameworksOnly
+	}
+	return frameworksExplicit
 }
 
 func normalize(s string) string {

@@ -69,22 +69,60 @@ output:
 
 compliance:
   # Requirement framework(s) to score findings against: cis|fstec|nsa (see
-  # compliance-mappings/ in the repo for the full control tables).
+  # compliance-mappings/ in the repo for the full control tables), or a
+  # path to your own private mapping (see docs/custom-checks.md).
   frameworks:
     - cis
     # - fstec
     # - nsa
+    # - ./our-standard.yaml
 
-# Configures `kubectl audit triage` (see docs/triage.md). No credential
+  # When a framework above was chosen deliberately (not just left at the
+  # "cis" default), this also scopes the findings themselves to it: a
+  # check the standard never asked about is dropped before it reaches any
+  # output or --fail-on, not just the scorecard. Defaults to true whenever
+  # `frameworks` is explicitly set here or via --frameworks; set false to
+  # keep the full check set alongside a scorecard for one standard.
+  # frameworksOnly: true
+
+# A false positive or an accepted risk you don't want to wait on someone
+# else to triage — add your own exclusion rule here instead. Suppressed
+# findings aren't silently dropped: they still show up in report.md's
+# "Suppressed" section (with `reason` attached) and findings.json's
+# `suppressed` array — they just don't count toward --fail-on.
+exclusions:
+  - # Restricts this rule to specific checks; omit (or ["*"]) to apply it
+    # to every check.
+    policyIds:
+      - workload.no-latest-tag
+
+    # At least one of kind/namespace/name/labels is required — an empty
+    # match is rejected at load time (it would silently suppress
+    # everything). All fields set here must match (AND).
+    match:
+      kind: Deployment          # exact match
+      namespace: legacy         # exact match
+      name: "legacy-*"          # path.Match glob; a literal name still
+                                 # works as an exact match
+      # labels:                 # every key must be present with this
+      #   team: platform-legacy # exact value on the source object
+
+    # Required — shown next to every finding this rule suppresses.
+    reason: "Legacy app pending migration, tracked in JIRA-1234"
+
+# A bundled Russian title/description/remediation applies to every check
+# automatically, no config needed (see docs/triage.md > Knowledge base).
+# Point this at a file to correct one entry or add your own organization's
+# wording; merged on top of the bundle, field by field. Used by both
+# `scan` (console/report.md/Confluence Remediation text) and `triage`
+# (Jira ticket filing, the TUI's detail view).
+# knowledgeBaseFile: knowledge-base.yaml
+
+# Configures `kubectl triage` (see docs/triage.md). No credential
 # field here: the Jira Personal Access Token always comes from
 # --jira-token or $KUBECTL_AUDIT_JIRA_TOKEN, never this file.
 # triage:
 #   stateFile: triage-state.yaml
-#   # A bundled Russian title/description/remediation applies to every check
-#   # automatically, no config needed (see docs/triage.md > Knowledge base).
-#   # Point this at a file to correct one entry or add your own
-#   # organization's wording; merged on top of the bundle, field by field.
-#   # knowledgeBaseFile: knowledge-base.yaml
 #   jira:
 #     baseUrl: https://jira.example.com
 #     projectKey: SEC
@@ -104,7 +142,7 @@ compliance:
 #     # Paths to external Go text/template files that fully replace the
 #     # built-in summary/description structure. Empty (the default) uses
 #     # the built-in template — get a starting point with
-#     # `kubectl audit triage jira template dump --kind summary --out summary.tpl`.
+#     # `kubectl triage jira template dump --kind summary --out summary.tpl`.
 #     summaryTemplate: /path/to/summary.tpl
 #     descriptionTemplate: /path/to/description.tpl
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/ivanhahanov/kubectl-audit/internal/config"
 	"github.com/ivanhahanov/kubectl-audit/internal/k8sclient"
 	"github.com/ivanhahanov/kubectl-audit/internal/loader"
 	"github.com/ivanhahanov/kubectl-audit/internal/rbac"
@@ -61,7 +62,7 @@ func newInspectResourceCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			client, err := k8sclient.New(flagInspectKubeconfig, flagInspectContext)
+			client, err := k8sclient.New(flagInspectKubeconfig, flagInspectContext, config.RequestTimeoutDefault)
 			if err != nil {
 				return fmt.Errorf("connecting to cluster: %w", err)
 			}
@@ -91,7 +92,7 @@ func newInspectRBACChainCmd() *cobra.Command {
 				return fmt.Errorf("--subject: %w", err)
 			}
 
-			client, err := k8sclient.New(flagInspectKubeconfig, flagInspectContext)
+			client, err := k8sclient.New(flagInspectKubeconfig, flagInspectContext, config.RequestTimeoutDefault)
 			if err != nil {
 				return fmt.Errorf("connecting to cluster: %w", err)
 			}
